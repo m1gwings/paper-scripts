@@ -1,666 +1,393 @@
 #!/usr/bin/env bash
-
 set -euo pipefail
 
 PROGRAM="paper"
 
-die() {
-    echo "$PROGRAM: $*" >&2
-    exit 1
-}
+die() { echo "$PROGRAM: $*" >&2; exit 1; }
+need() { command -v "$1" >/dev/null 2>&1 || die "Required command '$1' is not installed."; }
+root() { git rev-parse --show-toplevel 2>/dev/null || die "Not inside a Git repository."; }
+branch() { git symbolic-ref --quiet --short HEAD 2>/dev/null || die "Detached HEAD; inspect 'git status'."; }
+remote_ok() { git remote get-url "$1" >/dev/null 2>&1 || die "Missing remote '$1'."; }
 
-need() {
-    command -v "$1" >/dev/null 2>&1 \
-        || die "Required command '$1' is not installed."
-}
-
-repo_root() {
-    git rev-parse --show-toplevel 2>/dev/null \
-        || die "You are not inside a Git repository."
-}
-
-current_branch() {
-    git symbolic-ref --quiet --short HEAD 2>/dev/null \
-        || die "Detached HEAD state. Run 'git status' and fix it before continuing."
-}
-
-require_remote() {
-    git remote get-url "$1" >/dev/null 2>&1 \
-        || die "Required remote '$1' does not exist. Run 'paper doctor'."
-}
-
-require_clean() {
+clean() {
     if [[ -n "$(git status --porcelain)" ]]; then
-        echo
         git status --short
-        echo
-        die "Working tree is not clean. Commit or explicitly discard the changes first."
+        die "Working tree is not clean. Commit or discard changes first."
     fi
 }
 
-require_master() {
-    git show-ref --verify --quiet refs/heads/master \
-        || die "This repository has no local 'master' branch."
-}
+no_git_operation() {
+    local d
+    d="$(git rev-parse --git-dir)"
 
-require_no_git_operation() {
-    local git_dir
-    git_dir="$(git rev-parse --git-dir)"
+    if [[ -d "$d/rebase-merge" || -d "$d/rebase-apply" \
+        || -f "$d/MERGE_HEAD" || -f "$d/CHERRY_PICK_HEAD" \
+        || -f "$d/REVERT_HEAD" ]]; then
 
-    if [[ -d "$git_dir/rebase-merge" ]] \
-        || [[ -d "$git_dir/rebase-apply" ]] \
-        || [[ -f "$git_dir/MERGE_HEAD" ]] \
-        || [[ -f "$git_dir/CHERRY_PICK_HEAD" ]] \
-        || [[ -f "$git_dir/REVERT_HEAD" ]]; then
+        die "A Git operation is already in progress.
+Run 'git status'.
 
-        die "A Git rebase/merge/cherry-pick/revert is already in progress.
-
-Run:
-    git status
-
-If you are resolving a rebase conflict:
-    # edit the conflicted files
-    git add <resolved-files>
-    git rebase --continue
-
-Or abort the rebase with:
+To abandon a rebase:
     git rebase --abort"
     fi
 }
 
-show_cached_divergence() {
-    local remote="$1"
+base_branch() {
+    local ref
 
-    if git show-ref --verify --quiet "refs/remotes/$remote/master"; then
-        local ahead behind
+    ref="$(git symbolic-ref --quiet --short refs/remotes/overleaf/HEAD 2>/dev/null || true)"
+
+    if [[ -n "$ref" ]]; then
+        echo "${ref#overleaf/}"
+        return
+    fi
+
+    git show-ref --verify --quiet refs/remotes/overleaf/main && {
+        echo main
+        return
+    }
+
+    git show-ref --verify --quiet refs/remotes/overleaf/master && {
+        echo master
+        return
+    }
+
+    die "Cannot determine Overleaf's default branch.
+
+Try:
+    git fetch overleaf
+    git remote set-head overleaf -a"
+}
+
+require_base() {
+    git show-ref --verify --quiet "refs/heads/$BASE" \
+        || die "Overleaf base branch is '$BASE', but no local '$BASE' exists."
+}
+
+show_divergence() {
+    local r="$1" ahead behind
+
+    if git show-ref --verify --quiet "refs/remotes/$r/$BASE"; then
         read -r ahead behind < <(
-            git rev-list --left-right --count "master...$remote/master"
+            git rev-list --left-right --count "$BASE...$r/$BASE"
         )
 
-        printf "  master vs %-16s local ahead: %-3s remote ahead: %-3s\n" \
-            "$remote/master" "$ahead" "$behind"
+        printf "%-20s local ahead: %-3s remote ahead: %-3s\n" \
+            "$r/$BASE" "$ahead" "$behind"
+    else
+        printf "%-20s not fetched / not found\n" "$r/$BASE"
     fi
 }
 
-print_help() {
-    cat <<'HELP'
-paper — simple workflow for LaTeX papers synchronized with Overleaf + GitHub
+write_gitignore() {
+    cat > .gitignore <<'GITIGNORE'
+# VS Code local configuration
+.vscode/
 
-REPOSITORY MODEL
-================
+# LaTeX auxiliary files
+*.aux
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
+*.toc
+*.lof
+*.lot
+*.run.xml
+*.bcf
+*.nav
+*.snm
+*.vrb
 
-The expected repository has:
+# Temporary editor files
+*~
+*.swp
+*.swo
 
-    master
-        Collaborative/published paper.
+# OS metadata
+.DS_Store
+GITIGNORE
+}
 
-    overleaf
-        Overleaf Git remote.
-        This is where collaborators edit the paper.
+help_text() {
+cat <<'HELP'
+paper — Overleaf + GitHub workflow for LaTeX papers
 
-    github
-        Private GitHub remote.
-        Used as your backup/mirror and for experimental branches.
+MODEL
+  overleaf/<base>   collaborative paper
+                     (<base> is auto-detected: usually main/master)
 
-The intended mental model is:
+  github/<base>     private mirror/backup
 
-    COMMIT
-        Make a local checkpoint.
+  github/<feature>  experimental branches
 
-    BACKUP
-        Copy committed work to GitHub.
-        Does NOT modify Overleaf.
 
-    PUBLISH
-        Make committed work part of the collaborative Overleaf paper.
+MENTAL MODEL
 
-The only normal command that pushes changes to Overleaf is:
+  commit
+      Local checkpoint.
 
-    paper publish
+  backup
+      Push current branch to GitHub only.
 
+  publish
+      Make committed work visible on Overleaf.
 
-DAILY COMMANDS
-==============
 
-    paper status
+COMMANDS
 
-        Show the current branch, working tree, branches, remotes, and
-        cached master divergence.
+  paper status
+      Show base branch, current branch, status, branches,
+      remotes, and cached divergence.
 
-        Good first command when you do not remember where you are.
+  paper sync
+      While on the base branch, pull/rebase the latest
+      Overleaf changes.
 
+  paper commit "message"
+      git add -A + local commit.
+      Pushes nowhere.
 
-    paper sync
+  paper backup
+      Push current branch to GitHub.
+      Never touches Overleaf.
 
-        Update local master from the latest Overleaf master.
+  paper start NAME
+      Sync base branch, create NAME, and immediately
+      back it up to GitHub.
 
-        Must be run while you are on master and have a clean working tree.
+  paper publish
+      From base:
+          sync -> GitHub backup -> Overleaf
 
-        Use this before starting normal work:
+      From feature:
+          sync base
+          -> rebase feature
+          -> GitHub feature backup
+          -> fast-forward base
+          -> GitHub base backup
+          -> Overleaf
 
-            paper sync
+      The feature branch is kept afterward.
 
+  paper abort
+      Delete CURRENT non-base branch locally and from GitHub.
+      Requires typing its exact name.
+      Never touches Overleaf.
 
-    paper commit "MESSAGE"
+  paper clear-experiments
+      Delete ALL non-base branches locally and from GitHub.
+      Requires typing:
 
-        Stage all non-ignored changes and create a LOCAL Git commit.
+          DELETE EXPERIMENTS
 
-        Example:
+      Never touches Overleaf.
 
-            paper commit "Fix Case 2 regret calculation"
+  paper gitignore
+      Create the standard paper .gitignore if none exists.
+      Existing .gitignore files are never overwritten.
 
-        This does NOT push anywhere.
+  paper build [ROOT.tex]
+      Compile with latexmk.
+      Defaults to main.tex.
 
+  paper clean [ROOT.tex]
+      Clean latexmk files.
+      Defaults to main.tex.
 
-    paper backup
+  paper open
+      Open the repository in VS Code.
 
-        Push the CURRENT BRANCH to GitHub.
+  paper doctor
+      Check configuration and useful tools.
 
-        Overleaf is NOT modified.
+  paper examples
+      Show concrete example workflows.
 
-        Use it when you want your committed work safely stored remotely:
-
-            paper commit "First attempt at new proof"
-            paper backup
-
-
-    paper start BRANCH
-
-        Start an experimental feature branch.
-
-        The command:
-
-          1. switches to master;
-          2. updates master from Overleaf;
-          3. creates BRANCH;
-          4. immediately creates its GitHub backup branch.
-
-        Example:
-
-            paper start case3-rewrite
-
-        Work on the branch, then create checkpoints with:
-
-            paper commit "First Case 3 construction"
-            paper backup
-
-
-    paper publish
-
-        Publish your current committed work.
-
-        If you are on master:
-
-          1. update master from Overleaf;
-          2. back up master to GitHub;
-          3. push master to Overleaf.
-
-        If you are on a feature branch:
-
-          1. update master from Overleaf;
-          2. rebase the feature branch onto current master;
-          3. back up the feature branch to GitHub;
-          4. fast-forward master to the feature branch;
-          5. back up master to GitHub;
-          6. push master to Overleaf.
-
-        The feature branch is NOT automatically deleted afterward.
-
-        Example:
-
-            paper publish
-
-
-EXPERIMENT CLEANUP
-==================
-
-    paper abort
-
-        Permanently discard the CURRENT feature branch.
-
-        It deletes that branch:
-
-          - locally;
-          - from GitHub, if it exists there.
-
-        It NEVER modifies Overleaf or master.
-
-        You must type the branch name to confirm.
-
-        Example:
-
-            paper abort
-
-
-    paper clear-experiments
-
-        Permanently delete ALL non-master branches:
-
-          - locally;
-          - from GitHub.
-
-        It NEVER modifies:
-
-          - local master;
-          - github/master;
-          - overleaf/master;
-          - the Overleaf project.
-
-        Requires the exact confirmation phrase:
-
-            DELETE EXPERIMENTS
-
-
-LATEX / EDITOR COMMANDS
-=======================
-
-    paper build [ROOT.tex]
-
-        Compile with latexmk.
-
-        Defaults to:
-
-            main.tex
-
-        Example:
-
-            paper build
-            paper build aistats.tex
-
-
-    paper clean [ROOT.tex]
-
-        Remove latexmk-generated files.
-
-        Defaults to main.tex.
-
-
-    paper open
-
-        Open the repository in VS Code.
-
-
-DIAGNOSTICS
-===========
-
-    paper doctor
-
-        Check the repository configuration and available tools.
-
-        Useful when setting up a new paper or machine.
-
-
-    paper examples
-
-        Show example workflows for:
-
-          - small changes on master;
-          - experimental branches;
-          - backing up without publishing;
-          - abandoning an experiment;
-          - cleaning all experiments;
-          - recovering from Git conflicts.
-
-
-    paper help
-
-        Show this help.
+  paper help
+      Show this help.
 
 
 CONFLICTS
-=========
 
-If 'paper sync' or 'paper publish' stops because of a Git conflict:
+If sync/publish stops with a conflict:
 
     git status
-
-Git will tell you which files conflict.
 
 Resolve the files, then:
 
     git add <resolved-files>
     git rebase --continue
 
-Repeat until the rebase finishes.
+Repeat if necessary.
 
-If you decide you do NOT want to continue the rebase:
+To abandon the rebase:
 
     git rebase --abort
-
-After recovery, inspect the repository:
-
-    paper status
-
-and rerun the original paper command when appropriate.
-
-IMPORTANT:
-    Never blindly use 'git reset --hard' or 'git clean -fd' to solve a
-    conflict unless you understand exactly what will be deleted.
-
-
-SAFETY INVARIANTS
-=================
-
-- 'paper abort' never touches Overleaf.
-- 'paper clear-experiments' never touches Overleaf.
-- 'paper backup' never touches Overleaf.
-- 'paper publish' requires a clean working tree.
-- destructive operations require explicit confirmation.
-- GitHub is treated as your personal mirror/backup.
-- Overleaf master is treated as the collaborative paper.
-
-Run:
-
-    paper examples
-
-for concrete workflows.
-HELP
-}
-
-print_examples() {
-    cat <<'EXAMPLES'
-PAPER WORKFLOW EXAMPLES
-=======================
-
-
-1. SMALL CHANGE DIRECTLY ON MASTER
-----------------------------------
-
-Start from your collaborators' latest version:
-
-    paper sync
-
-Edit the paper.
-
-Create a checkpoint:
-
-    paper commit "Clarify warm-up lemma"
-
-Continue editing if desired:
-
-    paper commit "Fix constants in Case 2"
-
-Publish everything:
-
-    paper publish
-
-
-2. SMALL CHANGE, BUT BACK IT UP BEFORE PUBLISHING
--------------------------------------------------
-
-    paper sync
-
-    # edit...
-
-    paper commit "Rewrite introduction paragraph"
-
-Back it up to GitHub without changing Overleaf:
-
-    paper backup
-
-Continue working.
-
-When ready for collaborators to see it:
-
-    paper publish
-
-
-3. START A RISKY EXPERIMENT
----------------------------
-
-For example, you want to let Codex substantially rewrite a proof:
-
-    paper start case3-rewrite
-
-Now you are on:
-
-    case3-rewrite
-
-Create checkpoints freely:
-
-    paper commit "First alternative construction"
-    paper commit "Repair KL argument"
-
-Back up the branch:
-
-    paper backup
-
-Overleaf is still untouched.
-
-
-4. PUBLISH A SUCCESSFUL EXPERIMENT
-----------------------------------
-
-While on the feature branch:
-
-    paper publish
-
-The command integrates the branch into current master and publishes master
-to both GitHub and Overleaf.
-
-The feature branch remains available afterward.
-
-If you later want to remove leftover experimental branches:
-
-    paper clear-experiments
-
-
-5. ABANDON THE CURRENT EXPERIMENT
----------------------------------
-
-Suppose you are on:
-
-    bad-proof-idea
-
-and everything is committed or otherwise clean.
-
-Run:
-
-    paper abort
-
-You will see something like:
-
-    Type 'bad-proof-idea' to confirm:
-
-After confirmation, the branch is removed locally and from GitHub.
-
-Overleaf is untouched.
-
-
-6. DELETE ALL LEFTOVER EXPERIMENTAL BRANCHES
---------------------------------------------
-
-    paper clear-experiments
-
-The command first lists every non-master branch that would disappear.
-
-Nothing happens unless you type:
-
-    DELETE EXPERIMENTS
-
-Overleaf and master are preserved.
-
-
-7. CHECK WHERE YOU ARE
-----------------------
-
-If you return to a project after two weeks and remember nothing:
-
-    paper status
-
-If something looks wrong:
-
-    paper doctor
-
-If you do not remember the commands:
-
-    paper help
-
-
-8. CONFLICT DURING SYNC OR PUBLISH
-----------------------------------
-
-Suppose Git reports a conflict.
-
-First:
-
-    git status
-
-Open the conflicting .tex files and resolve the conflict markers.
 
 Then:
 
-    git add appendix.tex
-
-Continue:
-
-    git rebase --continue
-
-If another conflict appears, repeat.
-
-If you want to abandon the entire rebase:
-
-    git rebase --abort
-
-Then inspect:
-
     paper status
 
+Do not blindly use:
 
-9. TYPICAL DAY
---------------
+    git reset --hard
+    git clean -fd
+HELP
+}
 
-    cd ~/research/my-project/paper
+examples_text() {
+cat <<'EXAMPLES'
+EXAMPLE WORKFLOWS
+
+
+1. SMALL CHANGE
+
     paper sync
     paper open
 
-    # work...
+    # edit...
 
-    paper commit "Improve lower-bound proof"
+    paper commit "Clarify Lemma 7"
+    paper publish
+
+
+2. BACK UP BEFORE PUBLISHING
+
+    paper commit "First proof revision"
+    paper backup
 
     # more work...
 
-    paper commit "Clean notation"
+    paper publish
 
+
+3. RISKY EXPERIMENT
+
+    paper start case3-rewrite
+
+    # work...
+
+    paper commit "First construction"
     paper backup
 
-    # when satisfied:
+    paper commit "Fix KL argument"
+    paper backup
+
+
+4. EXPERIMENT SUCCEEDED
 
     paper publish
 
 
-10. TYPICAL LARGE CHANGE
-------------------------
-
-    cd ~/research/my-project/paper
-
-    paper start new-lower-bound
-
-    # work with VS Code / Codex
-
-    paper commit "Set up alternative instance family"
-    paper backup
-
-    # more work
-
-    paper commit "Complete Pinsker argument"
-    paper backup
-
-    # successful:
-    paper publish
-
-or, if the idea failed:
+5. EXPERIMENT FAILED
 
     paper abort
+
+
+6. REMOVE ALL LEFTOVER EXPERIMENTS
+
+    paper clear-experiments
+
+
+7. ADD .gitignore TO AN EXISTING PAPER
+
+    paper gitignore
+    paper commit "Add standard paper gitignore"
+
+
+8. FORGOT WHERE YOU ARE
+
+    paper status
+    paper doctor
+
+
+9. CONFLICT
+
+    git status
+
+    # resolve files...
+
+    git add <resolved-files>
+    git rebase --continue
+
+
+10. ABORT CONFLICT RESOLUTION
+
+    git rebase --abort
+    paper status
 EXAMPLES
 }
 
-COMMAND="${1:-help}"
+CMD="${1:-help}"
+[[ $# -gt 0 ]] && shift
 
-if [[ $# -gt 0 ]]; then
-    shift
-fi
-
-case "$COMMAND" in
+case "$CMD" in
     help|-h|--help)
-        print_help
+        help_text
         exit 0
         ;;
 
     examples)
-        print_examples
+        examples_text
         exit 0
         ;;
 esac
 
 need git
 
-cd "$(repo_root)"
+cd "$(root)"
 
-require_remote overleaf
-require_remote github
-require_master
+remote_ok overleaf
+remote_ok github
 
-case "$COMMAND" in
+BASE="$(base_branch)"
+require_base
+
+case "$CMD" in
 
     status)
-        echo "=== Repository ==="
-        pwd
+        echo "Repository: $(pwd)"
+        echo "Base branch: $BASE"
+        echo "Current branch: $(branch)"
 
         echo
-        echo "=== Current branch ==="
-        current_branch
-
-        echo
-        echo "=== Working tree ==="
         git status -sb
 
         echo
-        echo "=== Local branches ==="
+        echo "Local branches:"
         git branch -vv
 
         echo
-        echo "=== Remotes ==="
+        echo "Remotes:"
         git remote -v
 
         echo
-        echo "=== Cached master divergence ==="
-        echo "(Remote information is only as fresh as your last fetch/pull.)"
-        show_cached_divergence overleaf
-        show_cached_divergence github
+        echo "Cached divergence (only as fresh as your last fetch/pull):"
+        show_divergence overleaf
+        show_divergence github
         ;;
 
     sync)
-        require_no_git_operation
-        require_clean
+        no_git_operation
+        clean
 
-        BRANCH="$(current_branch)"
+        [[ "$(branch)" == "$BASE" ]] \
+            || die "Run 'paper sync' from '$BASE', not '$(branch)'."
 
-        if [[ "$BRANCH" != "master" ]]; then
-            die "'paper sync' must be run from master.
+        git pull --rebase overleaf "$BASE"
 
-Current branch:
-    $BRANCH
-
-If this is an experiment, normally keep working there and use
-'paper publish' when it is ready."
-        fi
-
-        echo "Updating master from Overleaf..."
-        git pull --rebase overleaf master
-
-        echo
-        echo "Local master is now synchronized with Overleaf."
-        echo "GitHub has not been modified."
-        echo "Run 'paper backup' if you also want to refresh the GitHub mirror."
+        echo "Synchronized '$BASE' with Overleaf."
+        echo "GitHub was not modified."
         ;;
 
     commit)
-        require_no_git_operation
+        no_git_operation
 
-        if [[ $# -lt 1 ]]; then
-            die 'Usage: paper commit "commit message"'
-        fi
+        [[ $# -ge 1 ]] \
+            || die 'Usage: paper commit "message"'
 
         git add -A
 
@@ -673,263 +400,201 @@ If this is an experiment, normally keep working there and use
         ;;
 
     backup)
-        require_no_git_operation
-        require_clean
+        no_git_operation
+        clean
 
-        BRANCH="$(current_branch)"
+        B="$(branch)"
 
-        echo "Backing up '$BRANCH' to GitHub..."
+        git push --force-with-lease -u github "$B"
 
-        # GitHub is intentionally treated as a personal mirror/backup.
-        # --force-with-lease allows rebased local history to replace the
-        # previous mirror while refusing to overwrite unexpected remote work.
-        git push --force-with-lease -u github "$BRANCH"
-
-        echo
-        echo "Backup complete."
+        echo "Backed up '$B' to GitHub."
         echo "Overleaf was not modified."
         ;;
 
     start)
-        require_no_git_operation
-        require_clean
+        no_git_operation
+        clean
 
-        if [[ $# -ne 1 ]]; then
-            die "Usage: paper start BRANCH_NAME"
-        fi
+        [[ $# -eq 1 ]] \
+            || die "Usage: paper start BRANCH_NAME"
 
-        NEW_BRANCH="$1"
+        NEW="$1"
 
-        git check-ref-format --branch "$NEW_BRANCH" >/dev/null 2>&1 \
-            || die "'$NEW_BRANCH' is not a valid Git branch name."
+        git check-ref-format --branch "$NEW" >/dev/null 2>&1 \
+            || die "Invalid branch name '$NEW'."
 
-        if git show-ref --verify --quiet "refs/heads/$NEW_BRANCH"; then
-            die "Local branch '$NEW_BRANCH' already exists."
-        fi
+        [[ "$NEW" != "$BASE" ]] \
+            || die "'$NEW' is the base branch."
 
-        if git ls-remote --exit-code --heads github "$NEW_BRANCH" >/dev/null 2>&1; then
-            die "GitHub branch '$NEW_BRANCH' already exists."
-        fi
+        ! git show-ref --verify --quiet "refs/heads/$NEW" \
+            || die "Local branch '$NEW' already exists."
 
-        echo "Switching to master..."
-        git switch master
+        ! git ls-remote --exit-code --heads github "$NEW" >/dev/null 2>&1 \
+            || die "GitHub branch '$NEW' already exists."
 
-        echo
-        echo "Updating master from Overleaf..."
-        git pull --rebase overleaf master
+        git switch "$BASE"
+        git pull --rebase overleaf "$BASE"
 
-        echo
-        echo "Creating experimental branch '$NEW_BRANCH'..."
-        git switch -c "$NEW_BRANCH"
+        git switch -c "$NEW"
+        git push -u github "$NEW"
 
-        echo
-        echo "Creating GitHub backup branch..."
-        git push -u github "$NEW_BRANCH"
-
-        echo
-        echo "Experiment '$NEW_BRANCH' is ready."
+        echo "Started '$NEW'."
         echo "Overleaf was not modified."
         ;;
 
     publish)
-        require_no_git_operation
-        require_clean
+        no_git_operation
+        clean
 
-        BRANCH="$(current_branch)"
+        B="$(branch)"
 
-        if [[ "$BRANCH" == "master" ]]; then
-            echo "Updating master from Overleaf..."
-            git pull --rebase overleaf master
+        if [[ "$B" == "$BASE" ]]; then
 
-            echo
-            echo "Backing up master to GitHub..."
-            git push --force-with-lease -u github master
+            git pull --rebase overleaf "$BASE"
+            git push --force-with-lease -u github "$BASE"
+            git push overleaf "$BASE"
 
-            echo
-            echo "Publishing master to Overleaf..."
-            git push overleaf master
-
-            echo
-            echo "Published successfully."
+            echo "Published '$BASE' to GitHub and Overleaf."
 
         else
-            WORK_BRANCH="$BRANCH"
+            WORK="$B"
 
-            echo "Publishing experimental branch '$WORK_BRANCH'."
+            echo "1/6 Update '$BASE' from Overleaf"
+            git switch "$BASE"
+            git pull --rebase overleaf "$BASE"
 
-            echo
-            echo "Step 1/6: updating master from Overleaf..."
-            git switch master
-            git pull --rebase overleaf master
+            echo "2/6 Rebase '$WORK' onto '$BASE'"
+            git switch "$WORK"
+            git rebase "$BASE"
 
-            echo
-            echo "Step 2/6: rebasing '$WORK_BRANCH' onto current master..."
-            git switch "$WORK_BRANCH"
-            git rebase master
+            echo "3/6 Back up '$WORK' to GitHub"
+            git push --force-with-lease -u github "$WORK"
 
-            echo
-            echo "Step 3/6: backing up rebased feature branch to GitHub..."
-            git push --force-with-lease -u github "$WORK_BRANCH"
+            echo "4/6 Fast-forward '$BASE'"
+            git switch "$BASE"
+            git merge --ff-only "$WORK"
 
-            echo
-            echo "Step 4/6: fast-forwarding master..."
-            git switch master
-            git merge --ff-only "$WORK_BRANCH"
+            echo "5/6 Back up '$BASE' to GitHub"
+            git push --force-with-lease -u github "$BASE"
 
-            echo
-            echo "Step 5/6: backing up master to GitHub..."
-            git push --force-with-lease -u github master
-
-            echo
-            echo "Step 6/6: publishing master to Overleaf..."
-            git push overleaf master
+            echo "6/6 Publish '$BASE' to Overleaf"
+            git push overleaf "$BASE"
 
             echo
             echo "Published successfully."
-            echo
-            echo "Current branch: master"
-            echo "Experimental branch '$WORK_BRANCH' was kept."
-            echo "Delete it later with 'paper clear-experiments' if desired."
+            echo "Current branch: $BASE"
+            echo "Feature '$WORK' was kept."
         fi
         ;;
 
     abort)
-        require_no_git_operation
-        require_clean
+        no_git_operation
+        clean
 
-        BRANCH="$(current_branch)"
+        B="$(branch)"
 
-        if [[ "$BRANCH" == "master" ]]; then
-            die "Cannot abort master."
-        fi
+        [[ "$B" != "$BASE" ]] \
+            || die "Cannot abort base branch '$BASE'."
 
         echo
-        echo "DANGER: you are about to permanently discard:"
+        echo "This permanently deletes '$B':"
+        echo "  - locally"
+        echo "  - from GitHub, if present"
         echo
-        echo "    $BRANCH"
-        echo
-        echo "The branch will be deleted:"
-        echo "    - locally"
-        echo "    - from GitHub, if present"
-        echo
-        echo "The following will NOT be modified:"
-        echo "    - local master"
-        echo "    - github/master"
-        echo "    - overleaf/master"
-        echo "    - the Overleaf project"
-        echo
-        echo "Unmerged commits on '$BRANCH' will be lost."
+        echo "It does NOT modify '$BASE' or Overleaf."
         echo
 
-        read -r -p "Type '$BRANCH' to confirm: " CONFIRM
+        read -r -p "Type '$B' to confirm: " CONFIRM
 
-        if [[ "$CONFIRM" != "$BRANCH" ]]; then
-            echo "Abort cancelled. Nothing was changed."
+        [[ "$CONFIRM" == "$B" ]] || {
+            echo "Cancelled."
             exit 0
+        }
+
+        git switch "$BASE"
+
+        if git ls-remote --exit-code --heads github "$B" >/dev/null 2>&1; then
+            git push github --delete "$B"
         fi
 
-        echo
-        echo "Switching to master..."
-        git switch master
+        git branch -D "$B"
 
-        if git ls-remote --exit-code --heads github "$BRANCH" >/dev/null 2>&1; then
-            echo
-            echo "Deleting GitHub branch '$BRANCH'..."
-            git push github --delete "$BRANCH"
-        fi
-
-        echo
-        echo "Deleting local branch '$BRANCH'..."
-        git branch -D "$BRANCH"
-
-        echo
-        echo "Experiment '$BRANCH' discarded."
+        echo "Discarded '$B'."
         echo "Overleaf was not modified."
         ;;
 
     clear-experiments)
-        require_no_git_operation
-        require_clean
+        no_git_operation
+        clean
 
-        echo "Switching to master..."
-        git switch master
+        git switch "$BASE"
 
-        mapfile -t LOCAL_BRANCHES < <(
+        mapfile -t LOCAL < <(
             git for-each-ref \
                 --format='%(refname:short)' \
                 refs/heads/ |
-            grep -v '^master$' || true
+            grep -Fxv "$BASE" || true
         )
 
         REMOTE_HEADS="$(git ls-remote --heads github)" \
             || die "Could not read GitHub branches."
 
-        mapfile -t GITHUB_BRANCHES < <(
+        mapfile -t REMOTE < <(
             printf '%s\n' "$REMOTE_HEADS" |
             awk '{sub("refs/heads/", "", $2); print $2}' |
-            grep -v '^master$' |
+            grep -Fxv "$BASE" |
             sed '/^$/d' || true
         )
 
-        mapfile -t ALL_BRANCHES < <(
-            printf '%s\n' \
-                "${LOCAL_BRANCHES[@]}" \
-                "${GITHUB_BRANCHES[@]}" |
+        mapfile -t ALL < <(
+            printf '%s\n' "${LOCAL[@]}" "${REMOTE[@]}" |
             sed '/^$/d' |
             sort -u
         )
 
-        if [[ "${#ALL_BRANCHES[@]}" -eq 0 ]]; then
-            echo
+        [[ ${#ALL[@]} -gt 0 ]] || {
             echo "No experimental branches found."
             exit 0
-        fi
+        }
 
         echo
-        echo "DANGER: the following experimental branches will be"
-        echo "permanently deleted:"
+        echo "The following non-base branches will be permanently deleted:"
+        printf '  %s\n' "${ALL[@]}"
         echo
-
-        for BRANCH in "${ALL_BRANCHES[@]}"; do
-            echo "    $BRANCH"
-        done
-
-        echo
-        echo "They will be deleted:"
-        echo "    - locally, when present"
-        echo "    - from GitHub, when present"
-        echo
-        echo "The following will NOT be modified:"
-        echo "    - local master"
-        echo "    - github/master"
-        echo "    - overleaf/master"
-        echo "    - the Overleaf project"
+        echo "Overleaf and '$BASE' will NOT be modified."
         echo
 
         read -r -p "Type 'DELETE EXPERIMENTS' to confirm: " CONFIRM
 
-        if [[ "$CONFIRM" != "DELETE EXPERIMENTS" ]]; then
-            echo "Cleanup cancelled. Nothing was changed."
+        [[ "$CONFIRM" == "DELETE EXPERIMENTS" ]] || {
+            echo "Cancelled."
             exit 0
-        fi
+        }
 
-        # Delete GitHub copies first. If a remote deletion fails,
-        # local branches remain available.
-        for BRANCH in "${GITHUB_BRANCHES[@]}"; do
-            echo
-            echo "Deleting GitHub branch '$BRANCH'..."
-            git push github --delete "$BRANCH"
+        for B in "${REMOTE[@]}"; do
+            git push github --delete "$B"
         done
 
-        for BRANCH in "${LOCAL_BRANCHES[@]}"; do
-            echo
-            echo "Deleting local branch '$BRANCH'..."
-            git branch -D "$BRANCH"
+        for B in "${LOCAL[@]}"; do
+            git branch -D "$B"
         done
 
+        echo "All experimental branches removed."
+        ;;
+
+    gitignore)
+        no_git_operation
+
+        [[ ! -e .gitignore ]] \
+            || die ".gitignore already exists; refusing to overwrite it."
+
+        write_gitignore
+
+        echo "Created .gitignore."
         echo
-        echo "All experimental branches have been removed."
-        echo "Overleaf and master were not modified."
+        echo "Review it, then:"
+        echo
+        echo '    paper commit "Add standard paper gitignore"'
         ;;
 
     build)
@@ -938,10 +603,7 @@ If this is an experiment, normally keep working there and use
         MAIN="${1:-main.tex}"
 
         [[ -f "$MAIN" ]] \
-            || die "Cannot find '$MAIN'.
-
-Usage:
-    paper build [ROOT.tex]"
+            || die "Cannot find '$MAIN'. Usage: paper build [ROOT.tex]"
 
         latexmk \
             -pdf \
@@ -956,10 +618,7 @@ Usage:
         MAIN="${1:-main.tex}"
 
         [[ -f "$MAIN" ]] \
-            || die "Cannot find '$MAIN'.
-
-Usage:
-    paper clean [ROOT.tex]"
+            || die "Cannot find '$MAIN'. Usage: paper clean [ROOT.tex]"
 
         latexmk -C "$MAIN"
         ;;
@@ -970,105 +629,73 @@ Usage:
         ;;
 
     doctor)
-        echo "=== Repository ==="
-        pwd
+        echo "Repository: $(pwd)"
+        echo "Detected base branch: $BASE"
+
+        echo "Overleaf HEAD: $(
+            git symbolic-ref \
+                --quiet \
+                --short \
+                refs/remotes/overleaf/HEAD \
+                2>/dev/null \
+                || echo '<not set>'
+        )"
+
+        echo "Current branch: $(branch)"
 
         echo
-        echo "=== Current branch ==="
-        current_branch
-
-        echo
-        echo "=== Working tree ==="
         git status -sb
 
         echo
-        echo "=== Expected remotes ==="
-        echo "overleaf:"
-        git remote get-url overleaf
-        echo
-        echo "github:"
-        git remote get-url github
+        echo "Remotes:"
+        echo "  overleaf: $(git remote get-url overleaf)"
+        echo "  github:   $(git remote get-url github)"
 
         echo
-        echo "=== master upstream ==="
         UPSTREAM="$(
             git for-each-ref \
                 --format='%(upstream:short)' \
-                refs/heads/master
+                "refs/heads/$BASE"
         )"
 
-        if [[ "$UPSTREAM" == "github/master" ]]; then
-            echo "github/master  [OK]"
-        else
-            echo "${UPSTREAM:-<none>}  [expected github/master]"
-        fi
+        echo "Base upstream:"
+        echo "  ${UPSTREAM:-<none>}"
+        echo "  expected: github/$BASE"
 
         echo
-        echo "=== default push remote ==="
-        PUSH_DEFAULT="$(git config --get remote.pushDefault || true)"
-
-        if [[ "$PUSH_DEFAULT" == "github" ]]; then
-            echo "github  [OK]"
-        else
-            echo "${PUSH_DEFAULT:-<none>}  [expected github]"
-        fi
+        echo "Default push remote:"
+        echo "  $(git config --get remote.pushDefault || echo '<none>')"
+        echo "  expected: github"
 
         echo
-        echo "=== Tools ==="
+        echo "Tools:"
 
-        printf "git:      "
-        git --version
+        command -v gh >/dev/null 2>&1 \
+            && echo "  gh       [OK]" \
+            || echo "  gh       [MISSING]"
 
-        printf "gh:       "
+        command -v latexmk >/dev/null 2>&1 \
+            && echo "  latexmk  [OK]" \
+            || echo "  latexmk  [MISSING]"
+
+        command -v code >/dev/null 2>&1 \
+            && echo "  code     [OK]" \
+            || echo "  code     [MISSING]"
+
         if command -v gh >/dev/null 2>&1; then
-            gh --version | head -n 1
-        else
-            echo "NOT FOUND"
-        fi
-
-        printf "latexmk:  "
-        if command -v latexmk >/dev/null 2>&1; then
-            latexmk -v 2>/dev/null | head -n 1 || echo "found"
-        else
-            echo "NOT FOUND"
-        fi
-
-        printf "VS Code:  "
-        if command -v code >/dev/null 2>&1; then
-            echo "found"
-        else
-            echo "NOT FOUND"
+            gh auth status >/dev/null 2>&1 \
+                && echo "  GitHub auth [OK]" \
+                || echo "  GitHub auth [NOT AUTHENTICATED]"
         fi
 
         echo
-        echo "=== GitHub authentication ==="
-        if command -v gh >/dev/null 2>&1; then
-            if gh auth status >/dev/null 2>&1; then
-                echo "authenticated"
-            else
-                echo "NOT authenticated"
-                echo "Run: gh auth login"
-            fi
-        else
-            echo "GitHub CLI not installed."
-        fi
-
-        echo
-        echo "=== Cached divergence ==="
-        show_cached_divergence overleaf
-        show_cached_divergence github
-
-        echo
-        echo "Doctor check complete."
+        echo "Cached divergence:"
+        show_divergence overleaf
+        show_divergence github
         ;;
 
     *)
-        die "Unknown command '$COMMAND'.
-
-Run:
-    paper help
-
-or:
-    paper examples"
+        die "Unknown command '$CMD'.
+Run 'paper help' or 'paper examples'."
         ;;
 esac

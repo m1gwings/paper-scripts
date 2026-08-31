@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-
 set -euo pipefail
 
 PROGRAM="paper-init"
@@ -14,6 +13,38 @@ need() {
         || die "Required command '$1' is not installed."
 }
 
+write_standard_gitignore() {
+    cat > .gitignore <<'GITIGNORE'
+# VS Code local configuration
+.vscode/
+
+# LaTeX auxiliary files
+*.aux
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
+*.toc
+*.lof
+*.lot
+*.run.xml
+*.bcf
+*.nav
+*.snm
+*.vrb
+
+# Temporary editor files
+*~
+*.swp
+*.swo
+
+# OS metadata
+.DS_Store
+GITIGNORE
+}
+
 usage() {
     cat <<'HELP'
 paper-init — create a local Overleaf + GitHub paper repository
@@ -22,33 +53,26 @@ USAGE
 
     paper-init OVERLEAF_PROJECT_ID GITHUB_REPOSITORY [LOCAL_DIRECTORY]
 
+
 EXAMPLES
 
     paper-init abc123def456 my-paper
 
-        Creates:
+        Creates ./paper connected to:
 
-            ./paper
-
-        connected to:
-
-            overleaf  -> the supplied Overleaf project
-            github    -> a new private GitHub repository named my-paper
+            overleaf -> supplied Overleaf project
+            github   -> new private GitHub repository my-paper
 
 
     paper-init abc123def456 my-paper manuscript
 
-        Uses:
-
-            ./manuscript
-
-        instead of ./paper.
+        Uses ./manuscript instead of ./paper.
 
 
     paper-init abc123def456 my-organization/my-paper paper
 
-        Creates the private GitHub repository inside the specified
-        GitHub organization/account.
+        Creates the private GitHub repository under the specified
+        organization/account.
 
 
 WHAT THE COMMAND DOES
@@ -57,40 +81,56 @@ WHAT THE COMMAND DOES
     2. checks GitHub authentication;
     3. clones the Overleaf project;
     4. calls the Overleaf remote 'overleaf';
-    5. verifies that the collaborative branch is 'master';
-    6. creates a PRIVATE GitHub repository;
-    7. calls the GitHub remote 'github';
-    8. pushes the initial master to GitHub;
-    9. configures master to track github/master;
-   10. configures plain 'git push' to prefer GitHub.
+    5. detects the Overleaf default branch automatically;
+    6. creates a standard .gitignore if none exists;
+    7. creates a PRIVATE GitHub repository;
+    8. calls the GitHub remote 'github';
+    9. pushes the initial history to GitHub;
+   10. configures the base branch to track github/<base>;
+   11. configures plain 'git push' to prefer GitHub.
 
-The intended repository model is:
+The collaborative branch may be:
 
-    overleaf/master
+    main
+    master
+    or another branch name
+
+No branch name is hard-coded.
+
+
+MODEL
+
+    overleaf/<base>
         Collaborative/published paper.
 
-    github/master
-        Your private mirror/backup.
+    github/<base>
+        Private mirror/backup.
 
     github/<feature>
-        Your experimental branches.
+        Experimental branches.
 
-After setup, use:
 
+AFTER SETUP
+
+    paper doctor
     paper help
     paper examples
-    paper doctor
 
-IMPORTANT
+
+OVERLEAF AUTHENTICATION
 
 Overleaf Git authentication is separate from university SSO.
 
 When Git asks for the Overleaf password, paste your Overleaf Git
-authentication token. The username is 'git'.
+authentication token.
+
+The username is:
+
+    git
 HELP
 }
 
-if [[ "${1:-}" == "-h" ]] || [[ "${1:-}" == "--help" ]]; then
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
     usage
     exit 0
 fi
@@ -140,15 +180,31 @@ echo "    origin -> overleaf"
 
 git remote rename origin overleaf
 
-BRANCH="$(git branch --show-current)"
+BASE_BRANCH="$(
+    git symbolic-ref --quiet --short HEAD 2>/dev/null || true
+)"
 
-if [[ "$BRANCH" != "master" ]]; then
-    die "Expected the Overleaf branch to be 'master', but found:
+if [[ -z "$BASE_BRANCH" ]]; then
+    die "Could not determine the checked-out Overleaf default branch."
+fi
 
-    $BRANCH
+echo
+echo "Detected collaborative branch:"
+echo "    $BASE_BRANCH"
 
-The repository was cloned successfully, but paper-init stopped because
-the 'paper' workflow assumes Overleaf uses master."
+if [[ ! -e .gitignore ]]; then
+    echo
+    echo "No .gitignore found."
+    echo "Creating the standard paper .gitignore..."
+
+    write_standard_gitignore
+
+    git add .gitignore
+    git commit -m "Add standard paper gitignore"
+else
+    echo
+    echo "Existing .gitignore found."
+    echo "Leaving it unchanged."
 fi
 
 echo
@@ -163,9 +219,11 @@ gh repo create "$GITHUB_REPO" \
     --push
 
 echo
-echo "Configuring master to track github/master..."
+echo "Configuring '$BASE_BRANCH' to track github/$BASE_BRANCH..."
 
-git branch --set-upstream-to=github/master master
+git branch \
+    --set-upstream-to="github/$BASE_BRANCH" \
+    "$BASE_BRANCH"
 
 echo
 echo "Configuring GitHub as the default push destination..."
@@ -176,19 +234,24 @@ echo
 echo "========================================"
 echo "Paper repository successfully configured"
 echo "========================================"
+
 echo
 echo "Directory:"
 echo "    $(pwd)"
+
 echo
-echo "Branch:"
-echo "    master"
+echo "Collaborative branch:"
+echo "    $BASE_BRANCH"
+
 echo
 echo "Remotes:"
 git remote -v
+
 echo
 echo "Safety model:"
 echo "    Overleaf = collaborative publication target"
 echo "    GitHub   = private mirror / experimental branches"
+
 echo
 echo "Recommended next commands:"
 echo
