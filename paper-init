@@ -35,6 +35,10 @@ write_standard_gitignore() {
 *.snm
 *.vrb
 
+# Generated root-document outputs
+main.pdf
+main.bbl
+
 # Temporary editor files
 *~
 *.swp
