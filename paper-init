@@ -1,0 +1,200 @@
+cat > paper-init <<'EOF'
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+PROGRAM="paper-init"
+
+die() {
+    echo "$PROGRAM: $*" >&2
+    exit 1
+}
+
+need() {
+    command -v "$1" >/dev/null 2>&1 \
+        || die "Required command '$1' is not installed."
+}
+
+usage() {
+    cat <<'HELP'
+paper-init — create a local Overleaf + GitHub paper repository
+
+USAGE
+
+    paper-init OVERLEAF_PROJECT_ID GITHUB_REPOSITORY [LOCAL_DIRECTORY]
+
+EXAMPLES
+
+    paper-init abc123def456 my-paper
+
+        Creates:
+
+            ./paper
+
+        connected to:
+
+            overleaf  -> the supplied Overleaf project
+            github    -> a new private GitHub repository named my-paper
+
+
+    paper-init abc123def456 my-paper manuscript
+
+        Uses:
+
+            ./manuscript
+
+        instead of ./paper.
+
+
+    paper-init abc123def456 my-organization/my-paper paper
+
+        Creates the private GitHub repository inside the specified
+        GitHub organization/account.
+
+
+WHAT THE COMMAND DOES
+
+    1. checks Git and GitHub CLI;
+    2. checks GitHub authentication;
+    3. clones the Overleaf project;
+    4. calls the Overleaf remote 'overleaf';
+    5. verifies that the collaborative branch is 'master';
+    6. creates a PRIVATE GitHub repository;
+    7. calls the GitHub remote 'github';
+    8. pushes the initial master to GitHub;
+    9. configures master to track github/master;
+   10. configures plain 'git push' to prefer GitHub.
+
+The intended repository model is:
+
+    overleaf/master
+        Collaborative/published paper.
+
+    github/master
+        Your private mirror/backup.
+
+    github/<feature>
+        Your experimental branches.
+
+After setup, use:
+
+    paper help
+    paper examples
+    paper doctor
+
+IMPORTANT
+
+Overleaf Git authentication is separate from university SSO.
+
+When Git asks for the Overleaf password, paste your Overleaf Git
+authentication token. The username is 'git'.
+HELP
+}
+
+if [[ "${1:-}" == "-h" ]] || [[ "${1:-}" == "--help" ]]; then
+    usage
+    exit 0
+fi
+
+if [[ $# -lt 2 || $# -gt 3 ]]; then
+    usage
+    exit 1
+fi
+
+OVERLEAF_ID="$1"
+GITHUB_REPO="$2"
+LOCAL_DIR="${3:-paper}"
+
+need git
+need gh
+
+echo "Checking GitHub authentication..."
+
+if ! gh auth status >/dev/null 2>&1; then
+    die "GitHub CLI is not authenticated.
+
+Run:
+    gh auth login
+
+Then rerun paper-init."
+fi
+
+if [[ -e "$LOCAL_DIR" ]]; then
+    die "'$LOCAL_DIR' already exists.
+
+Choose another directory or remove the existing one explicitly."
+fi
+
+OVERLEAF_URL="https://git@git.overleaf.com/${OVERLEAF_ID}"
+
+echo
+echo "Cloning Overleaf project into '$LOCAL_DIR'..."
+echo
+
+git clone "$OVERLEAF_URL" "$LOCAL_DIR"
+
+cd "$LOCAL_DIR"
+
+echo
+echo "Renaming Overleaf remote:"
+echo "    origin -> overleaf"
+
+git remote rename origin overleaf
+
+BRANCH="$(git branch --show-current)"
+
+if [[ "$BRANCH" != "master" ]]; then
+    die "Expected the Overleaf branch to be 'master', but found:
+
+    $BRANCH
+
+The repository was cloned successfully, but paper-init stopped because
+the 'paper' workflow assumes Overleaf uses master."
+fi
+
+echo
+echo "Creating PRIVATE GitHub repository:"
+echo "    $GITHUB_REPO"
+echo
+
+gh repo create "$GITHUB_REPO" \
+    --private \
+    --source=. \
+    --remote=github \
+    --push
+
+echo
+echo "Configuring master to track github/master..."
+
+git branch --set-upstream-to=github/master master
+
+echo
+echo "Configuring GitHub as the default push destination..."
+
+git config remote.pushDefault github
+
+echo
+echo "========================================"
+echo "Paper repository successfully configured"
+echo "========================================"
+echo
+echo "Directory:"
+echo "    $(pwd)"
+echo
+echo "Branch:"
+echo "    master"
+echo
+echo "Remotes:"
+git remote -v
+echo
+echo "Safety model:"
+echo "    Overleaf = collaborative publication target"
+echo "    GitHub   = private mirror / experimental branches"
+echo
+echo "Recommended next commands:"
+echo
+echo "    paper doctor"
+echo "    paper help"
+echo "    paper examples"
+echo "    paper open"
+EOF
