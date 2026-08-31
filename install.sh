@@ -1,4 +1,3 @@
-cat > install.sh <<'EOF'
 #!/usr/bin/env bash
 
 set -euo pipefail
@@ -95,4 +94,3 @@ echo "Try:"
 echo
 echo "    paper help"
 echo "    paper examples"
-EOF

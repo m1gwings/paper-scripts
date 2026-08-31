@@ -1,4 +1,3 @@
-cat > README.md <<'EOF'
 # scripts
 
 Personal Linux command-line utilities.
@@ -490,4 +489,3 @@ paper status
 paper help
 paper examples
 ```
-EOF

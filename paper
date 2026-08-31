@@ -1,4 +1,3 @@
-cat > paper <<'EOF'
 #!/usr/bin/env bash
 
 set -euo pipefail
@@ -1073,4 +1072,3 @@ or:
     paper examples"
         ;;
 esac
-EOF
