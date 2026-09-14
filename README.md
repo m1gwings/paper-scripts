@@ -1,6 +1,6 @@
-# scripts
+# paper-scripts
 
-Personal Linux command-line utilities.
+Personal Linux command-line utilities for paper writing.
 
 The repository is intended to be cloned directly into:
 
