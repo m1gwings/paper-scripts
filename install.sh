@@ -81,6 +81,12 @@ else
     echo "  code     [MISSING - optional, used by 'paper open']"
 fi
 
+if command -v python3 >/dev/null 2>&1; then
+    echo "  python3  [OK]"
+else
+    echo "  python3  [MISSING - optional, used by 'paper task']"
+fi
+
 if command -v latexmk >/dev/null 2>&1; then
     echo "  latexmk  [OK]"
 else

@@ -126,6 +126,52 @@ This is the normal operation that makes collaborators see your changes.
 
 # Everyday commands
 
+## Initialize research notes and resumable tasks
+
+Inside an existing Git repository, run:
+
+```bash
+paper init
+```
+
+This creates missing `AGENTS.md`, `notes/README.md`, `tasks/index.md`, and
+`tasks/template.md`. It preserves existing files and works without remotes.
+The default instructions include theoretical proof discipline, LaTeX formatting,
+concise checkpoints, and selective delegation to conserve tokens. Merge these
+rules manually if the repository already has its own `AGENTS.md`.
+
+`paper-init` sets up the Overleaf/GitHub repository; `paper init` adds the local
+research workflow to an existing repository. Neither command replaces the other.
+
+For substantial work, copy `tasks/template.md` to
+`tasks/NNN_short_name/task.md` and add a relative link in `tasks/index.md`.
+Use a plain `Status: active` line before the first subsection, choosing one of
+`queued`, `active`, `paused`, `blocked`, or `done`. Record checkboxes under
+`## Steps` and a `- Next concrete action:` line in the checkpoint.
+
+```bash
+paper task status          # Open tasks, including unknown/malformed statuses
+paper task status --all    # Include completed tasks
+paper task delete 002 003  # Select by number or full folder name
+```
+
+Task commands require Python 3 and Git, but no remotes or AI service. Status
+reports the record's declared state, completed step count, and next action;
+it does not infer proof correctness or rerun verification. Missing or invalid
+status metadata is displayed as `unknown`. Task folders use names such as
+`002_improve_lower_bound`; symlinked task folders are not followed.
+
+Deletion displays the selected tasks and requires typing their full folder
+names. It moves their folders into a timestamped batch under `tasks/.trash/`
+and removes the corresponding relative-link table rows from `tasks/index.md`.
+The batch keeps the original index as `index.md.before`. Research notes and
+manuscript files remain in place. To restore a task, move its folder back under
+`tasks/` and re-add its index row; avoid replacing an index that has since changed.
+Review incoming links to removed tasks. No command commits or pushes these changes.
+
+Task checkpoints support resumption in a later session; they do not automatically
+restart work after a credit limit or interruption.
+
 ## See where you are
 
 ```bash

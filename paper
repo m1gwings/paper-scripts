@@ -115,6 +115,285 @@ main.bbl
 GITIGNORE
 }
 
+create_init_file() {
+    local path="$1"
+    if [[ -e "$path" || -L "$path" ]]; then
+        printf 'Kept existing %s\n' "$path"
+    else
+        (set -o noclobber; cat > "$path")
+        printf 'Created %s\n' "$path"
+    fi
+}
+
+init_paper() {
+    local path
+
+    # Check directory conflicts before creating anything; do not follow links.
+    for path in notes tasks; do
+        [[ ! -L "$path" && ( ! -e "$path" || -d "$path" ) ]] \
+            || die "Cannot initialize: '$path' must be a directory, not a file or symlink."
+    done
+    for path in AGENTS.md notes/README.md tasks/index.md tasks/template.md; do
+        [[ ! -d "$path" ]] \
+            || die "Cannot initialize: '$path' is a directory."
+    done
+
+    mkdir -p notes tasks
+
+    create_init_file AGENTS.md <<'AGENTS'
+# Theoretical paper instructions
+
+## Project and editing
+
+- Inspect the existing layout, notation, macros, and build instructions before editing.
+- Keep research knowledge (derivations, conjectures, examples, reusable proof audits) in `notes/`. Keep task management, checkpoints, and revision-specific verification in `tasks/`; link between them instead of duplicating content.
+- Preserve pre-existing user edits. Make the smallest change sufficient for correctness; avoid unrelated stylistic changes.
+- Preserve the proof strategy unless asked to redesign it. Do not silently strengthen assumptions or claims.
+- Check index ranges, stopping times, conditioning, constants, and parameter regimes explicitly. Distinguish conjectural, conditional, and proved claims.
+- Prefer explicit algebraic derivations and compact inequality chains. For repeated calculations, cite the analogous argument and give the needed result.
+
+## LaTeX and verification
+
+- Preserve existing notation and macros whenever possible.
+- Do not replace custom macros with expanded LaTeX.
+- Preserve labels and references unless a structural change requires otherwise.
+- Use semantic label prefixes and `snake_case` identifiers, such as `eq:stopped_regret` or `lem:time_stopped_kl`; do not use spaces or hyphens in labels.
+- Introduce every multiline displayed equation with grammatically appropriate punctuation, normally a colon.
+- End every multiline displayed equation with punctuation appropriate to the surrounding sentence.
+- In a `cases` block, do not punctuate the individual branches; place punctuation only after the complete `cases` expression.
+- For integration with respect to the Lebesgue measure, write `\mathrm{d}\lambda(x)` rather than `\mathrm{d}x`.
+- Prefer compact multiline derivations rather than one equality per line.
+- In set-builder notation, use `\text{ s.t. }` rather than a colon.
+- Do not modify the AISTATS style files.
+- Do not add LaTeX packages unless necessary.
+
+- After changing LaTeX, compile using the project's build workflow and fix errors caused by the edits. Record the command, result, and any unresolved verification limitation.
+- Summarize mathematical changes separately from typographical changes.
+
+## Tasks and resumption
+
+- Before substantial execution work, create or resume `tasks/NNN_short_name/task.md` using `tasks/template.md`, and link it in `tasks/index.md`. Reuse the task for related follow-ups. Substantial work includes multi-step edits, sustained proof work, or meaningful verification.
+- Simple questions, tiny corrections, and discussion-only requests need no task record. Explicit instructions to make no changes also prohibit bookkeeping edits.
+- Keep task folders stable. Put exactly one plain status line (e.g. `Status: active`) before the first subsection. Allowed statuses: queued, active, paused, blocked, done. Keep the index consistent with the task record. A queued idea does not authorize execution.
+- When resuming, read the index and the relevant task's current checkpoint first, then inspect the working tree. Read older material only as needed; reconcile discrepancies rather than restarting completed work.
+- Update the current checkpoint after substantive results and before stopping or handing off work. Record established results, unresolved obligations, decisions, affected files, verification, and the next concrete action. Save enough to resume in a fresh session without the chat.
+- Keep records concise: replace stale checkpoint text, retain only useful decision history, and mark superseded arguments clearly. Link to proofs and logs instead of copying them. Add supporting files only when necessary.
+- Mark a proof proved only when its obligations are satisfied; distinguish proof completion from manuscript integration and verification. Mark the task done only when its scope and required checks are complete.
+- Task files preserve progress across interruptions; they do not automatically restart execution. Save milestones during work rather than relying only on an end-of-session handoff.
+
+## Token use and delegation
+
+- Default to one agent. Use targeted searches and reads; avoid repeatedly loading entire notes, histories, or logs. Run checks appropriate to the change and repeat them only when new evidence warrants it.
+- Delegate bounded independent work to subagents only when the expected time or quality benefit justifies the additional token cost. Do not spawn agents for routine bookkeeping or small edits.
+- The main agent owns the task checkpoint, integration, and compilation. Give parallel editors disjoint file ownership; prefer read-only assignments for independent audits. Record each assignment's scope, dependencies, results, and remaining obligations in the task.
+AGENTS
+
+    create_init_file notes/README.md <<'NOTES'
+# Research notes
+
+Keep mathematical derivations, examples, conjectures, and reusable proof arguments here, including unfinished mathematics. State assumptions and distinguish proved results from open claims.
+
+Keep assignments, progress tracking, handoffs, and revision-specific verification in `../tasks/`. Link to the relevant task when useful; avoid duplicating mathematical content.
+NOTES
+
+    create_init_file tasks/index.md <<'INDEX'
+# Task queue
+
+List tasks in intended execution order. Each linked task record is authoritative for its scope and checkpoint; keep this status summary consistent. Preserve completed entries for reference.
+
+| Task | Status | Record |
+| --- | --- | --- |
+
+For substantial work, copy `template.md` to `NNN_short_name/task.md` using the next unused number, and add a row above. Statuses: queued, active, paused, blocked, done. Keep folder names stable when status changes. Read only the relevant task and its linked material when resuming.
+
+Use `paper task status` to list open tasks, `paper task status --all` to include completed tasks, and `paper task delete ID` to remove selected records with confirmation and a recovery copy in `.trash/`.
+INDEX
+
+    create_init_file tasks/template.md <<'TASK'
+# NNN: Task title
+
+Status: queued
+Updated: YYYY-MM-DD
+
+## Objective and scope
+
+User request, constraints, authorization, and completion criteria.
+
+## Steps
+
+- [ ] Next meaningful step (add dependencies only if needed).
+
+## Current checkpoint
+
+- Established results and decisions:
+- Unresolved obligations or blockers:
+- Affected files and pre-existing edits to preserve:
+- Verification: command/check, result, and what remains unverified.
+- Next concrete action:
+
+Link to supporting mathematics or audits instead of copying them. If delegating, record each assignment's scope, file ownership, dependencies, and result here. Keep only information needed to resume and verify the work.
+TASK
+
+    printf '\nPaper workflow initialized. Review the files before committing.\n'
+    printf 'Existing files were preserved; merge any desired workflow rules into an existing AGENTS.md manually.\n'
+}
+
+task_command() {
+    need python3
+    # -c keeps stdin available for the deletion confirmation.
+    python3 -c "$(cat <<'TASKS_PY'
+import datetime
+import os
+from pathlib import Path
+import re
+import sys
+import tempfile
+
+
+def fail(message):
+    raise SystemExit('paper task: ' + message)
+
+
+def task_record(path):
+    record = path / 'task.md'
+    if record.is_symlink() or not record.is_file():
+        return {'path': path, 'status': 'unknown', 'title': path.name,
+                'progress': '-', 'next': 'Missing regular task.md'}
+    text = record.read_text(encoding='utf-8')
+    # Metadata belongs before the first subsection, not in historical quotes.
+    header = re.split(r'^##\s', text, maxsplit=1, flags=re.M)[0]
+    statuses = re.findall(r'^Status:[ \t]*([^\n]+)', header, re.M)
+    status = statuses[0].strip().lower() if len(statuses) == 1 else 'unknown'
+    if status not in {'queued', 'active', 'paused', 'blocked', 'done'}:
+        status = 'unknown'
+    title = re.search(r'^#\s+(.+)', header, re.M)
+    steps = re.search(r'^## Steps\s*\n(.*?)(?=^## |\Z)', text, re.M | re.S)
+    checks = re.findall(r'^\s*- \[([ xX])\]', steps[1], re.M) if steps else []
+    next_action = re.search(r'^- Next concrete action:[ \t]*([^\n]*)', text, re.M)
+    return {'path': path, 'status': status,
+            'title': title[1].strip() if title else path.name,
+            'progress': f'{sum(c.lower() == "x" for c in checks)}/{len(checks)}' if checks else '-',
+            'next': next_action[1].strip() if next_action else ''}
+
+
+def main():
+    args = sys.argv[1:]
+    action = args[0] if args else 'status'
+    args = args[1:]
+    if action not in {'status', 'delete'}:
+        fail('Usage: paper task status [--all] | paper task delete ID [ID ...]')
+    if action == 'status' and args not in ([], ['--all']):
+        fail('Usage: paper task status [--all]')
+    if action == 'delete' and not args:
+        fail('Usage: paper task delete ID [ID ...]')
+    tasks = Path('tasks')
+    if tasks.is_symlink():
+        fail('Refusing a symlinked tasks directory.')
+    if not tasks.exists():
+        if action == 'delete':
+            fail('No tasks directory. Run paper init first.')
+        print('No tasks directory. Run paper init to create a task queue.')
+        return
+    if not tasks.is_dir():
+        fail('tasks is not a directory.')
+    records = [task_record(p) for p in sorted(tasks.iterdir())
+               if re.fullmatch(r'\d+_[a-z0-9_]+', p.name)
+               and p.is_dir() and not p.is_symlink()]
+    if action == 'status':
+        visible = [r for r in records if args == ['--all'] or r['status'] != 'done']
+        if not visible:
+            print('No tasks.' if args else 'No open tasks. Use paper task status --all to include completed tasks.')
+            return
+        print('STATUS   STEPS  TASK')
+        for r in visible:
+            print(f'{r["status"]:<8} {r["progress"]:<6} {r["path"].name}: {r["title"]}')
+            if r['next']:
+                print('  Next: ' + r['next'])
+        print('\nStatuses are read from task.md; step counts do not verify proofs or builds.')
+        return
+
+    selected = []
+    for requested in args:
+        matches = [r for r in records if r['path'].name == requested or
+                   (requested.isdecimal() and int(r['path'].name.split('_', 1)[0]) == int(requested))]
+        if len(matches) != 1:
+            fail(f'Task {requested!r} is missing or ambiguous; use its full folder name.')
+        if matches[0] not in selected:
+            selected.append(matches[0])
+    index = tasks / 'index.md'
+    if index.is_symlink() or (index.exists() and not index.is_file()):
+        fail('tasks/index.md must be a regular file.')
+    trash = tasks / '.trash'
+    if trash.is_symlink() or (trash.exists() and not trash.is_dir()):
+        fail('tasks/.trash must be a directory, not a file or symlink.')
+    original = index.read_bytes() if index.exists() else None
+    names = [r['path'].name for r in selected]
+    updated = original
+    if original is not None:
+        # Remove only table rows linking to the selected records.
+        link = re.compile(r'\]\((?:\./)?(?:' + '|'.join(map(re.escape, names)) + r')/task\.md(?:#[^)]*)?\)')
+        updated = ''.join(line for line in original.decode('utf-8').splitlines(keepends=True)
+                          if not (line.lstrip().startswith('|') and link.search(line))).encode('utf-8')
+    print('Remove these task records from the queue:')
+    for r in selected:
+        print(f'  {r["path"].name} [{r["status"]}]')
+    print('Records will move to tasks/.trash; notes and manuscript files are preserved.')
+    confirmation = ' '.join(names)
+    try:
+        answer = input(f'Type {confirmation!r} to confirm: ')
+    except EOFError:
+        answer = ''
+    if answer != confirmation:
+        print('Cancelled.')
+        return
+    # Do not overwrite queue changes made while the confirmation was pending.
+    if index.is_symlink() or (index.read_bytes() if index.exists() else None) != original:
+        fail('The queue changed during confirmation. Retry after reviewing it.')
+    if trash.is_symlink() or tasks.is_symlink():
+        fail('Task paths changed during confirmation. Retry after reviewing them.')
+    for r in selected:
+        if r['path'].is_symlink() or not r['path'].is_dir():
+            fail('A selected task changed during confirmation. Retry after reviewing it.')
+    trash.mkdir(exist_ok=True)
+    stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ-')
+    batch = Path(tempfile.mkdtemp(prefix=stamp, dir=trash))
+    if original is not None:
+        (batch / 'index.md.before').write_bytes(original)
+    moved = []
+    pending = None
+    try:
+        if updated is not None:
+            fd, name = tempfile.mkstemp(prefix='.index-', dir=tasks)
+            pending = Path(name)
+            with os.fdopen(fd, 'wb') as stream:
+                stream.write(updated)
+            pending.chmod(index.stat().st_mode & 0o777)
+        for r in selected:
+            source = r['path']
+            source.rename(batch / source.name)
+            moved.append(source)
+        if pending is not None:
+            pending.replace(index)
+    except OSError:
+        for source in reversed(moved):
+            (batch / source.name).rename(source)
+        raise
+    finally:
+        if pending is not None and pending.exists():
+            pending.unlink()
+    print(f'Deleted {len(selected)} task(s) from the queue. Recovery copy: {batch}')
+    print('To restore, move the task folder back into tasks/ and re-add its index row.')
+    print('Review links from other notes/tasks to the deleted records before committing.')
+
+
+try:
+    main()
+except (OSError, UnicodeError) as error:
+    fail(str(error))
+TASKS_PY
+)" "$@"
+}
+
 help_text() {
 cat <<'HELP'
 paper — Overleaf + GitHub workflow for LaTeX papers
@@ -142,9 +421,25 @@ MENTAL MODEL
 
 COMMANDS
 
+  paper init
+      Initialize theoretical-paper instructions, research notes,
+      and a lightweight resumable task queue in this Git repository.
+      Creates missing files only; requires no configured remotes.
+      Does not commit or push.
+
   paper status
       Show base branch, current branch, status, branches,
       remotes, and cached divergence.
+
+  paper task status [--all]
+      List open tasks with recorded status, step counts, and next action.
+      --all includes completed tasks. Reads local files; no AI calls.
+
+  paper task delete ID [ID ...]
+      Select tasks by number or full folder name and confirm deletion.
+      Moves records into tasks/.trash and removes their queue rows.
+      Research notes and manuscript files are preserved.
+      Task commands require Python 3, but no configured remotes.
 
   paper sync
       While on the base branch, pull/rebase the latest
@@ -322,6 +617,25 @@ EXAMPLE WORKFLOWS
 
     git rebase --abort
     paper status
+
+
+11. INITIALIZE A THEORETICAL PAPER
+
+    # Inside an existing Git repository (remotes are optional):
+    paper init
+
+    # Review AGENTS.md, notes/README.md, and tasks/.
+    # Existing files are preserved, including on repeated runs.
+
+
+12. REVIEW OR REMOVE TASKS
+
+    paper task status
+    paper task status --all
+    paper task delete 002 003
+
+    # Type the displayed folder names to confirm. Recovery copies
+    # are stored under tasks/.trash/ with the previous queue index.
 EXAMPLES
 }
 
@@ -336,6 +650,39 @@ case "$CMD" in
 
     examples)
         examples_text
+        exit 0
+        ;;
+
+    init)
+        if [[ $# -eq 1 && ( "$1" == --help || "$1" == -h ) ]]; then
+            echo "Usage: paper init"
+            echo "Create missing AGENTS.md, notes/README.md, tasks/index.md, and tasks/template.md."
+            echo "Run inside a Git repository; no remotes required. Existing files are preserved."
+            exit 0
+        fi
+        [[ $# -eq 0 ]] || die "Usage: paper init"
+        need git
+        REPO_ROOT="$(root)"
+        cd "$REPO_ROOT"
+        no_git_operation
+        init_paper
+        exit 0
+        ;;
+
+    task)
+        if [[ "${1:-}" == --help || "${1:-}" == -h || "${1:-}" == help ]]; then
+            echo "Usage: paper task status [--all] | paper task delete ID [ID ...]"
+            echo "Status reads task.md metadata; delete confirms and moves records to tasks/.trash."
+            echo "Requires Git and Python 3, but no configured remotes."
+            exit 0
+        fi
+        need git
+        REPO_ROOT="$(root)"
+        cd "$REPO_ROOT"
+        if [[ "${1:-}" == delete ]]; then
+            no_git_operation
+        fi
+        task_command "$@"
         exit 0
         ;;
 esac
