@@ -115,9 +115,9 @@ non-fast-forward rejection.
 ## Preview and notifications
 
 The unprivileged push workflow compiles with `latexmk -norc -no-shell-escape` and
-uploads `paper-preview`, retained for 14 days. The first version uses private
-GitHub artifacts: sign in to download the ZIP containing `paper.pdf`. It is not
-a public, persistent PDF host or an inline mobile viewer. PDFs are not committed.
+uploads `paper.pdf` as an unarchived artifact, retained for 14 days. Sign in
+to GitHub to download the PDF directly; no ZIP extraction is needed. It is not
+a public, persistent PDF host, and mobile viewing still depends on the browser. PDFs are not committed.
 Custom `.latexmkrc` is deliberately ignored in CI. The provided Ubuntu package
 set supports ordinary pdfLaTeX papers; adjust the trusted workflow for projects
 requiring a different engine or additional packages.

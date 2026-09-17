@@ -21,7 +21,7 @@ def main():
                                 text=True, capture_output=True, check=True)
         artifacts = json.loads(result.stdout)['artifacts']
         for artifact in artifacts:
-            if artifact['name'] == 'paper-preview' and not artifact['expired']:
+            if artifact['name'] in ('paper.pdf', 'paper-preview') and not artifact['expired']:
                 url = f'https://github.com/{repo}/actions/runs/{int(run["id"])}/artifacts/{int(artifact["id"])}'
                 break
         else:
