@@ -74,7 +74,8 @@ def config():
 
 
 def generated():
-    files = {'.paper/runtime/paper': (SOURCE / 'paper').read_bytes()}
+    files = {'.paper/runtime/paper': (SOURCE / 'paper').read_bytes(),
+             '.paper/runtime/.gitignore': b'__pycache__/\n*.pyc\n'}
     for name in LIBRARIES:
         files['.paper/runtime/lib/' + name] = (SOURCE / 'lib' / name).read_bytes()
     for name in WORKFLOWS:

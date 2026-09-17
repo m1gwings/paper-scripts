@@ -62,6 +62,12 @@ class InfrastructureTest(test_workflow.WorkflowTest):
         subprocess.run(['bash', '.paper/runtime/paper', 'init'], cwd=self.repo,
                        env=self.env, check=True, capture_output=True)
         self.assertTrue(target.exists())
+        self.git('add', '.')
+        self.git('commit', '-qm', 'generated infrastructure')
+        cache = self.repo / '.paper/runtime/lib/__pycache__'
+        cache.mkdir(exist_ok=True)
+        (cache / 'example.pyc').write_bytes(b'cache')
+        self.assertEqual(self.git('status', '--porcelain'), '')
 
 for name in list(test_workflow.WorkflowTest.__dict__):
     if name.startswith('test_'):
