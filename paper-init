@@ -2,6 +2,7 @@
 set -euo pipefail
 
 PROGRAM="paper-init"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 die() {
     echo "$PROGRAM: $*" >&2
@@ -163,9 +164,17 @@ Then rerun paper-init."
 fi
 
 if [[ -e "$LOCAL_DIR" ]]; then
-    die "'$LOCAL_DIR' already exists.
-
-Choose another directory or remove the existing one explicitly."
+    [[ -d "$LOCAL_DIR/.git" || -f "$LOCAL_DIR/.git" ]] \
+        || die "Existing directory is not a Git repository."
+    cd "$LOCAL_DIR"
+    EXISTING_OVERLEAF="$(git remote get-url overleaf 2>/dev/null || true)"
+    [[ "$EXISTING_OVERLEAF" == "https://git@git.overleaf.com/$OVERLEAF_ID" || "$EXISTING_OVERLEAF" == "https://git.overleaf.com/$OVERLEAF_ID" ]] \
+        || die "Existing Overleaf remote does not match; refusing to repoint it."
+    EXISTING_GITHUB="$(git remote get-url github 2>/dev/null || true)"
+    EXPECTED_GITHUB="$(gh repo view "$GITHUB_REPO" --json nameWithOwner --jq .nameWithOwner)"
+    [[ "$EXISTING_GITHUB" == "https://github.com/$EXPECTED_GITHUB" || "$EXISTING_GITHUB" == "https://github.com/$EXPECTED_GITHUB.git" || "$EXISTING_GITHUB" == "git@github.com:$EXPECTED_GITHUB.git" ]] \
+        || die "Existing GitHub remote does not match; refusing to repoint it."
+    exec bash "$SCRIPT_DIR/paper" init
 fi
 
 OVERLEAF_URL="https://git@git.overleaf.com/${OVERLEAF_ID}"
@@ -257,6 +266,8 @@ echo "    Overleaf = collaborative publication target"
 echo "    GitHub   = private mirror / experimental branches"
 
 echo
+bash "$SCRIPT_DIR/paper" init
+
 echo "Recommended next commands:"
 echo
 echo "    paper doctor"

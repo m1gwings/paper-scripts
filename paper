@@ -2,6 +2,12 @@
 set -euo pipefail
 
 PROGRAM="paper"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+helper() {
+    need python3
+    python3 "$SCRIPT_DIR/lib/$1.py" "${@:2}"
+}
 
 die() { echo "$PROGRAM: $*" >&2; exit 1; }
 need() { command -v "$1" >/dev/null 2>&1 || die "Required command '$1' is not installed."; }
@@ -33,6 +39,12 @@ To abandon a rebase:
 }
 
 base_branch() {
+    if [[ -n "${PAPER_BASE_BRANCH:-}" ]]; then
+        git check-ref-format --branch "$PAPER_BASE_BRANCH" >/dev/null \
+            || die "Invalid configured base branch."
+        printf '%s\n' "$PAPER_BASE_BRANCH"
+        return
+    fi
     local ref
 
     ref="$(git symbolic-ref --quiet --short refs/remotes/overleaf/HEAD 2>/dev/null || true)"
@@ -62,6 +74,51 @@ Try:
 require_base() {
     git show-ref --verify --quiet "refs/heads/$BASE" \
         || die "Overleaf base branch is '$BASE', but no local '$BASE' exists."
+}
+
+# Fetch both authorities before changing any local branch. Keep exact leases:
+# an implicit lease can be silently refreshed by an editor's background fetch.
+sync_collaborative_base() {
+    if [[ "$EXECUTION" == cloud ]]; then
+        helper cloud sync
+        no_git_operation
+        clean
+        git fetch --prune github
+        if ! git show-ref --verify --quiet "refs/heads/$BASE"; then
+            git branch "$BASE" "refs/remotes/github/$BASE"
+        fi
+        git switch "$BASE"
+        git rebase "refs/remotes/github/$BASE"
+        return
+    fi
+    git fetch --prune github
+    git fetch overleaf
+    if [[ -n "${PAPER_EXPECTED_SHA:-}" ]]; then
+        [[ "$(git rev-parse --verify "refs/remotes/github/$PAPER_EXPECTED_BRANCH")" == "$PAPER_EXPECTED_SHA" ]] \
+            || die "Requested branch changed since review; publication refused."
+    fi
+    GITHUB_BASE_OID="$(git rev-parse --verify "refs/remotes/github/$BASE" 2>/dev/null || true)"
+    git show-ref --verify --quiet "refs/remotes/overleaf/$BASE" \
+        || die "Overleaf base '$BASE' is missing."
+    git switch "$BASE"
+    if [[ -n "$GITHUB_BASE_OID" ]]; then
+        git rebase "$GITHUB_BASE_OID"
+    fi
+    # Overleaf requires a linear history; preserve the original rebase model.
+    git rebase "refs/remotes/overleaf/$BASE"
+}
+
+verify_ci_tree() {
+    if [[ -n "${PAPER_TRUSTED_SHA:-}" ]]; then
+        git diff --quiet "$PAPER_TRUSTED_SHA" "$1" -- .paper .github \
+            || die "CI refuses infrastructure changes from paper content. Upgrade trusted infrastructure locally."
+    fi
+}
+
+push_base_backup() {
+    verify_ci_tree "$BASE"
+    git push --force-with-lease="refs/heads/$BASE:$GITHUB_BASE_OID" \
+        -u github "$BASE:refs/heads/$BASE"
 }
 
 show_divergence() {
@@ -145,6 +202,7 @@ init_paper() {
 
 ## Project and editing
 
+- Follow `.paper/WORKFLOW.md` for repository lifecycle operations. Use `paper start`, `paper backup`, `paper sync`, and `paper publish`; publish only when explicitly authorized.
 - Inspect the existing layout, notation, macros, and build instructions before editing.
 - Keep research knowledge (derivations, conjectures, examples, reusable proof audits) in `notes/`. Keep task management, checkpoints, and revision-specific verification in `tasks/`; link between them instead of duplicating content.
 - Preserve pre-existing user edits. Make the smallest change sufficient for correctness; avoid unrelated stylistic changes.
@@ -424,12 +482,22 @@ COMMANDS
   paper init
       Initialize theoretical-paper instructions, research notes,
       and a lightweight resumable task queue in this Git repository.
-      Creates missing files only; requires no configured remotes.
-      Does not commit or push.
+      Install/upgrade versioned preview and publication infrastructure.
+      Preserve custom files; require no configured remotes. No commit/push.
 
   paper status
       Show base branch, current branch, status, branches,
       remotes, and cached divergence.
+
+  paper notify --title TITLE --message MESSAGE [--url URL] [--provider PROVIDER]
+      Send via none, webhook, or pushover. Credentials come from the environment.
+
+  paper configure-ci [--environments-only]
+      Configure default-branch-only CI environments and privately enter secrets.
+      Requires GitHub repository administration access.
+
+  paper notify-test
+      Send a test using the configured notification provider.
 
   paper task status [--all]
       List open tasks with recorded status, step counts, and next action.
@@ -442,8 +510,8 @@ COMMANDS
       Task commands require Python 3, but no configured remotes.
 
   paper sync
-      While on the base branch, pull/rebase the latest
-      Overleaf changes.
+      While on the base branch, reconcile GitHub and Overleaf.
+      Cloud mode asks CI to refresh the mirror first.
 
   paper commit "message"
       git add -A + local commit.
@@ -469,7 +537,9 @@ COMMANDS
           -> GitHub base backup
           -> Overleaf
 
-      The feature branch is kept afterward.
+      The feature branch is kept afterward. With PAPER_EXECUTION=cloud,
+      request privileged CI publication and wait for its result.
+      CI refuses a changed review SHA and infrastructure changes.
 
   paper abort
       Delete CURRENT non-base branch locally and from GitHub.
@@ -653,10 +723,29 @@ case "$CMD" in
         exit 0
         ;;
 
+    configure-ci)
+        need git
+        cd "$(root)"
+        helper configure_ci "$@"
+        exit 0
+        ;;
+
+    notify|notify-test)
+        if [[ "$CMD" == notify-test ]]; then
+            [[ $# -eq 0 ]] || die "Usage: paper notify-test"
+            set -- --title "Paper Scripts" --message "Notifications are working."
+        fi
+        if [[ -z "${PAPER_NOTIFY_PROVIDER:-}" ]] && git rev-parse --show-toplevel >/dev/null 2>&1; then
+            export PAPER_NOTIFY_PROVIDER="$(cd "$(root)" && helper infrastructure get notify_provider 2>/dev/null || echo none)"
+        fi
+        helper notify "$@"
+        exit 0
+        ;;
+
     init)
         if [[ $# -eq 1 && ( "$1" == --help || "$1" == -h ) ]]; then
             echo "Usage: paper init"
-            echo "Create missing AGENTS.md, notes/README.md, tasks/index.md, and tasks/template.md."
+            echo "Create research files and install/upgrade versioned .paper and Actions infrastructure."
             echo "Run inside a Git repository; no remotes required. Existing files are preserved."
             exit 0
         fi
@@ -665,7 +754,9 @@ case "$CMD" in
         REPO_ROOT="$(root)"
         cd "$REPO_ROOT"
         no_git_operation
+        helper infrastructure preflight
         init_paper
+        helper infrastructure install
         exit 0
         ;;
 
@@ -691,11 +782,25 @@ need git
 
 cd "$(root)"
 
-remote_ok overleaf
 remote_ok github
-
-BASE="$(base_branch)"
-require_base
+EXECUTION="${PAPER_EXECUTION:-$(git config --get paper.execution || echo auto)}"
+if [[ "$EXECUTION" == auto ]]; then
+    if git remote get-url overleaf >/dev/null 2>&1; then
+        EXECUTION=local
+    else
+        EXECUTION=cloud
+    fi
+fi
+[[ "$EXECUTION" == local || "$EXECUTION" == cloud ]] \
+    || die "PAPER_EXECUTION must be auto, local, or cloud."
+if [[ "$EXECUTION" == local ]]; then
+    remote_ok overleaf
+    BASE="$(base_branch)"
+    require_base
+else
+    BASE="$(helper infrastructure get base_branch)"
+    git check-ref-format --branch "$BASE" >/dev/null || die "Invalid configured base branch."
+fi
 
 case "$CMD" in
 
@@ -728,10 +833,14 @@ case "$CMD" in
         [[ "$(branch)" == "$BASE" ]] \
             || die "Run 'paper sync' from '$BASE', not '$(branch)'."
 
-        git pull --rebase overleaf "$BASE"
+        sync_collaborative_base
 
-        echo "Synchronized '$BASE' with Overleaf."
-        echo "GitHub was not modified."
+        echo "Synchronized '$BASE' with GitHub and Overleaf."
+        if [[ "$EXECUTION" == cloud ]]; then
+            echo "CI refreshed the GitHub mirror; Overleaf was not modified."
+        else
+            echo "GitHub was not modified."
+        fi
         ;;
 
     commit)
@@ -756,7 +865,7 @@ case "$CMD" in
 
         B="$(branch)"
 
-        git push --force-with-lease -u github "$B"
+        git push -u github "$B:refs/heads/$B"
 
         echo "Backed up '$B' to GitHub."
         echo "Overleaf was not modified."
@@ -765,6 +874,7 @@ case "$CMD" in
     start)
         no_git_operation
         clean
+        branch >/dev/null
 
         [[ $# -eq 1 ]] \
             || die "Usage: paper start BRANCH_NAME"
@@ -780,11 +890,11 @@ case "$CMD" in
         ! git show-ref --verify --quiet "refs/heads/$NEW" \
             || die "Local branch '$NEW' already exists."
 
-        ! git ls-remote --exit-code --heads github "$NEW" >/dev/null 2>&1 \
-            || die "GitHub branch '$NEW' already exists."
+        REMOTE_HEADS="$(git ls-remote --heads github "refs/heads/$NEW")" \
+            || die "Could not check GitHub branches."
+        [[ -z "$REMOTE_HEADS" ]] || die "GitHub branch '$NEW' already exists."
 
-        git switch "$BASE"
-        git pull --rebase overleaf "$BASE"
+        sync_collaborative_base
 
         git switch -c "$NEW"
         git push -u github "$NEW"
@@ -794,15 +904,36 @@ case "$CMD" in
         ;;
 
     publish)
+        [[ $# -eq 0 ]] || die "Usage: paper publish"
         no_git_operation
         clean
 
         B="$(branch)"
+        if [[ "$EXECUTION" == cloud ]]; then
+            SHA="$(git rev-parse HEAD)"
+            git push -u github "$B:refs/heads/$B"
+            helper cloud publish --branch "$B" --sha "$SHA"
+            echo "CI publication succeeded. Updating this checkout."
+            clean
+            [[ "$(git rev-parse HEAD)" == "$SHA" && "$(branch)" == "$B" ]] \
+                || die "Local work changed while CI ran; use paper sync from the base to update."
+            git fetch --prune github
+            if ! git show-ref --verify --quiet "refs/heads/$BASE"; then
+                git branch "$BASE" "refs/remotes/github/$BASE"
+            fi
+            git switch "$BASE"
+            git rebase "refs/remotes/github/$BASE"
+            if [[ "$B" != "$BASE" ]]; then
+                git update-ref "refs/heads/$B" "refs/remotes/github/$B" "$SHA"
+            fi
+            echo "Published successfully. Current branch: $BASE. Feature branches were kept."
+            exit 0
+        fi
 
         if [[ "$B" == "$BASE" ]]; then
 
-            git pull --rebase overleaf "$BASE"
-            git push --force-with-lease -u github "$BASE"
+            sync_collaborative_base
+            push_base_backup
             git push overleaf "$BASE"
 
             echo "Published '$BASE' to GitHub and Overleaf."
@@ -810,23 +941,26 @@ case "$CMD" in
         else
             WORK="$B"
 
-            echo "1/6 Update '$BASE' from Overleaf"
-            git switch "$BASE"
-            git pull --rebase overleaf "$BASE"
+            echo "1/6 Update '$BASE' from GitHub and Overleaf"
+            sync_collaborative_base
 
+            WORK_OID="$(git rev-parse --verify "refs/remotes/github/$WORK" 2>/dev/null || true)"
             echo "2/6 Rebase '$WORK' onto '$BASE'"
             git switch "$WORK"
+            [[ -z "$WORK_OID" ]] || git rebase "$WORK_OID"
             git rebase "$BASE"
 
+            verify_ci_tree "$WORK"
             echo "3/6 Back up '$WORK' to GitHub"
-            git push --force-with-lease -u github "$WORK"
+            git push --force-with-lease="refs/heads/$WORK:$WORK_OID" \
+                -u github "$WORK:refs/heads/$WORK"
 
             echo "4/6 Fast-forward '$BASE'"
             git switch "$BASE"
             git merge --ff-only "$WORK"
 
             echo "5/6 Back up '$BASE' to GitHub"
-            git push --force-with-lease -u github "$BASE"
+            push_base_backup
 
             echo "6/6 Publish '$BASE' to Overleaf"
             git push overleaf "$BASE"

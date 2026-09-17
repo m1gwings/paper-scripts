@@ -10,6 +10,16 @@ The repository is intended to be cloned directly into:
 
 so that its executable files are automatically available on `PATH`.
 
+## Cloud workflow and upgrades
+
+See [the setup and architecture guide](docs/cloud-workflow.md) for private PDF
+previews, Pushover/webhook notifications, privileged Overleaf publication, cloud
+execution, and safe upgrades of existing papers. No PR is needed for paper work.
+
+`paper start`, `paper sync`, and `paper publish` now reconcile both GitHub and
+Overleaf. `paper backup` refuses divergent remote work. Publication retains the
+linear rebase model and uses exact GitHub leases to protect concurrent work.
+
 ## Installation
 
 On a new machine:
@@ -135,13 +145,16 @@ paper init
 ```
 
 This creates missing `AGENTS.md`, `notes/README.md`, `tasks/index.md`, and
-`tasks/template.md`. It preserves existing files and works without remotes.
+`tasks/template.md`, plus versioned `.paper/` and GitHub Actions infrastructure.
+It preserves custom files and works without remotes. Generated files are upgraded
+only when their recorded hashes show they have not been hand-edited.
 The default instructions include theoretical proof discipline, LaTeX formatting,
 concise checkpoints, and selective delegation to conserve tokens. Merge these
 rules manually if the repository already has its own `AGENTS.md`.
 
-`paper-init` sets up the Overleaf/GitHub repository; `paper init` adds the local
-research workflow to an existing repository. Neither command replaces the other.
+`paper-init` creates the Overleaf/GitHub repository and invokes `paper init`.
+Use `paper init` to upgrade an existing repository without creating or repointing
+remotes. See the setup guide before activating CI or installing credentials.
 
 For substantial work, copy `tasks/template.md` to
 `tasks/NNN_short_name/task.md` and add a relative link in `tasks/index.md`.
@@ -196,7 +209,7 @@ While on `master`:
 paper sync
 ```
 
-This updates local `master` from Overleaf.
+This reconciles local `master` with GitHub and Overleaf (or the detected base branch).
 
 ## Make a local checkpoint
 
@@ -220,7 +233,7 @@ paper start case3-rewrite
 
 This:
 
-1. updates `master` from Overleaf;
+1. updates the base from GitHub and Overleaf;
 2. creates `case3-rewrite`;
 3. creates its backup branch on GitHub.
 
@@ -236,7 +249,7 @@ From `master`, it publishes `master`.
 
 From a feature branch, it:
 
-1. updates `master` from Overleaf;
+1. updates the base from GitHub and Overleaf;
 2. rebases the feature branch onto current master;
 3. backs up the feature branch;
 4. fast-forwards master;
