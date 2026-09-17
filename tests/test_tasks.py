@@ -36,6 +36,9 @@ class PaperTasksTest(unittest.TestCase):
         agents = self.root / 'AGENTS.md'
         self.assertIn('Do not replace custom macros', agents.read_text())
         self.assertIn('AISTATS style files', agents.read_text())
+        self.assertIn('## Notifications', agents.read_text())
+        self.assertIn('paper notify --title', agents.read_text())
+        self.assertIn('output/pdf/', agents.read_text())
         agents.write_text('Personal instructions\n')
         (self.root / 'tasks' / 'template.md').unlink()
         self.run_paper('init')

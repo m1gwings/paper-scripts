@@ -228,6 +228,20 @@ init_paper() {
 - After changing LaTeX, compile using the project's build workflow and fix errors caused by the edits. Record the command, result, and any unresolved verification limitation.
 - Summarize mathematical changes separately from typographical changes.
 
+## Notifications
+
+- You may proactively notify the user about a useful completed result, a material blocker, or a requested milestone. If the user says "At the end send me a notification with ...", treat that as authorization to do so.
+- Use only the repository abstraction: `paper notify --title "TITLE" --message "MESSAGE" [--url "HTTPS_URL"] [--provider none|pushover|webhook] [--device DEVICE]`. Do not call Pushover or a webhook directly, and never inspect, print, add, or commit notification credentials. The command reads the configured provider/device and private environment credentials; `--url` is optional.
+- Local and cloud environments use the same command, but a cloud agent does not automatically receive provider secrets. Invoke it in cloud only when its environment has been explicitly configured for notifications; otherwise do not request or reconstruct credentials. The installed GitHub **Paper preview notification** workflow can still send its own trusted preview-result notification using the `paper-notify` environment.
+- A local path is not a notification URL. If you generate a deliverable PDF, keep it under `output/pdf/` when that is this repository's output convention, and do not commit it. The current supported PDF-link mechanism is the private GitHub Actions preview artifact: after the normal preview workflow has completed, it produces `paper.pdf` and its trusted notifier uses a URL of the form `https://github.com/OWNER/REPOSITORY/actions/runs/RUN_ID/artifacts/ARTIFACT_ID`. For a custom notification, pass an already available HTTPS artifact URL with `--url`; there is no `paper` command that uploads an arbitrary `output/pdf/` file or converts its local path into a link.
+
+Example, once the preview artifact URL is available:
+
+```bash
+paper notify --title "Paper update" --message "Revised PDF is ready." \
+  --url "https://github.com/OWNER/REPOSITORY/actions/runs/RUN_ID/artifacts/ARTIFACT_ID"
+```
+
 ## Tasks and resumption
 
 - Before substantial execution work, create or resume `tasks/NNN_short_name/task.md` using `tasks/template.md`, and link it in `tasks/index.md`. Reuse the task for related follow-ups. Substantial work includes multi-step edits, sustained proof work, or meaningful verification.
