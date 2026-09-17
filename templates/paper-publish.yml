@@ -51,6 +51,7 @@ jobs:
         continue-on-error: true
         env:
           PAPER_NOTIFY_PROVIDER: ${{ vars.PAPER_NOTIFY_PROVIDER || 'none' }}
+          PAPER_PUSHOVER_DEVICE: ${{ vars.PAPER_PUSHOVER_DEVICE }}
           PAPER_PUSHOVER_USER_KEY: ${{ secrets.PAPER_PUSHOVER_USER_KEY }}
           PAPER_PUSHOVER_APP_TOKEN: ${{ secrets.PAPER_PUSHOVER_APP_TOKEN }}
           PAPER_NOTIFY_WEBHOOK_URL: ${{ secrets.PAPER_NOTIFY_WEBHOOK_URL }}

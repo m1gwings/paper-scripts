@@ -738,6 +738,9 @@ case "$CMD" in
         if [[ -z "${PAPER_NOTIFY_PROVIDER:-}" ]] && git rev-parse --show-toplevel >/dev/null 2>&1; then
             export PAPER_NOTIFY_PROVIDER="$(cd "$(root)" && helper infrastructure get notify_provider 2>/dev/null || echo none)"
         fi
+        if [[ -z "${PAPER_PUSHOVER_DEVICE+x}" ]] && git rev-parse --show-toplevel >/dev/null 2>&1; then
+            export PAPER_PUSHOVER_DEVICE="$(cd "$(root)" && helper infrastructure get pushover_device 2>/dev/null || true)"
+        fi
         helper notify "$@"
         exit 0
         ;;

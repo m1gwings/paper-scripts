@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -12,7 +13,7 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
-def send(provider, title, message, url='', opener=None):
+def send(provider, title, message, url='', opener=None, device=None):
     if provider == 'none':
         return False
     payload = {'title': title, 'message': message, 'url': url}
@@ -22,6 +23,11 @@ def send(provider, title, message, url='', opener=None):
                        user=os.environ.get('PAPER_PUSHOVER_USER_KEY', ''))
         if not payload['token'] or not payload['user']:
             raise ValueError('Set PAPER_PUSHOVER_APP_TOKEN and PAPER_PUSHOVER_USER_KEY privately.')
+        target = os.environ.get('PAPER_PUSHOVER_DEVICE', '') if device is None else device
+        if target:
+            if not re.fullmatch(r'[A-Za-z0-9_-]{1,25}(?:,[A-Za-z0-9_-]{1,25})*', target):
+                raise ValueError('Invalid Pushover device name; use the registered device name.')
+            payload['device'] = target
         data = urllib.parse.urlencode(payload).encode()
         content_type = 'application/x-www-form-urlencoded'
     elif provider == 'webhook':
@@ -52,9 +58,10 @@ def main(args=None):
     parser.add_argument('--title', required=True)
     parser.add_argument('--message', required=True)
     parser.add_argument('--url', default='')
+    parser.add_argument('--device', default=None, help='Pushover device; default PAPER_PUSHOVER_DEVICE or all devices')
     parsed = parser.parse_args(args)
     try:
-        sent = send(parsed.provider, parsed.title, parsed.message, parsed.url)
+        sent = send(parsed.provider, parsed.title, parsed.message, parsed.url, device=parsed.device)
     except ValueError as error:
         parser.exit(1, f'paper notify: {error}\n')
     print('Notification sent.' if sent else 'Notifications disabled (provider: none).')

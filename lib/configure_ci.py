@@ -58,10 +58,21 @@ def main():
         settings = config()
         provider = settings['notify_provider']
         for name in ['paper-publish', 'paper-notify']:
-            result = subprocess.run(['gh', 'variable', 'set', 'PAPER_NOTIFY_PROVIDER', '--repo', repo,
-                                     '--env', name, '--body', provider], capture_output=True)
-            if result.returncode:
-                raise RuntimeError('Could not configure the notification provider.')
+            for key, value in [('PAPER_NOTIFY_PROVIDER', provider),
+                               ('PAPER_PUSHOVER_DEVICE', settings.get('pushover_device', ''))]:
+                if not value:
+                    # Delete an optional routing override when returning to all
+                    # devices; avoid gh interpreting an empty body as stdin input.
+                    variables = api(f'repos/{repo}/environments/{name}/variables?per_page=100')['variables']
+                    if key not in {item['name'] for item in variables}:
+                        continue
+                    command = ['gh', 'variable', 'delete', key, '--repo', repo, '--env', name]
+                else:
+                    command = ['gh', 'variable', 'set', key, '--repo', repo,
+                               '--env', name, '--body', value]
+                result = subprocess.run(command, capture_output=True)
+                if result.returncode:
+                    raise RuntimeError('Could not configure notification settings.')
         fields = [('OVERLEAF_TOKEN', ['paper-publish'])]
         if provider == 'pushover':
             fields += [(key, ['paper-publish', 'paper-notify']) for key in

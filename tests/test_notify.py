@@ -28,6 +28,23 @@ class NotifyTest(unittest.TestCase):
         self.assertEqual(fields['title'], ['A & B'])
         self.assertNotIn('private-token', captured[0].full_url)
 
+    def test_device_targeting_and_default_broadcast(self):
+        captured = []
+        def opener(request, **kwargs):
+            captured.append(urllib.parse.parse_qs(request.data.decode()))
+            return io.BytesIO(b'{"status":1}')
+        with patch.dict(os.environ, {'PAPER_PUSHOVER_APP_TOKEN': 'private-token',
+                                    'PAPER_PUSHOVER_USER_KEY': 'private-key'}, clear=True):
+            notify.send('pushover', 'Papers', 'test', opener=opener)
+            self.assertNotIn('device', captured[-1])
+            with patch.dict(os.environ, PAPER_PUSHOVER_DEVICE='migwings-A25'):
+                notify.send('pushover', 'Papers', 'test', opener=opener)
+                self.assertEqual(captured[-1]['device'], ['migwings-A25'])
+                notify.send('pushover', 'Papers', 'test', opener=opener, device='tablet')
+                self.assertEqual(captured[-1]['device'], ['tablet'])
+                with self.assertRaises(ValueError):
+                    notify.send('pushover', 'Papers', 'test', opener=opener, device='bad device')
+
     def test_webhook_json_and_https(self):
         def opener(request, **kwargs):
             self.assertEqual(json.loads(request.data)['message'], 'hello')

@@ -57,7 +57,7 @@ def discover():
     match = re.fullmatch(r'https://(?:git@)?git\.overleaf\.com/([a-zA-Z0-9]+?)/?', url)
     return {'version': VERSION, 'base_branch': base,
             'overleaf_project_id': match[1] if match else '',
-            'root_tex': 'main.tex', 'notify_provider': 'none'}
+            'root_tex': 'main.tex', 'notify_provider': 'none', 'pushover_device': ''}
 
 
 def config():
@@ -70,6 +70,8 @@ def config():
     value['version'] = VERSION
     if value['notify_provider'] not in ('none', 'webhook', 'pushover'):
         raise ValueError('notify_provider must be none, webhook, or pushover.')
+    if not isinstance(value['pushover_device'], str):
+        raise ValueError('pushover_device must be a device name or an empty string.')
     return value
 
 

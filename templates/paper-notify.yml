@@ -1,6 +1,7 @@
 # Managed by paper-scripts; upgrade with paper init.
 name: Paper preview notification
 on:
+  workflow_dispatch:
   workflow_run:
     workflows: ['Paper preview']
     types: [completed]
@@ -9,7 +10,9 @@ permissions:
   actions: read
 jobs:
   notify:
-    if: github.event.workflow_run.head_repository.full_name == github.repository
+    if: >-
+      (github.event_name == 'workflow_dispatch' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) ||
+      (github.event_name == 'workflow_run' && github.event.workflow_run.head_repository.full_name == github.repository)
     environment: paper-notify
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -20,10 +23,24 @@ jobs:
           persist-credentials: false
       # Never download or execute artifacts/source from the triggering branch.
       - name: Notify preview result
+        if: github.event_name == 'workflow_run'
         env:
           GH_TOKEN: ${{ github.token }}
           PAPER_NOTIFY_PROVIDER: ${{ vars.PAPER_NOTIFY_PROVIDER || 'none' }}
+          PAPER_PUSHOVER_DEVICE: ${{ vars.PAPER_PUSHOVER_DEVICE }}
           PAPER_PUSHOVER_USER_KEY: ${{ secrets.PAPER_PUSHOVER_USER_KEY }}
           PAPER_PUSHOVER_APP_TOKEN: ${{ secrets.PAPER_PUSHOVER_APP_TOKEN }}
           PAPER_NOTIFY_WEBHOOK_URL: ${{ secrets.PAPER_NOTIFY_WEBHOOK_URL }}
         run: python3 .paper/runtime/lib/preview_notify.py
+      - name: Test phone notification
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          PAPER_NOTIFY_PROVIDER: ${{ vars.PAPER_NOTIFY_PROVIDER || 'none' }}
+          PAPER_PUSHOVER_DEVICE: ${{ vars.PAPER_PUSHOVER_DEVICE }}
+          PAPER_PUSHOVER_USER_KEY: ${{ secrets.PAPER_PUSHOVER_USER_KEY }}
+          PAPER_PUSHOVER_APP_TOKEN: ${{ secrets.PAPER_PUSHOVER_APP_TOKEN }}
+          PAPER_NOTIFY_WEBHOOK_URL: ${{ secrets.PAPER_NOTIFY_WEBHOOK_URL }}
+        run: >-
+          python3 .paper/runtime/lib/notify.py
+          --title "Papers"
+          --message "Your paper workflow can send notifications to this phone."
