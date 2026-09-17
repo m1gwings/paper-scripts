@@ -27,6 +27,8 @@ class InfrastructureTest(test_workflow.WorkflowTest):
         target.unlink()
         self.paper('init')
         self.assertTrue(target.exists())
+        notify = self.repo / '.github/workflows/paper-notify.yml'
+        self.assertIn('Notification provider is not configured', notify.read_text())
 
     def test_custom_workflow_and_symlinks_not_overwritten(self):
         workflows = self.repo / '.github/workflows'

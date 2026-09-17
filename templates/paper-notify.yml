@@ -62,6 +62,10 @@ jobs:
           PAPER_NOTIFICATION_MESSAGE: ${{ inputs.message }}
           PAPER_NOTIFICATION_URL: ${{ inputs.url }}
         run: |
+          if [[ "$PAPER_NOTIFY_PROVIDER" == "none" ]]; then
+            echo "Notification provider is not configured for this repository." >&2
+            exit 1
+          fi
           args=(--title "$PAPER_NOTIFICATION_TITLE" --message "$PAPER_NOTIFICATION_MESSAGE")
           if [[ -n "$PAPER_NOTIFICATION_URL" ]]; then
             args+=(--url "$PAPER_NOTIFICATION_URL")
