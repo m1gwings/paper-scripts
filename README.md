@@ -101,9 +101,10 @@ branch. For the CMABs with RUM Feedback pilot, both are `main`.
 | `paper publish` | Require explicit user publication authorization, committed work, and no Git operation in progress. Reconcile fresh state, integrate the feature, back up on GitHub, and publish to Overleaf. Local and cloud execution are detailed below. |
 | `paper init` | Inside an existing Git repository, create research/task files and install or upgrade generated infrastructure. Preserve custom files/configuration. No remote creation, commit, or push. |
 | `paper-init OVERLEAF_ID OWNER/REPO [DIRECTORY]` | Create the two-remote project from Overleaf and a new private GitHub repository, then invoke `paper init`. Default directory: `paper`. For an existing directory, verify both remote identities before upgrading; never repoint them. |
-| `paper configure-ci [--environments-only]` | Create/verify default-branch-only environments. Without the flag, configure notification settings and privately prompt for credentials. Requires GitHub administration access. |
-| `paper notify --title TITLE --message MESSAGE [--url URL] [--provider PROVIDER] [--device DEVICE]` | Send a notification through the selected adapter; requires no paper remotes. |
-| `paper notify-test` | Send a simple test through the configured provider. Local secrets must be supplied privately; GitHub secrets cannot be downloaded to the laptop. |
+| `paper configure-ci [--environments-only]` | Create/verify default-branch-only environments and configure the paper's Overleaf publication credential. Requires GitHub administration access. |
+| `paper configure-notifications [--device NAME] OWNER/REPO [OWNER/REPO ...]` | Prompt once and install or rotate notification credentials across all selected papers' protected GitHub environments. |
+| `paper notify --title TITLE --message MESSAGE [--url HTTPS_URL]` | Dispatch the trusted GitHub Actions notification workflow; provider secrets never enter the calling environment. |
+| `paper notify-test` | Dispatch a simple notification test through GitHub Actions. |
 | `paper status` / `paper doctor` | Inspect repository state, remotes, tracking, tools, and cached divergence. Remote divergence is only as fresh as the last fetch. |
 | `paper build [ROOT.tex]` / `paper clean [ROOT.tex]` | Build or clean with local latexmk; default `main.tex`. Local build behavior is separate from the restricted CI preview build. |
 | `paper open` | Open the repository in VS Code. |
@@ -200,7 +201,8 @@ It rejects changes to `.paper/` or `.github/` relative to the trusted revision
 before publishing. Infrastructure upgrades use the owner-controlled local path.
 The Overleaf token is passed through a host-restricted Askpass helper, not a URL.
 
-Secrets are stored in **GitHub environments**, not repository-level secrets:
+Secrets are stored in **GitHub environments**, not repository-level secrets or
+agent environments:
 
 | Environment | Allowed branch | Secrets | Variables |
 | --- | --- | --- | --- |
@@ -236,22 +238,22 @@ account; it connects delivery to the devices registered under that account.
    subscription to the Papers application or phone-specific token is needed.
 3. Leave `pushover_device` empty to send to all active account devices, or set it
    to the exact registered name, such as `migwings-A25`, to request that device.
-4. Run `paper configure-ci` after changing settings to update the CI variables.
-   Press Enter at credential prompts to preserve secrets already installed.
-5. After activating the workflows on the default branch, manually run **Paper
-   preview notification** in GitHub Actions for a phone test.
+4. Run `paper configure-ci` in each paper after changing its non-secret settings.
+5. Run `paper configure-notifications --device DEVICE OWNER/REPO ...` once to
+   install or rotate the Pushover credentials across every listed paper.
+6. After activating the workflows on the default branch, run `paper notify-test`
+   from any configured paper for a phone test.
 
 Pushover may fall back to all active devices if a requested device is invalid or
 has been disabled. Device selection is routing, not a credential/access boundary.
 The app's own message settings and phone notification permissions control sound
 and alerts. The registered device name is non-secret.
 
-For a local notification, supply credentials privately through your shell or
-password-manager integration, then run `paper notify-test`. Local calls read the
-provider/device from `.paper/config.json` when inside a paper; environment variables
-`PAPER_NOTIFY_PROVIDER` and `PAPER_PUSHOVER_DEVICE` override those defaults, and
-`paper notify --device NAME` overrides the device for one message. GitHub environment
-secrets cannot be read back into the laptop by these commands.
+Local and cloud callers use the same `paper notify` command. It dispatches the
+trusted default-branch GitHub Actions workflow and waits for the exact run. The
+workflow reads the configured provider/device and credentials from the protected
+`paper-notify` environment. Notification secrets are never copied into a local or
+Codex agent environment.
 
 Adapters are `none` (default), `pushover`, and `webhook`. Webhooks receive JSON
 `{title,message,url}` over HTTPS. Delivery has a 20-second timeout, rejects redirects,
@@ -261,7 +263,7 @@ PDF notifications link to private GitHub artifacts. Sign in to GitHub to downloa
 `paper.pdf` directly, without ZIP extraction. Artifacts are retained for 14 days;
 this is not permanent/public PDF hosting. Phone viewing depends on the browser.
 There is no built-in credit-reset monitor or general coding-agent completion
-listener; callers can invoke `paper notify` explicitly.
+listener; callers invoke `paper notify` explicitly.
 
 ## Installation, configuration, and safe upgrades
 
@@ -287,7 +289,7 @@ Inside each existing paper, run `paper init` and review this non-secret config:
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "base_branch": "main",
   "overleaf_project_id": "YOUR_PROJECT_ID",
   "root_tex": "main.tex",
@@ -312,10 +314,11 @@ user-owned. Add a reference to `.paper/WORKFLOW.md` to an existing custom AGENTS
 
 After review, commit the generated files to the paper's default branch, protect
 the trusted paths, and run `paper configure-ci` from a private terminal. Setup
-verifies branch restrictions before any hidden credential prompts. Use a dedicated
-Overleaf Git token for CI; keep the laptop's credential separate. Overleaf uses
-username `git` and the Git token as password. Tokens expire and must be rotated;
-never use your university/SSO password or paste a token into a chat.
+verifies branch restrictions before any hidden credential prompt. Use a dedicated
+Overleaf Git token for CI; keep the laptop's credential separate. Configure
+notifications for all papers in one batch with `paper configure-notifications`.
+Overleaf uses username `git` and the Git token as password. Tokens expire and must
+be rotated; never use your university/SSO password or paste a token into a chat.
 
 For a new paper, use `paper-init OVERLEAF_ID OWNER/REPO DIRECTORY`, then review the
 newly generated configuration and complete the same protected CI setup. Initial

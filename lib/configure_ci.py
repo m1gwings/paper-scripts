@@ -2,7 +2,9 @@
 import argparse
 import getpass
 import json
+import re
 import subprocess
+import sys
 from cloud import repository
 from infrastructure import config
 
@@ -45,41 +47,92 @@ def store(repo, environment, name, value):
         raise RuntimeError('Secret installation failed; retry the setup. Secret values were not logged.')
 
 
-def main():
+def set_variable(repo, environment, name, value):
+    if value:
+        command = ['gh', 'variable', 'set', name, '--repo', repo,
+                   '--env', environment, '--body', value]
+    else:
+        variables = api(f'repos/{repo}/environments/{environment}/variables?per_page=100')['variables']
+        if name not in {item['name'] for item in variables}:
+            return
+        command = ['gh', 'variable', 'delete', name, '--repo', repo, '--env', environment]
+    result = subprocess.run(command, capture_output=True)
+    if result.returncode:
+        raise RuntimeError('Could not configure notification settings.')
+
+
+def configure_notifications(repositories, provider, device, credentials,
+                            call=api, secret_store=store, variable_store=set_variable):
+    if provider not in ('pushover', 'webhook'):
+        raise ValueError('Notification provider must be pushover or webhook.')
+    if device and not re.fullmatch(r'[A-Za-z0-9_-]{1,25}(?:,[A-Za-z0-9_-]{1,25})*', device):
+        raise ValueError('Invalid Pushover device name.')
+    expected = ({'PAPER_PUSHOVER_USER_KEY', 'PAPER_PUSHOVER_APP_TOKEN'}
+                if provider == 'pushover' else {'PAPER_NOTIFY_WEBHOOK_URL'})
+    if set(credentials) != expected or any(not value for value in credentials.values()):
+        raise ValueError('All notification credentials are required for bulk setup.')
+    selected = []
+    for repo in repositories:
+        if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repo):
+            raise ValueError(f'Invalid GitHub repository {repo!r}; use OWNER/REPOSITORY.')
+        if repo not in selected:
+            selected.append(repo)
+    if not selected:
+        raise ValueError('Provide at least one GitHub repository.')
+    for repo in selected:
+        default = call(f'repos/{repo}')['default_branch']
+        environments(repo, default, call)
+        for environment in ['paper-publish', 'paper-notify']:
+            variable_store(repo, environment, 'PAPER_NOTIFY_PROVIDER', provider)
+            variable_store(repo, environment, 'PAPER_PUSHOVER_DEVICE', device if provider == 'pushover' else '')
+            for name, value in credentials.items():
+                secret_store(repo, environment, name, value)
+        print(f'{repo}: notification credentials configured.')
+
+
+def notification_main(args):
+    parser = argparse.ArgumentParser(
+        prog='paper configure-notifications',
+        description='Prompt once and configure protected notifications for multiple paper repositories.')
+    parser.add_argument('--provider', choices=['pushover', 'webhook'], default='pushover')
+    parser.add_argument('--device', default='')
+    parser.add_argument('repositories', nargs='+', metavar='OWNER/REPOSITORY')
+    parsed = parser.parse_args(args)
+    if parsed.provider == 'pushover':
+        names = ['PAPER_PUSHOVER_USER_KEY', 'PAPER_PUSHOVER_APP_TOKEN']
+    else:
+        names = ['PAPER_NOTIFY_WEBHOOK_URL']
+    print('Enter notification credentials once. Input is hidden and values are never logged.')
+    credentials = {name: getpass.getpass(name + ': ') for name in names}
+    configure_notifications(parsed.repositories, parsed.provider, parsed.device, credentials)
+    print('Notification credentials installed for every selected repository.')
+
+
+def main(args=None):
+    args = list(sys.argv[1:] if args is None else args)
+    if args[:1] == ['notifications']:
+        try:
+            notification_main(args[1:])
+        except (ValueError, RuntimeError, OSError, KeyError) as error:
+            raise SystemExit(f'paper configure-notifications: {error}')
+        return
     parser = argparse.ArgumentParser(description='Configure protected CI environments; enter secrets privately at a terminal.')
     parser.add_argument('--environments-only', action='store_true')
-    args = parser.parse_args()
+    parsed = parser.parse_args(args)
     try:
         repo = repository()
         default = api(f'repos/{repo}')['default_branch']
         environments(repo, default)
-        if args.environments_only:
+        if parsed.environments_only:
             return
         settings = config()
         provider = settings['notify_provider']
         for name in ['paper-publish', 'paper-notify']:
             for key, value in [('PAPER_NOTIFY_PROVIDER', provider),
                                ('PAPER_PUSHOVER_DEVICE', settings.get('pushover_device', ''))]:
-                if not value:
-                    # Delete an optional routing override when returning to all
-                    # devices; avoid gh interpreting an empty body as stdin input.
-                    variables = api(f'repos/{repo}/environments/{name}/variables?per_page=100')['variables']
-                    if key not in {item['name'] for item in variables}:
-                        continue
-                    command = ['gh', 'variable', 'delete', key, '--repo', repo, '--env', name]
-                else:
-                    command = ['gh', 'variable', 'set', key, '--repo', repo,
-                               '--env', name, '--body', value]
-                result = subprocess.run(command, capture_output=True)
-                if result.returncode:
-                    raise RuntimeError('Could not configure notification settings.')
+                set_variable(repo, name, key, value)
         fields = [('OVERLEAF_TOKEN', ['paper-publish'])]
-        if provider == 'pushover':
-            fields += [(key, ['paper-publish', 'paper-notify']) for key in
-                       ['PAPER_PUSHOVER_USER_KEY', 'PAPER_PUSHOVER_APP_TOKEN']]
-        elif provider == 'webhook':
-            fields += [('PAPER_NOTIFY_WEBHOOK_URL', ['paper-publish', 'paper-notify'])]
-        print('Paste credentials only into these hidden terminal prompts. Enter skips an existing value.')
+        print('Paste the Overleaf credential only into this hidden terminal prompt. Enter preserves an existing value.')
         for key, targets in fields:
             value = getpass.getpass(key + ': ')
             if value:
@@ -90,7 +143,9 @@ def main():
                     secrets = api(f'repos/{repo}/environments/{target}/secrets?per_page=100')['secrets']
                     if key not in {s['name'] for s in secrets}:
                         raise RuntimeError(f'{key} is still missing from {target}; rerun setup to finish.')
-        print('CI credentials configured. Commit the generated files to the default branch to activate workflows.')
+        print('CI publication credential configured. Notification credentials are managed with '
+              'paper configure-notifications.')
+        print('Commit the generated files to the default branch to activate workflows.')
     except (ValueError, RuntimeError, OSError, KeyError) as error:
         parser.exit(1, f'paper configure-ci: {error}\n')
 

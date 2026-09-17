@@ -231,8 +231,8 @@ init_paper() {
 ## Notifications
 
 - You may proactively notify the user about a useful completed result, a material blocker, or a requested milestone. If the user says "At the end send me a notification with ...", treat that as authorization to do so.
-- Use only the repository abstraction: `paper notify --title "TITLE" --message "MESSAGE" [--url "HTTPS_URL"] [--provider none|pushover|webhook] [--device DEVICE]`. Do not call Pushover or a webhook directly, and never inspect, print, add, or commit notification credentials. The command reads the configured provider/device and private environment credentials; `--url` is optional.
-- Local and cloud environments use the same command, but a cloud agent does not automatically receive provider secrets. Invoke it in cloud only when its environment has been explicitly configured for notifications; otherwise do not request or reconstruct credentials. The installed GitHub **Paper preview notification** workflow can still send its own trusted preview-result notification using the `paper-notify` environment.
+- Use only `paper notify --title "TITLE" --message "MESSAGE" [--url "HTTPS_URL"]`. It always dispatches the trusted GitHub Actions notification workflow; do not call Pushover, a webhook, or the internal adapter directly.
+- The same command works locally and in cloud environments. It requires authenticated GitHub access and the installed workflow, but notification credentials remain only in the protected GitHub environments. Never inspect, request, print, add, or commit those credentials.
 - A local path is not a notification URL. For a requested PDF handoff, generate `output/pdf/NAME.pdf` when that is this repository's output convention, and do not commit it. The current supported PDF-link mechanism is the private GitHub Actions preview artifact: after the normal preview workflow has completed, it produces `paper.pdf` and its trusted notifier uses a URL of the form `https://github.com/OWNER/REPOSITORY/actions/runs/RUN_ID/artifacts/ARTIFACT_ID`. For a custom notification, pass an already available HTTPS artifact URL with `--url`; there is no `paper` command that uploads an arbitrary `output/pdf/` file or converts its local path into a link.
 
 Example, once the preview artifact URL is available:
@@ -503,12 +503,17 @@ COMMANDS
       Show base branch, current branch, status, branches,
       remotes, and cached divergence.
 
-  paper notify --title TITLE --message MESSAGE [--url URL] [--provider PROVIDER]
-      Send via none, webhook, or pushover. Credentials come from the environment.
+  paper notify --title TITLE --message MESSAGE [--url HTTPS_URL]
+      Ask the trusted GitHub Actions workflow to send a notification.
+      Provider credentials remain in protected GitHub environments.
 
   paper configure-ci [--environments-only]
-      Configure default-branch-only CI environments and privately enter secrets.
+      Configure default-branch-only CI environments and the Overleaf token.
       Requires GitHub repository administration access.
+
+  paper configure-notifications [--device NAME] OWNER/REPO [OWNER/REPO ...]
+      Prompt once for notification credentials and install/rotate them across
+      every selected repository's protected GitHub environments.
 
   paper notify-test
       Send a test using the configured notification provider.
@@ -744,18 +749,22 @@ case "$CMD" in
         exit 0
         ;;
 
+    configure-notifications)
+        need gh
+        helper configure_ci notifications "$@"
+        exit 0
+        ;;
+
     notify|notify-test)
         if [[ "$CMD" == notify-test ]]; then
             [[ $# -eq 0 ]] || die "Usage: paper notify-test"
             set -- --title "Paper Scripts" --message "Notifications are working."
         fi
-        if [[ -z "${PAPER_NOTIFY_PROVIDER:-}" ]] && git rev-parse --show-toplevel >/dev/null 2>&1; then
-            export PAPER_NOTIFY_PROVIDER="$(cd "$(root)" && helper infrastructure get notify_provider 2>/dev/null || echo none)"
-        fi
-        if [[ -z "${PAPER_PUSHOVER_DEVICE+x}" ]] && git rev-parse --show-toplevel >/dev/null 2>&1; then
-            export PAPER_PUSHOVER_DEVICE="$(cd "$(root)" && helper infrastructure get pushover_device 2>/dev/null || true)"
-        fi
-        helper notify "$@"
+        need git
+        need gh
+        cd "$(root)"
+        remote_ok github
+        helper cloud notify "$@"
         exit 0
         ;;
 

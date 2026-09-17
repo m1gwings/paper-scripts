@@ -1,7 +1,25 @@
 # Managed by paper-scripts; upgrade with paper init.
 name: Paper preview notification
+run-name: paper-notify-${{ inputs.request_id || github.run_id }}
 on:
   workflow_dispatch:
+    inputs:
+      request_id:
+        type: string
+        required: true
+        default: manual
+      title:
+        type: string
+        required: true
+        default: Papers
+      message:
+        type: string
+        required: true
+        default: Your paper workflow can send notifications to this phone.
+      url:
+        type: string
+        required: false
+        default: ''
   workflow_run:
     workflows: ['Paper preview']
     types: [completed]
@@ -19,7 +37,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.workflow_sha }}
           persist-credentials: false
       # Never download or execute artifacts/source from the triggering branch.
       - name: Notify preview result
@@ -32,7 +50,7 @@ jobs:
           PAPER_PUSHOVER_APP_TOKEN: ${{ secrets.PAPER_PUSHOVER_APP_TOKEN }}
           PAPER_NOTIFY_WEBHOOK_URL: ${{ secrets.PAPER_NOTIFY_WEBHOOK_URL }}
         run: python3 .paper/runtime/lib/preview_notify.py
-      - name: Test phone notification
+      - name: Send requested notification
         if: github.event_name == 'workflow_dispatch'
         env:
           PAPER_NOTIFY_PROVIDER: ${{ vars.PAPER_NOTIFY_PROVIDER || 'none' }}
@@ -40,7 +58,12 @@ jobs:
           PAPER_PUSHOVER_USER_KEY: ${{ secrets.PAPER_PUSHOVER_USER_KEY }}
           PAPER_PUSHOVER_APP_TOKEN: ${{ secrets.PAPER_PUSHOVER_APP_TOKEN }}
           PAPER_NOTIFY_WEBHOOK_URL: ${{ secrets.PAPER_NOTIFY_WEBHOOK_URL }}
-        run: >-
-          python3 .paper/runtime/lib/notify.py
-          --title "Papers"
-          --message "Your paper workflow can send notifications to this phone."
+          PAPER_NOTIFICATION_TITLE: ${{ inputs.title }}
+          PAPER_NOTIFICATION_MESSAGE: ${{ inputs.message }}
+          PAPER_NOTIFICATION_URL: ${{ inputs.url }}
+        run: |
+          args=(--title "$PAPER_NOTIFICATION_TITLE" --message "$PAPER_NOTIFICATION_MESSAGE")
+          if [[ -n "$PAPER_NOTIFICATION_URL" ]]; then
+            args+=(--url "$PAPER_NOTIFICATION_URL")
+          fi
+          python3 .paper/runtime/lib/notify.py "${args[@]}"

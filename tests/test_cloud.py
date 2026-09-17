@@ -32,6 +32,37 @@ class CloudClientTest(unittest.TestCase):
         self.assertEqual(captured['ref'], 'master')
         self.assertEqual(captured['inputs']['sha'], 'a' * 40)
 
+    def test_notification_dispatches_to_trusted_workflow(self):
+        captured = {}
+        def api(path, body=None):
+            if path == 'repos/me/paper':
+                return {'default_branch': 'main'}
+            if body:
+                captured.update(body)
+                return
+            title = 'paper-notify-' + captured['inputs']['request_id']
+            return {'workflow_runs': [{'id': 7, 'display_title': title,
+                                       'html_url': 'https://example.com/notify',
+                                       'status': 'completed', 'conclusion': 'success'}]}
+        with patch.object(cloud, 'repository', return_value='me/paper'):
+            result = cloud.notification('Done', 'The PDF is ready.', 'https://example.com/paper.pdf',
+                                        api=api, sleep=lambda _: None)
+        self.assertEqual(result['id'], 7)
+        self.assertEqual(captured['ref'], 'main')
+        self.assertEqual(captured['inputs']['title'], 'Done')
+        self.assertEqual(captured['inputs']['message'], 'The PDF is ready.')
+        self.assertEqual(captured['inputs']['url'], 'https://example.com/paper.pdf')
+
+    def test_notification_validates_public_fields(self):
+        with self.assertRaisesRegex(ValueError, 'title'):
+            cloud.notification('', 'message')
+        with self.assertRaisesRegex(ValueError, 'message'):
+            cloud.notification('title', '')
+        with self.assertRaisesRegex(ValueError, 'HTTPS'):
+            cloud.notification('title', 'message', 'file:///tmp/paper.pdf')
+        with self.assertRaisesRegex(ValueError, 'embedded credentials'):
+            cloud.notification('title', 'message', 'https://secret@example.com/paper.pdf')
+
     def test_failure_and_timeout_are_not_success(self):
         body = {}
         def api(path, data=None):

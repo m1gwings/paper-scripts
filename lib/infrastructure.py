@@ -7,7 +7,7 @@ import re
 import subprocess
 import sys
 
-VERSION = 1
+VERSION = 2
 SOURCE = Path(__file__).resolve().parents[1]
 LIBRARIES = ['notify.py', 'cloud.py', 'ci.py', 'preview.py', 'preview_notify.py', 'infrastructure.py', 'configure_ci.py']
 WORKFLOWS = ['paper-preview.yml', 'paper-publish.yml', 'paper-notify.yml']
@@ -84,7 +84,7 @@ def generated():
         files['.github/workflows/' + name] = (SOURCE / 'templates' / name).read_bytes()
         # Templates are vendored too, allowing the pinned runtime to repair itself.
         files['.paper/runtime/templates/' + name] = files['.github/workflows/' + name]
-    files['.paper/WORKFLOW.md'] = b'''# Paper lifecycle\n\nUse paper start NAME before isolated work, paper commit for local checkpoints,\npaper backup for GitHub backup, and paper publish only on explicit publication\nauthorization. Use paper sync from the base branch when returning to a machine.\nUse paper commands for lifecycle operations; raw Git is reserved for resolving\nconflicts or repairing the implementation. Never commit credentials.\n\nCloud clients need GitHub access (Contents write and Actions read/write),\nPython 3, Git, and gh. Set PAPER_EXECUTION=cloud or git config paper.execution cloud.\nNever provide an Overleaf token to the cloud client. See the setup guide.\n'''
+    files['.paper/WORKFLOW.md'] = b'''# Paper lifecycle\n\nUse paper start NAME before isolated work, paper commit for local checkpoints,\npaper backup for GitHub backup, and paper publish only on explicit publication\nauthorization. Use paper sync from the base branch when returning to a machine.\nUse paper commands for lifecycle operations; raw Git is reserved for resolving\nconflicts or repairing the implementation. Never commit credentials.\n\nUse paper notify for notifications. It dispatches the trusted GitHub Actions\nworkflow; local and cloud agents never receive provider credentials.\n\nCloud clients need GitHub access (Contents write and Actions read/write),\nPython 3, Git, and gh. Set PAPER_EXECUTION=cloud or git config paper.execution cloud.\nNever provide an Overleaf or notification token to the cloud client. See the setup guide.\n'''
     return files
 
 
