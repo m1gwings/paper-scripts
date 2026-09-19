@@ -141,6 +141,14 @@ In a cloud checkout, set:
 git config paper.execution cloud
 ```
 
+Codex Cloud should also provide `GH_TOKEN` as a secret environment variable.
+The generated `AGENTS.md` tells cloud agents to check only whether the variable
+is present, use it through `gh` without exposing it, and ask the user to add it
+when it is missing. The reminder notes that the user's token is available in
+their Google Drive; the token must never be pasted into chat, printed, embedded
+in a remote URL, or committed. These instructions are cloud-only and do not
+replace the normal GitHub authentication of local Codex clients.
+
 Cloud `sync` and `publish` dispatch a workflow from GitHub's default branch and
 wait for the exact run identified by a unique request ID. The workflow checks
 that the reviewed branch still has the requested SHA, executes only trusted
