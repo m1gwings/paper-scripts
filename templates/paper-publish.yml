@@ -46,16 +46,29 @@ jobs:
           PAPER_BRANCH: ${{ inputs.branch }}
           PAPER_SHA: ${{ inputs.sha }}
         run: python3 .paper/runtime/lib/ci.py
+  notify:
+    needs: publish
+    if: always() && inputs.operation == 'publish'
+    environment: paper-notify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
       - name: Publication notification
-        if: always() && inputs.operation == 'publish'
         continue-on-error: true
         env:
-          PAPER_NOTIFY_PROVIDER: ${{ vars.PAPER_NOTIFY_PROVIDER || 'none' }}
+          PAPER_NOTIFY_PROVIDER: ${{ vars.PAPER_NOTIFY_PROVIDER || 'discord' }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           PAPER_PUSHOVER_DEVICE: ${{ vars.PAPER_PUSHOVER_DEVICE }}
           PAPER_PUSHOVER_USER_KEY: ${{ secrets.PAPER_PUSHOVER_USER_KEY }}
           PAPER_PUSHOVER_APP_TOKEN: ${{ secrets.PAPER_PUSHOVER_APP_TOKEN }}
           PAPER_NOTIFY_WEBHOOK_URL: ${{ secrets.PAPER_NOTIFY_WEBHOOK_URL }}
-          PAPER_RESULT: ${{ job.status }}
+          PAPER_RESULT: ${{ needs.publish.result }}
           PAPER_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: >-
           python3 .paper/runtime/lib/notify.py

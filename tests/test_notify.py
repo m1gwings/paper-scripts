@@ -28,6 +28,35 @@ class NotifyTest(unittest.TestCase):
         self.assertEqual(fields['title'], ['A & B'])
         self.assertNotIn('private-token', captured[0].full_url)
 
+    def test_discord_rich_message_and_link(self):
+        captured = []
+        def opener(request, **kwargs):
+            captured.append(request)
+            return io.BytesIO(b'')
+        environment = {
+            'DISCORD_WEBHOOK_URL': 'https://discord.com/api/webhooks/123/private-token',
+            'GITHUB_REPOSITORY': 'owner/paper',
+        }
+        with patch.dict(os.environ, environment, clear=True):
+            self.assertTrue(notify.send(
+                'discord', 'Proof complete', 'The checked PDF is ready.',
+                'https://github.com/owner/paper/actions/runs/1/artifacts/2', opener))
+        payload = json.loads(captured[0].data)
+        self.assertEqual(payload['allowed_mentions'], {'parse': []})
+        self.assertEqual(payload['embeds'][0]['title'], 'Proof complete')
+        self.assertEqual(payload['embeds'][0]['footer']['text'], 'owner/paper')
+        self.assertEqual(payload['embeds'][0]['url'],
+                         'https://github.com/owner/paper/actions/runs/1/artifacts/2')
+        self.assertNotIn('private-token', captured[0].full_url.rsplit('/', 1)[0])
+
+    def test_discord_requires_official_webhook_and_https_link(self):
+        with patch.dict(os.environ, DISCORD_WEBHOOK_URL='https://example.com/api/webhooks/1/token'):
+            with self.assertRaises(ValueError):
+                notify.send('discord', 'title', 'message')
+        with patch.dict(os.environ, DISCORD_WEBHOOK_URL='https://discord.com/api/webhooks/1/token'):
+            with self.assertRaises(ValueError):
+                notify.send('discord', 'title', 'message', 'http://example.com/file.pdf')
+
     def test_device_targeting_and_default_broadcast(self):
         captured = []
         def opener(request, **kwargs):
@@ -59,6 +88,8 @@ class NotifyTest(unittest.TestCase):
         with patch.dict(os.environ, {}, clear=True):
             with self.assertRaises(ValueError):
                 notify.send('pushover', 'title', 'message')
+            with self.assertRaises(ValueError):
+                notify.send('discord', 'title', 'message')
         def opener(*args, **kwargs):
             raise urllib.error.URLError('secret-token-at-private-url')
         with patch.dict(os.environ, PAPER_NOTIFY_WEBHOOK_URL='https://example.com/private'):

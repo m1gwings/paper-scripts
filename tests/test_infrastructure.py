@@ -12,6 +12,8 @@ class InfrastructureTest(test_workflow.WorkflowTest):
         config = self.repo / '.paper/config.json'
         value = json.loads(config.read_text())
         self.assertEqual(value['base_branch'], 'master')
+        self.assertEqual(value['notify_provider'], 'discord')
+        self.assertEqual(value['version'], 3)
         value['root_tex'] = 'manuscript.tex'
         value['custom'] = 'preserved'
         config.write_text(json.dumps(value))
@@ -29,6 +31,42 @@ class InfrastructureTest(test_workflow.WorkflowTest):
         self.assertTrue(target.exists())
         notify = self.repo / '.github/workflows/paper-notify.yml'
         self.assertIn('Notification provider is not configured', notify.read_text())
+        codex = self.repo / '.codex/config.toml'
+        self.assertIn('model = "gpt-5.6-sol"', codex.read_text())
+
+    def test_version_two_notification_config_migrates_to_discord(self):
+        paper = self.repo / '.paper'
+        paper.mkdir()
+        (paper / 'config.json').write_text(json.dumps({
+            'version': 2,
+            'base_branch': 'master',
+            'overleaf_project_id': '',
+            'root_tex': 'main.tex',
+            'notify_provider': 'pushover',
+            'pushover_device': 'phone',
+            'custom': 'preserved',
+        }))
+        self.paper('init')
+        value = json.loads((paper / 'config.json').read_text())
+        self.assertEqual(value['notify_provider'], 'discord')
+        self.assertEqual(value['pushover_device'], 'phone')
+        self.assertEqual(value['custom'], 'preserved')
+
+    def test_custom_agents_managed_notification_section_is_updated(self):
+        agents = self.repo / 'AGENTS.md'
+        agents.write_text(
+            '# Personal instructions\n\nKeep this paragraph.\n\n## Notifications\n\n'
+            '- Use only `paper notify --title "TITLE"`; credentials stay in protected GitHub.\n\n'
+            '## Personal section\n\nKeep this too.\n')
+        self.paper('init')
+        text = agents.read_text()
+        self.assertIn('Keep this paragraph.', text)
+        self.assertIn('Keep this too.', text)
+        self.assertIn('paper-scripts:begin managed-notifications', text)
+        self.assertIn('Discord is the default delivery provider', text)
+        before = text
+        self.paper('init')
+        self.assertEqual(agents.read_text(), before)
 
     def test_custom_workflow_and_symlinks_not_overwritten(self):
         workflows = self.repo / '.github/workflows'

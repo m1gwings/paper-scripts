@@ -17,7 +17,31 @@ def send(provider, title, message, url='', opener=None, device=None):
     if provider == 'none':
         return False
     payload = {'title': title, 'message': message, 'url': url}
-    if provider == 'pushover':
+    if provider == 'discord':
+        endpoint = os.environ.get('DISCORD_WEBHOOK_URL', '')
+        parsed = urllib.parse.urlsplit(endpoint)
+        if (parsed.scheme != 'https' or parsed.hostname not in ('discord.com', 'www.discord.com')
+                or not parsed.path.startswith('/api/webhooks/')
+                or parsed.username or parsed.password):
+            raise ValueError('DISCORD_WEBHOOK_URL must be a Discord HTTPS incoming-webhook URL.')
+        if len(title) > 256 or len(message) > 2048:
+            raise ValueError('Discord titles are limited to 256 characters and messages to 2048.')
+        embed = {'title': title, 'description': message, 'color': 0x5865F2}
+        if url:
+            link = urllib.parse.urlsplit(url)
+            if link.scheme != 'https' or not link.hostname or link.username or link.password:
+                raise ValueError('Notification links must be HTTPS URLs without user credentials.')
+            embed['url'] = url
+        repository = os.environ.get('GITHUB_REPOSITORY', '')
+        if repository:
+            embed['footer'] = {'text': repository[:2048]}
+        data = json.dumps({
+            'username': 'Paper workflow',
+            'allowed_mentions': {'parse': []},
+            'embeds': [embed],
+        }).encode()
+        content_type = 'application/json'
+    elif provider == 'pushover':
         endpoint = 'https://api.pushover.net/1/messages.json'
         payload.update(token=os.environ.get('PAPER_PUSHOVER_APP_TOKEN', ''),
                        user=os.environ.get('PAPER_PUSHOVER_USER_KEY', ''))
@@ -38,7 +62,7 @@ def send(provider, title, message, url='', opener=None, device=None):
         data = json.dumps(payload).encode()
         content_type = 'application/json'
     else:
-        raise ValueError('Unknown notification provider; use none, webhook, or pushover.')
+        raise ValueError('Unknown notification provider; use discord, webhook, pushover, or none.')
     request = urllib.request.Request(endpoint, data=data,
                                      headers={'Content-Type': content_type}, method='POST')
     # Never follow a redirect carrying credentials; never echo server error bodies/URLs.

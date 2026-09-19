@@ -228,11 +228,12 @@ init_paper() {
 - After changing LaTeX, compile using the project's build workflow and fix errors caused by the edits. Record the command, result, and any unresolved verification limitation.
 - Summarize mathematical changes separately from typographical changes.
 
+<!-- paper-scripts:begin managed-notifications -->
 ## Notifications
 
 - You may proactively notify the user about a useful completed result, a material blocker, or a requested milestone. If the user says "At the end send me a notification with ...", treat that as authorization to do so.
-- Use only `paper notify --title "TITLE" --message "MESSAGE" [--url "HTTPS_URL"]`. It always dispatches the trusted GitHub Actions notification workflow; do not call Pushover, a webhook, or the internal adapter directly.
-- The same command works locally and in cloud environments. It requires authenticated GitHub access and the installed workflow, but notification credentials remain only in the protected GitHub environments. Never inspect, request, print, add, or commit those credentials.
+- Use only `paper notify --title "TITLE" --message "MESSAGE" [--url "HTTPS_URL"]`. It always dispatches the trusted GitHub Actions notification workflow; do not call Discord, Pushover, a webhook, or the internal adapter directly.
+- Discord is the default delivery provider, but the command is provider-neutral. It works locally and in cloud environments with authenticated GitHub access. The Discord webhook stays in the protected `paper-notify` GitHub environment; never inspect, request, print, add, or commit it or any other provider credential.
 - A local path is not a notification URL. For a requested PDF handoff, generate `output/pdf/NAME.pdf` when that is this repository's output convention, and do not commit it. The current supported PDF-link mechanism is the private GitHub Actions preview artifact: after the normal preview workflow has completed, it produces `paper.pdf` and its trusted notifier uses a URL of the form `https://github.com/OWNER/REPOSITORY/actions/runs/RUN_ID/artifacts/ARTIFACT_ID`. For a custom notification, pass an already available HTTPS artifact URL with `--url`; there is no `paper` command that uploads an arbitrary `output/pdf/` file or converts its local path into a link.
 
 Example, once the preview artifact URL is available:
@@ -241,6 +242,7 @@ Example, once the preview artifact URL is available:
 paper notify --title "Paper update" --message "Revised PDF is ready." \
   --url "https://github.com/OWNER/REPOSITORY/actions/runs/RUN_ID/artifacts/ARTIFACT_ID"
 ```
+<!-- paper-scripts:end managed-notifications -->
 
 ## Tasks and resumption
 
@@ -513,7 +515,8 @@ COMMANDS
 
   paper configure-notifications [--device NAME] OWNER/REPO [OWNER/REPO ...]
       Prompt once for notification credentials and install/rotate them across
-      every selected repository's protected GitHub environments.
+      every selected repository's protected GitHub environment.
+      Discord is the default; use --provider pushover or webhook for legacy adapters.
 
   paper notify-test
       Send a test using the configured notification provider.

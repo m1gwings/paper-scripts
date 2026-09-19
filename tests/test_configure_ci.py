@@ -43,14 +43,16 @@ class ConfigureTest(unittest.TestCase):
             return {'deployment_branch_policy': {'protected_branches': False,
                                                   'custom_branch_policies': True}}
         configure_ci.configure_notifications(
-            ['owner/one', 'owner/two'], 'pushover', 'phone',
-            {'PAPER_PUSHOVER_USER_KEY': 'user', 'PAPER_PUSHOVER_APP_TOKEN': 'token'},
+            ['owner/one', 'owner/two'], 'discord', '',
+            {'DISCORD_WEBHOOK_URL': 'https://discord.com/api/webhooks/1/token'},
             call=api,
             secret_store=lambda *args: secrets.append(args),
             variable_store=lambda *args: variables.append(args))
-        self.assertEqual(len(secrets), 8)
-        self.assertEqual(len(variables), 8)
-        self.assertIn(('owner/one', 'paper-notify', 'PAPER_NOTIFY_PROVIDER', 'pushover'), variables)
+        self.assertEqual(len(secrets), 2)
+        self.assertEqual(len(variables), 4)
+        self.assertIn(('owner/one', 'paper-notify', 'PAPER_NOTIFY_PROVIDER', 'discord'), variables)
+        self.assertIn(('owner/one', 'paper-notify', 'DISCORD_WEBHOOK_URL',
+                       'https://discord.com/api/webhooks/1/token'), secrets)
 
     def test_bulk_notification_setup_validates_before_writes(self):
         with self.assertRaisesRegex(ValueError, 'OWNER/REPOSITORY'):
@@ -60,3 +62,6 @@ class ConfigureTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'All notification credentials'):
             configure_ci.configure_notifications(
                 ['owner/paper'], 'pushover', '', {'PAPER_PUSHOVER_USER_KEY': 'user'})
+        with self.assertRaisesRegex(ValueError, 'Discord HTTPS'):
+            configure_ci.configure_notifications(
+                ['owner/paper'], 'discord', '', {'DISCORD_WEBHOOK_URL': 'https://example.com/hook'})

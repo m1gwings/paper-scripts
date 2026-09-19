@@ -1,387 +1,371 @@
-# paper-scripts: local and cloud paper workflow
+# paper-scripts
 
-This README is the self-contained architecture and operating reference. It can
-be pasted into a new chat to explain the tools, command semantics, trust boundary,
-and recovery rules. It describes the implementation; a particular paper gains
-cloud support only after its generated workflows are installed on GitHub's default
-branch and its protected CI environments are configured.
+`paper` is a small command layer for writing LaTeX papers across a laptop,
+Codex, GitHub, and Overleaf. You work in terms of **start**, **commit**,
+**backup**, **sync**, **preview**, **notify**, and **publish**. Git branches,
+remotes, CI jobs, credentials, and reconciliation rules stay implementation
+details until they need attention.
 
-## Purpose and architecture
+The core promise is simple:
 
-Use the same `paper` commands on your laptop and in a cloud coding environment.
-Keep unfinished work on feature branches. Review a private PDF from your phone,
-then explicitly request publication to Overleaf. The laptop does not need to
-remain online for cloud work. No pull request is required for the paper lifecycle.
+- `paper commit` makes a local checkpoint.
+- `paper backup` copies committed work to GitHub and never touches Overleaf.
+- `paper publish` is the explicit boundary that makes work collaborative on
+  Overleaf.
 
-```text
-                           Phone
-                    review PDF / give instructions
-                              |
-                  cloud coding environment
-                  paper start / commit / backup
-                              |
-                              v
-Laptop <------------------- GitHub ----------------------+
-  |                    base + feature branches           |
-  | paper start/sync         |                           |
-  |                          +--> unprivileged preview   |
-  |                          |    -> private PDF artifact|
-  |                          |    -> phone notification |
-  |                          |                           |
-  |                    paper publish (cloud)             |
-  |                          |                           |
-  |                    privileged GitHub Actions         |
-  |                    fresh sync -> rebase -> publish   |
-  |                          |                           |
-  +-- paper publish (local) -+---------------------------+
-                             |
-                             v
-                          Overleaf
-                    collaborative paper
+## Architecture
+
+```mermaid
+flowchart LR
+    U[User or coding agent] -->|paper commands| P[paper CLI]
+    P -->|backup / cloud branch| G[Private GitHub repository]
+    P -->|local publish| O[Overleaf]
+    P -->|cloud sync or publish request| A[Trusted GitHub Actions]
+    A -->|fresh reconciliation and publish| O
+    G --> V[Unprivileged PDF preview]
+    V --> R[Private PDF artifact]
+    R --> N[Trusted notification workflow]
+    N --> D[Discord by default]
+    N -. optional legacy adapters .-> L[Pushover or generic webhook]
 ```
 
-- **Overleaf** is the collaborative publication target.
-- **GitHub** holds the base mirror, isolated feature branches, CI workflows, and
-  temporary private PDF artifacts. A GitHub backup is not Overleaf publication.
-- **The laptop** is another client, not a required gateway for cloud publication.
-- **The cloud coding environment** gets GitHub access, never the Overleaf token.
-- **GitHub Actions** performs privileged sync/publication using trusted scripts
-  and a dedicated Overleaf token held in a protected environment.
-- **Pushover** is an optional notification adapter. It can be replaced by an HTTPS
-  webhook or disabled without changing the Git workflow.
-- Nothing in the protocol depends on a particular OpenAI account. A replacement
-  coding account needs its own GitHub access and environment setup.
+The system is designed around five goals:
 
-## Repository and installation layout
+1. **One user-facing interface.** Local users and agents use `paper`; they do
+   not improvise lifecycle Git commands.
+2. **Explicit publication.** GitHub backup and PDF preview cannot publish to
+   Overleaf.
+3. **Fresh reconciliation.** Sync and publish fetch both remotes and refuse
+   unsafe divergence.
+4. **Narrow secrets.** Cloud agents never receive the Overleaf token or a
+   notification webhook.
+5. **Reviewable upgrades.** Every paper vendors a versioned runtime and
+   generated workflows. `paper init` updates them conservatively.
 
-The tooling repository is `m1gwings/paper-scripts`. A complete checkout normally
-lives in `~/.local/bin`, with `paper`, `paper-init`, `install.sh`, `lib/`,
-`templates/`, and `tests/`. Keep the helpers and templates beside the scripts;
-copying only the `paper` file is no longer a complete installation.
+## Repository model
 
-A paper repository contains:
+A normal paper has a collaborative base branch—usually `main` or `master`—and
+short-lived feature branches:
 
 ```text
-main.tex, content/, appendix/, ...       manuscript and existing project files
-AGENTS.md                              project-specific instructions
-notes/                                 research knowledge
-tasks/                                 resumable work records
-.paper/config.json                     non-secret project settings
-.paper/manifest.json                   generated-file ownership hashes/version
-.paper/WORKFLOW.md                      lifecycle instructions for coding agents
-.paper/runtime/                        pinned copy of paper and its helpers
-.github/workflows/paper-preview.yml     unprivileged build on branch pushes
-.github/workflows/paper-notify.yml      trusted notification after a preview
-.github/workflows/paper-publish.yml     trusted sync/publication on request
+overleaf/<base>    collaborative source of the paper
+github/<base>      private mirror and trusted workflow source
+github/<feature>   isolated work and backup
 ```
 
-The runtime is vendored into each paper so CI does not download a moving version
-of `paper-scripts` at execution time. Updating the central scripts does not silently
-upgrade every paper: run `paper init` and review its changes in each project.
+The base branch is discovered or configured; it is not hard-coded. A local
+checkout normally has `github` and `overleaf` remotes. A cloud checkout needs
+only GitHub access because privileged GitHub Actions owns Overleaf access.
 
-Local paper repositories use `github` and `overleaf` remotes. A cloud checkout
-needs `github`; its Overleaf access goes through CI. A normal GitHub clone starts
-with an `origin` remote: rename that to `github` once during environment setup.
+Generated infrastructure inside a paper looks like this:
 
-`<base>` is the actual collaborative branch, detected from Overleaf's cached
-HEAD/tracking refs locally and configured explicitly for cloud/CI. It is **not
-hard-coded to master**: it may be `main`, `master`, or another valid branch name.
-The generated workflows must be on GitHub's default branch. The publisher uses
-the configured base branch; the trusted workflow source is always the default
-branch. For the CMABs with RUM Feedback pilot, both are `main`.
+```text
+AGENTS.md                              paper and agent instructions
+.codex/config.toml                    trusted-project local Codex defaults
+.paper/config.json                    non-secret paper settings
+.paper/manifest.json                  generated-file version and hashes
+.paper/WORKFLOW.md                     concise lifecycle contract
+.paper/runtime/                        pinned paper-scripts runtime
+.github/workflows/paper-preview.yml    unprivileged PDF build
+.github/workflows/paper-notify.yml     trusted notifications
+.github/workflows/paper-publish.yml    trusted sync/publication
+notes/                                 reusable research knowledge
+tasks/                                 resumable task records
+```
 
-## Command semantics
+The runtime is vendored so a CI run never downloads a moving copy of
+`paper-scripts`. Updating this tooling repository does not silently change any
+paper; each paper is upgraded with `paper init`, reviewed, and committed.
 
-| Command | Meaning and side effects |
+## Command model
+
+| Command | Meaning |
 | --- | --- |
-| `paper start NAME` | Require a clean, attached working tree and no Git operation in progress; synchronize the collaborative base; create/switch to NAME; back it up on GitHub. Never publish to Overleaf. |
-| `paper commit "message"` | Stage all changes and create a local checkpoint. Push nowhere. Review files before committing; never stage credentials. |
-| `paper backup` | Push the current committed branch to GitHub using a normal push. Require a clean working tree. Refuse divergence instead of overwriting remote work. Overleaf is untouched. |
-| `paper sync` | Run from the base branch with a clean working tree. Reconcile GitHub and Overleaf into the local base. Local execution writes no remote; cloud execution asks CI to refresh the GitHub mirror first. |
-| `paper publish` | Require explicit user publication authorization, committed work, and no Git operation in progress. Reconcile fresh state, integrate the feature, back up on GitHub, and publish to Overleaf. Local and cloud execution are detailed below. |
-| `paper init` | Inside an existing Git repository, create research/task files and install or upgrade generated infrastructure. Preserve custom files/configuration. No remote creation, commit, or push. |
-| `paper-init OVERLEAF_ID OWNER/REPO [DIRECTORY]` | Create the two-remote project from Overleaf and a new private GitHub repository, then invoke `paper init`. Default directory: `paper`. For an existing directory, verify both remote identities before upgrading; never repoint them. |
-| `paper configure-ci [--environments-only]` | Create/verify default-branch-only environments and configure the paper's Overleaf publication credential. Requires GitHub administration access. |
-| `paper configure-notifications [--device NAME] OWNER/REPO [OWNER/REPO ...]` | Prompt once and install or rotate notification credentials across all selected papers' protected GitHub environments. |
-| `paper notify --title TITLE --message MESSAGE [--url HTTPS_URL]` | Dispatch the trusted GitHub Actions notification workflow; provider secrets never enter the calling environment. |
-| `paper notify-test` | Dispatch a simple notification test through GitHub Actions. |
-| `paper status` / `paper doctor` | Inspect repository state, remotes, tracking, tools, and cached divergence. Remote divergence is only as fresh as the last fetch. |
-| `paper build [ROOT.tex]` / `paper clean [ROOT.tex]` | Build or clean with local latexmk; default `main.tex`. Local build behavior is separate from the restricted CI preview build. |
-| `paper open` | Open the repository in VS Code. |
-| `paper abort` | Confirm the current non-base branch name, then delete it locally and from GitHub. Never modify Overleaf or the base. |
-| `paper clear-experiments` | Confirm `DELETE EXPERIMENTS`, then delete all non-base branches locally and on GitHub. Use cautiously: this includes any non-base branch in that repository. |
-| `paper gitignore` | Create the standard LaTeX ignore file only if absent. |
-| `paper task status [--all]` / `paper task delete ID ...` | Inspect task records or move selected records into recoverable trash after confirmation. No commits or pushes. |
-| `paper help` / `paper examples` | Show command help or sample workflows. |
+| `paper start NAME` | Synchronize the base, create `NAME`, and immediately back it up to GitHub. |
+| `paper commit "MESSAGE"` | Stage the paper repository and create a local checkpoint. Push nowhere. |
+| `paper backup` | Push the current committed branch to GitHub. Never touch Overleaf. |
+| `paper sync` | Reconcile GitHub and Overleaf into the local base. Run from a clean base branch. |
+| `paper publish` | Reconcile fresh state, integrate committed work, back it up, and publish to Overleaf. Requires explicit authorization. |
+| `paper init` | Create missing research files and install or upgrade generated infrastructure without overwriting custom content. |
+| `paper-init OVERLEAF_ID OWNER/REPO [DIRECTORY]` | Create a new private GitHub/Overleaf paper and then run `paper init`. |
+| `paper notify --title TITLE --message MESSAGE [--url HTTPS_URL]` | Dispatch the trusted notification workflow. The URL becomes a clickable Discord embed title. |
+| `paper notify-test` | Test the configured provider through GitHub Actions. |
+| `paper configure-ci [--environments-only]` | Create/verify protected environments and privately install the Overleaf credential. |
+| `paper configure-notifications [--provider PROVIDER] OWNER/REPO ...` | Prompt once and configure notifications for one or more papers. Discord is the default. |
+| `paper build [ROOT.tex]` / `paper clean [ROOT.tex]` | Build or clean locally with `latexmk`; default `main.tex`. |
+| `paper status` / `paper doctor` | Inspect branch, remotes, divergence, configuration, and tools. |
+| `paper abort` | Confirm and delete the current feature locally and on GitHub. Never touch the base or Overleaf. |
+| `paper clear-experiments` | Confirm and delete all non-base branches locally and on GitHub. |
+| `paper task status [--all]` / `paper task delete ID ...` | Inspect or recoverably remove task records. |
 
-A synchronization conflict stops `start` before a feature is created. If the
-initial feature backup fails after branch creation, the local feature remains
-recoverable; inspect status and retry the backup after resolving the cause.
+Run `paper help` for the complete command reference and `paper examples` for
+compact workflows.
 
-## Shared synchronization and publication invariants
+## Everyday local workflow
 
-`start`, `sync`, and local/CI `publish` use **one shared synchronization function**:
+For a small edit:
 
-1. Fetch both GitHub and Overleaf before changing the local base.
-2. Capture the exact GitHub base SHA for the later publication lease.
-3. Rebase the local base onto the fetched GitHub base, including remote work.
-4. Rebase that result onto the fetched Overleaf base, preserving linear history.
-5. Stop on conflicts; do not choose a side or discard changes automatically.
+```bash
+paper sync
+# edit and build
+paper commit "Clarify the stopping-time argument"
+paper publish
+```
 
-Local publication from a feature then reconciles the freshly fetched feature
-backup, rebases onto the synchronized base, backs up the feature, fast-forwards
-the local base, backs up the base, and pushes it to Overleaf. Publication from the
-base performs the same fresh synchronization and the two base pushes. Successful
-publication leaves the checkout on the base; feature branches are retained.
+For isolated work:
 
-The safety rules are:
+```bash
+paper start new-lower-bound
+# edit and build
+paper commit "Add the first lower-bound construction"
+paper backup
+# review more changes
+paper publish
+```
 
-- `commit` is local, `backup` writes GitHub only, and `publish` makes work collaborative.
-- Starting a feature does not publish it. Publication synchronizes again because
-  collaborators may edit while the feature is being developed.
-- Overleaf is **never force-pushed** by these commands.
-- A GitHub history rewrite required by rebasing uses an **explicit lease** tied to
-  the SHA captured before reconciliation. An editor's background fetch cannot
-  silently refresh that lease. A concurrent remote change causes rejection.
-- Dirty worktrees and existing merges/rebases stop synchronization/publication.
-- Destructive experiment deletion requires an exact typed confirmation.
-- A failed build, conflict, timeout, or rejected push is never reported as a
-  successful publication. Notification delivery does not determine write success.
-- Generated PDFs are never committed by preview generation. They expire as artifacts.
-- Credentials never belong in commits, `.paper/config.json`, Git URLs, logs, or chat.
+`paper start` synchronizes before creating the feature. `paper publish`
+synchronizes again because collaborators may have edited Overleaf while the
+feature was in progress. Successful publication returns to the base branch and
+keeps the feature branch for later inspection.
 
-**The two remote writes are not atomic.** GitHub may update before an Overleaf
-push fails. Inspect the failure; rerunning publication refreshes both remotes and
-reconciles again. Do not “fix” a race with an unconditional force push. A feature
-backup may also succeed before a later publication step fails.
+## Codex and cloud workflow
 
-## Local versus cloud execution
+`AGENTS.md` tells Codex to use the same `paper` lifecycle, to keep persistent
+research knowledge separate from task checkpoints, and to notify through
+`paper notify` only. The notification section is marker-managed: upgrades can
+refresh that small block while preserving repository-specific instructions.
 
-`PAPER_EXECUTION=local|cloud|auto` overrides local Git configuration
-`paper.execution`. Automatic mode chooses local when an Overleaf remote exists
-and cloud otherwise. Explicit `PAPER_EXECUTION=cloud` is recommended in disposable
-coding environments. A failed local login/network operation never silently turns
-into a cloud publication.
+In a cloud checkout, set:
 
-Cloud `start`/`sync` request a privileged CI synchronization and wait. CI reads
-Overleaf and refreshes the GitHub mirror; the client then fetches and updates its
-base. This closes the stale-GitHub gap without giving Overleaf credentials to the
-coding environment.
+```bash
+git config paper.execution cloud
+```
 
-Cloud `publish` backs up the committed branch, captures its exact SHA, and sends
-`operation`, `branch`, `sha`, and a unique request ID to `paper-publish.yml` on the
-**default branch** using `gh`. It waits for the matching workflow run, not merely
-for dispatch acceptance. CI checks that the branch still matches the requested
-SHA after fetching. Changed branches are refused and must be reviewed again.
-After success, the client refreshes its base and retained feature reference.
+Cloud `sync` and `publish` dispatch a workflow from GitHub's default branch and
+wait for the exact run identified by a unique request ID. The workflow checks
+that the reviewed branch still has the requested SHA, executes only trusted
+vendored infrastructure, and rejects feature changes to `.paper/` or
+`.github/`. The agent needs GitHub Contents write and Actions read/write access;
+it never needs Overleaf or notification credentials.
 
-One concurrency group serializes CI sync/publication. Running publication is not
-cancelled automatically, but GitHub may replace a pending run; the client reports
-that cancellation as a failure. A client timeout does not cancel the job: inspect
-Actions before retrying. Automatic duplicate publication is deliberately avoided.
+### Codex model configuration
 
-Cloud prerequisites: Git, Python 3, `gh`, the complete scripts installation (or
-vendored runtime), and GitHub access for Contents write plus Actions read/write.
-Connecting a chat app does not by itself establish those CLI permissions. Never
-provision the cloud coding environment with Overleaf or Pushover credentials.
+`paper init` generates `.codex/config.toml` with:
 
-## CI trust boundary
+```toml
+#:schema https://developers.openai.com/codex/config-schema.json
+model = "gpt-5.6-sol"
+```
 
-The preview build has read-only repository permissions, no publication/notification
-secrets, and no persisted checkout credential. It runs pdfLaTeX through
-`latexmk -norc -no-shell-escape`; project `.latexmkrc` is ignored. The Ubuntu TeX
-package set supports ordinary pdfLaTeX manuscripts; other engines/packages need
-an explicit workflow change.
+`gpt-5.6-sol` is the official identifier for GPT-5.6 Sol. The project file is a
+supported default for trusted repositories in the Codex desktop app, CLI, and
+IDE extension. **Codex cloud chats currently do not support a repository-level
+default model.** Choose Sol in the cloud model picker; the repository cannot
+enforce that choice today. See the official [Codex configuration
+documentation](https://developers.openai.com/codex/config-basic) and [model
+guide](https://developers.openai.com/codex/models).
 
-The privileged publisher checks out the workflow's immutable default-branch SHA
-and executes that trusted vendored runtime. It fetches paper content into a
-separate disposable repository with hooks and global Git configuration disabled.
-It does not compile LaTeX, run feature scripts, or load executable project config.
-It rejects changes to `.paper/` or `.github/` relative to the trusted revision
-before publishing. Infrastructure upgrades use the owner-controlled local path.
-The Overleaf token is passed through a host-restricted Askpass helper, not a URL.
+## Synchronization and branch safety
 
-Secrets are stored in **GitHub environments**, not repository-level secrets or
-agent environments:
+`start`, `sync`, and publication share the same reconciliation rules:
 
-| Environment | Allowed branch | Secrets | Variables |
-| --- | --- | --- | --- |
-| `paper-publish` | GitHub default branch only | `OVERLEAF_TOKEN`; provider credentials when enabled | `PAPER_NOTIFY_PROVIDER`, optional `PAPER_PUSHOVER_DEVICE` |
-| `paper-notify` | GitHub default branch only | Provider credentials only; no Overleaf token | `PAPER_NOTIFY_PROVIDER`, optional `PAPER_PUSHOVER_DEVICE` |
+1. Fetch GitHub and Overleaf before changing the base.
+2. Record the exact GitHub base SHA as a write lease.
+3. Rebase the local base onto the fetched GitHub base.
+4. Rebase that result onto the fetched Overleaf base.
+5. Stop on conflicts; never silently pick a side.
 
-Pushover credentials are `PAPER_PUSHOVER_USER_KEY` and `PAPER_PUSHOVER_APP_TOKEN`.
-Webhook credentials/endpoint use `PAPER_NOTIFY_WEBHOOK_URL`.
+Feature publication then reconciles the remote feature, rebases it onto the
+fresh base, backs it up, fast-forwards the base, backs up the base, and pushes
+to Overleaf. Base publication performs the corresponding base operations.
 
-The separate preview-notification workflow runs from the default branch after
-`Paper preview` completes. It reads GitHub run/artifact metadata and never executes
-feature source or downloads artifact contents. A manual run of `Paper preview
-notification` on the default branch sends a test message using the saved secrets.
-Publication sends a result notification after its write steps; notification failure
-cannot turn a successful publication into a failed write.
+Safety properties:
 
-Environment restrictions are not a substitute for protecting trusted source.
-Anyone able to modify the default branch or environment rules administers this
-boundary. Restrict cloud access to trusted infrastructure accordingly. Private
-repository environments require a GitHub plan supporting them (Pro/Team/Enterprise,
-including eligible Education benefits). Setup stops if unsupported; it does not
-fall back to exposing the Overleaf token through repository secrets.
+- Overleaf is never force-pushed.
+- Required GitHub history rewrites use an explicit lease captured before
+  reconciliation; concurrent updates are rejected.
+- Dirty worktrees, detached heads, and active Git operations stop lifecycle
+  commands.
+- A changed review SHA, build failure, conflict, timeout, or rejected push is
+  never reported as successful publication.
+- GitHub and Overleaf writes are not atomic. If a later write fails, inspect the
+  error and rerun the normal command; do not bypass the lease.
+- Generated PDFs, tokens, webhook URLs, and other credentials are never
+  committed.
 
-## Pushover and phone delivery
+## PDF previews and notifications
 
-The Pushover application (for example **Papers**) identifies the sender. Its app
-token and your **User Key** are different credentials. The User Key selects your
-account; it connects delivery to the devices registered under that account.
+Notifications are optional and deliberately small. Local and cloud callers use
+the same provider-neutral command:
 
-1. Install Pushover on the phone and sign in to the account whose User Key was
-   entered during setup. Allow notifications in the phone's system settings.
-2. Verify the phone is registered/enabled in that Pushover account. No separate
-   subscription to the Papers application or phone-specific token is needed.
-3. Leave `pushover_device` empty to send to all active account devices, or set it
-   to the exact registered name, such as `migwings-A25`, to request that device.
-4. Run `paper configure-ci` in each paper after changing its non-secret settings.
-5. Run `paper configure-notifications --device DEVICE OWNER/REPO ...` once to
-   install or rotate the Pushover credentials across every listed paper.
-6. After activating the workflows on the default branch, run `paper notify-test`
-   from any configured paper for a phone test.
+```bash
+paper notify --title "Proof audit complete" \
+  --message "The revised argument and checked PDF are ready." \
+  --url "https://github.com/OWNER/REPOSITORY/actions/runs/RUN_ID/artifacts/ARTIFACT_ID"
+```
 
-Pushover may fall back to all active devices if a requested device is invalid or
-has been disabled. Device selection is routing, not a credential/access boundary.
-The app's own message settings and phone notification permissions control sound
-and alerts. The registered device name is non-secret.
+The command dispatches the default-branch `paper-notify` workflow. Discord is
+the default backend. Its rich message contains the title, body, repository name,
+and an optional clickable HTTPS link. Agents never receive the webhook URL.
 
-Local and cloud callers use the same `paper notify` command. It dispatches the
-trusted default-branch GitHub Actions workflow and waits for the exact run. The
-workflow reads the configured provider/device and credentials from the protected
-`paper-notify` environment. Notification secrets are never copied into a local or
-Codex agent environment.
+The preview workflow compiles the configured root document without publication
+or notification secrets and uploads `paper.pdf` as a private GitHub artifact.
+The trusted follow-up workflow reads only GitHub run/artifact metadata and sends
+a notification linking directly to that artifact. Artifacts expire after 14
+days and require GitHub sign-in. A local `output/pdf/NAME.pdf` remains a local
+file; place requested PDFs there when that is the repository convention, but do
+not put a local path in `--url`. Use the generated preview artifact or another
+already available HTTPS artifact URL.
 
-Adapters are `none` (default), `pushover`, and `webhook`. Webhooks receive JSON
-`{title,message,url}` over HTTPS. Delivery has a 20-second timeout, rejects redirects,
-and does not print provider response bodies or credential-bearing URLs.
+### Configure Discord
 
-PDF notifications link to private GitHub artifacts. Sign in to GitHub to download
-`paper.pdf` directly, without ZIP extraction. Artifacts are retained for 14 days;
-this is not permanent/public PDF hosting. Phone viewing depends on the browser.
-There is no built-in credit-reset monitor or general coding-agent completion
-listener; callers invoke `paper notify` explicitly.
+1. Create or select a Discord server and the text channel that should receive
+   paper messages.
+2. Open **Channel Settings / Edit Channel → Integrations → Webhooks → New
+   Webhook**. In Discord layouts that expose webhooks at server level, use
+   **Server Settings → Integrations → Webhooks → New Webhook**, then select the
+   channel.
+3. Give it a recognizable name such as `Paper workflow`, choose the channel,
+   and select **Copy Webhook URL**.
+4. Never paste the URL into a paper, chat, log, or commit. From a private terminal,
+   run the following and paste it only at the hidden prompt:
 
-## Installation, configuration, and safe upgrades
+   ```bash
+   paper configure-notifications --provider discord \
+     OWNER/PAPER_ONE OWNER/PAPER_TWO
+   ```
 
-For a new tooling installation, when `~/.local/bin` is not already a checkout:
+   The helper stores `DISCORD_WEBHOOK_URL` once per repository in the protected
+   `paper-notify` GitHub Actions environment and sets
+   `PAPER_NOTIFY_PROVIDER=discord`. The publication workflow's notification job
+   uses that same environment. A repository or organization Actions secret with
+   the exact same name also resolves, but the environment secret is recommended
+   because its default-branch restriction is narrower.
+5. Commit the generated workflows to each repository's GitHub default branch,
+   run `paper configure-ci` once per paper if its environments are not already
+   configured, and test with `paper notify-test`.
+
+Discord incoming webhooks accept message content or rich embeds. This adapter
+uses a single rich embed, disables mentions, rejects redirects, and validates
+HTTPS links. See Discord's official [webhook API](https://docs.discord.com/developers/resources/webhook#execute-webhook)
+and [webhook setup guide](https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks).
+
+### Other providers and mobile use
+
+The provider abstraction also supports `webhook` for the existing generic JSON
+payload `{title,message,url}`, `pushover` for backward compatibility, and `none`
+to disable delivery. Pushover is no longer the default; it remains supported so
+existing installations do not lose a working route. Provider secrets retain
+their legacy names (`PAPER_NOTIFY_WEBHOOK_URL`, `PAPER_PUSHOVER_USER_KEY`, and
+`PAPER_PUSHOVER_APP_TOKEN`).
+
+For phone use, install Discord, enable notifications for the selected server and
+channel, and open the private artifact link while signed in to GitHub. Nothing
+else in the workflow depends on a phone.
+
+## Initialization and upgrades
+
+Inside an existing Git repository:
+
+```bash
+paper init
+```
+
+Infrastructure schema version 3 adds Discord, `.codex/config.toml`, and managed
+agent notification instructions. The initializer is idempotent:
+
+- missing generated files are restored;
+- known, unedited generated files are upgraded using manifest hashes;
+- unknown or edited generated-path collisions stop before any write;
+- custom JSON fields, research notes, task records, and repository-specific
+  `AGENTS.md` content are preserved;
+- only the marker-managed notification block in a custom `AGENTS.md` is updated;
+- version 2 `none`/`pushover` configurations migrate to the requested Discord
+  default while retaining legacy Pushover device metadata;
+- newer unsupported schema versions and symlinked generated paths are refused.
+
+Review the result before committing. A typical non-secret configuration is:
+
+```json
+{
+  "version": 3,
+  "base_branch": "main",
+  "overleaf_project_id": "YOUR_PROJECT_ID",
+  "root_tex": "main.tex",
+  "notify_provider": "discord",
+  "pushover_device": ""
+}
+```
+
+`root_tex` controls CI preview compilation. The project ID and base branch are
+discovered from the Overleaf remote when possible. Custom fields are preserved.
+
+For a new repository:
+
+```bash
+paper-init OVERLEAF_PROJECT_ID OWNER/REPOSITORY paper
+```
+
+This creates a private GitHub repository, verifies remote identities, installs
+the infrastructure, and pushes initial history. It never repoints an existing
+directory's remotes silently.
+
+## Secrets and trust boundary
+
+The generated environments are restricted to GitHub's default branch:
+
+| Environment | Secrets | Purpose |
+| --- | --- | --- |
+| `paper-publish` | `OVERLEAF_TOKEN` | Fresh synchronization and explicit publication. |
+| `paper-notify` | `DISCORD_WEBHOOK_URL` by default; legacy provider secret if selected | Manual, preview, and publication-result notifications. |
+
+`paper configure-ci` creates/verifies both environments before prompting for the
+Overleaf token. `paper configure-notifications` configures the selected provider
+for one or many repositories. Secret input is hidden and passed directly to
+GitHub; values are not printed. Private repository environments require a GitHub
+plan that supports them. The tooling refuses to fall back to a broader secret
+scope when that protection is unavailable.
+
+Protect the default branch and generated infrastructure. Anyone who can modify
+trusted workflow source or environment rules administers this boundary.
+
+## Installation
+
+The complete tooling checkout normally lives at `~/.local/bin`:
 
 ```bash
 git clone https://github.com/m1gwings/paper-scripts.git ~/.local/bin
 ~/.local/bin/install.sh
 ```
 
-For an existing installation, inspect its status and fast-forward from the tooling
-repository's `main`. Preserve local modifications and unrelated files; never use
-`reset --hard`, replace the directory, or remove an existing checkout just to
-upgrade. `install.sh` checks command availability and can add `~/.local/bin` to
-PATH; it does not install system packages. Reload the shell if PATH changed.
+Keep `paper`, `paper-init`, `lib/`, `templates/`, and `tests/` together. Copying
+only the `paper` executable is not a complete installation. `install.sh` checks
+dependencies and can add `~/.local/bin` to `PATH`; it does not install system
+packages.
 
-Requirements: Bash and Git; Python 3.9+ for initialization, task commands,
-notifications, and cloud support; `gh` for setup/cloud requests; `latexmk` and TeX
-for local builds. VS Code is optional. Basic local Git lifecycle operations remain
-Bash/Git operations.
+Requirements:
 
-Inside each existing paper, run `paper init` and review this non-secret config:
+- Bash and Git for the local lifecycle;
+- Python 3.9+ for initialization, tasks, notifications, and cloud support;
+- GitHub CLI (`gh`) for cloud dispatch and protected setup;
+- `latexmk` plus TeX for local builds;
+- VS Code only for the optional `paper open` command.
 
-```json
-{
-  "version": 2,
-  "base_branch": "main",
-  "overleaf_project_id": "YOUR_PROJECT_ID",
-  "root_tex": "main.tex",
-  "notify_provider": "pushover",
-  "pushover_device": "migwings-A25"
-}
-```
+When updating an existing checkout, inspect its status, preserve local work, and
+fast-forward normally. Do not replace the directory or use destructive reset
+commands to force an upgrade.
 
-The base and project ID are inferred from existing Overleaf refs/URL when available.
-Missing information must be configured before cloud use. `root_tex` controls the CI
-preview entry point; local `paper build` still takes its own optional argument.
+## Validation
 
-`paper init` records generated hashes in `.paper/manifest.json`. Repeated runs
-repair missing files and update known unedited generated files. Custom configuration
-fields, hand-written `AGENTS.md`, research notes, and task records are preserved.
-Edited/unmanaged workflow collisions, symlinked output paths, and newer unsupported
-schema versions stop the upgrade for review. Never hand-edit the manifest to
-bypass a collision. The schema version covers the format; hashes also detect
-runtime/template changes between releases with the same schema version.
-Untouched generated agent instructions can be upgraded; custom instructions remain
-user-owned. Add a reference to `.paper/WORKFLOW.md` to an existing custom AGENTS file.
-
-After review, commit the generated files to the paper's default branch, protect
-the trusted paths, and run `paper configure-ci` from a private terminal. Setup
-verifies branch restrictions before any hidden credential prompt. Use a dedicated
-Overleaf Git token for CI; keep the laptop's credential separate. Configure
-notifications for all papers in one batch with `paper configure-notifications`.
-Overleaf uses username `git` and the Git token as password. Tokens expire and must
-be rotated; never use your university/SSO password or paste a token into a chat.
-
-For a new paper, use `paper-init OVERLEAF_ID OWNER/REPO DIRECTORY`, then review the
-newly generated configuration and complete the same protected CI setup. Initial
-repository creation is distinct from publishing later manuscript edits.
-
-## Research notes, tasks, and agent instructions
-
-Keep reusable research knowledge in `notes/`, and execution checkpoints in
-`tasks/NNN_short_name/task.md`; link each record from `tasks/index.md`. Each record
-has one status (`queued`, `active`, `paused`, `blocked`, or `done`), steps, verification,
-and a next concrete action. `paper task status` reports declared metadata, not
-proof correctness. A checkpoint supports later resumption; it does not automatically
-restart a task after a quota limit or interruption.
-
-Task deletion requires the displayed folder names and moves records into a
-batch under `tasks/.trash/`, with the original index preserved. Restore selected
-folders and index rows manually; do not overwrite newer queue changes. Task
-commands do not modify manuscript/research files or commit anything.
-
-Coding agents should inspect project instructions and preserve existing work,
-use `paper` for repository lifecycle operations, and publish only on explicit user
-authorization. Raw Git is reserved for initial setup, tooling maintenance, and
-conflict recovery. Do not automatically resolve mathematical or textual conflicts.
-
-## Typical work and recovery
+The lightweight validation suite is:
 
 ```bash
-paper start lemma-fix
-# edit and verify
-paper commit "Clarify the lemma"
-paper backup
-# review the preview; then explicitly authorize publication
-paper publish
-# later, on another checkout's base branch
-paper sync
-```
-
-For a rebase conflict, inspect `git status`, resolve only understood conflicts,
-then `git add` the resolved files and `git rebase --continue`. To abandon that
-rebase, use `git rebase --abort`, then inspect `paper status`. Earlier successful
-steps may already have updated a local base or GitHub backup. Never assume a
-multi-step command was rolled back entirely. A failed cloud job leaves the local
-feature available; inspect its Actions run before retrying.
-
-## Tests and verification limits
-
-```bash
-python3 -m unittest discover -s tests -v
 bash -n paper paper-init install.sh
+python3 -m unittest discover -s tests -v
 ```
 
-Tests use real temporary Git repositories for local/CI synchronization, races,
-conflicts, and preservation, plus simulated cloud dispatch/notifications and a
-local TeX smoke test when installed. GitHub's tooling CI runs these checks. Live
-phone receipt, actual Overleaf writes, account permissions, and mobile PDF viewing
-require an end-to-end test for the configured paper; passing unit tests alone does
-not establish them.
-
-The CMAB pilot has passed a hosted build and direct PDF artifact upload. This
-fact does not imply that its privileged publication has been run. Consult the
-paper's current workflow checkpoint and Actions results for rollout status.
-
-Official references: [Pushover API](https://pushover.net/api),
-[GitHub environments](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments),
-[GitHub workflow events](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows),
-[Overleaf Git tokens](https://www.overleaf.com/learn/how-to/Git_integration_authentication_tokens).
+It covers command behavior, synchronization rules, generated-file ownership,
+cloud request matching, notification payloads, protected setup, and preview
+artifact generation. Hosted delivery, GitHub plan permissions, and real Overleaf
+writes remain integration checks and should use disposable or explicitly chosen
+projects.

@@ -5,6 +5,7 @@ import json
 import re
 import subprocess
 import sys
+import urllib.parse
 from cloud import repository
 from infrastructure import config
 
@@ -63,14 +64,25 @@ def set_variable(repo, environment, name, value):
 
 def configure_notifications(repositories, provider, device, credentials,
                             call=api, secret_store=store, variable_store=set_variable):
-    if provider not in ('pushover', 'webhook'):
-        raise ValueError('Notification provider must be pushover or webhook.')
+    if provider not in ('discord', 'pushover', 'webhook'):
+        raise ValueError('Notification provider must be discord, pushover, or webhook.')
+    if device and provider != 'pushover':
+        raise ValueError('--device is available only with the Pushover provider.')
     if device and not re.fullmatch(r'[A-Za-z0-9_-]{1,25}(?:,[A-Za-z0-9_-]{1,25})*', device):
         raise ValueError('Invalid Pushover device name.')
-    expected = ({'PAPER_PUSHOVER_USER_KEY', 'PAPER_PUSHOVER_APP_TOKEN'}
-                if provider == 'pushover' else {'PAPER_NOTIFY_WEBHOOK_URL'})
+    expected = {
+        'discord': {'DISCORD_WEBHOOK_URL'},
+        'pushover': {'PAPER_PUSHOVER_USER_KEY', 'PAPER_PUSHOVER_APP_TOKEN'},
+        'webhook': {'PAPER_NOTIFY_WEBHOOK_URL'},
+    }[provider]
     if set(credentials) != expected or any(not value for value in credentials.values()):
         raise ValueError('All notification credentials are required for bulk setup.')
+    if provider == 'discord':
+        parsed = urllib.parse.urlsplit(credentials['DISCORD_WEBHOOK_URL'])
+        if (parsed.scheme != 'https' or parsed.hostname not in ('discord.com', 'www.discord.com')
+                or not parsed.path.startswith('/api/webhooks/')
+                or parsed.username or parsed.password):
+            raise ValueError('DISCORD_WEBHOOK_URL must be a Discord HTTPS incoming-webhook URL.')
     selected = []
     for repo in repositories:
         if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repo):
@@ -82,11 +94,11 @@ def configure_notifications(repositories, provider, device, credentials,
     for repo in selected:
         default = call(f'repos/{repo}')['default_branch']
         environments(repo, default, call)
-        for environment in ['paper-publish', 'paper-notify']:
-            variable_store(repo, environment, 'PAPER_NOTIFY_PROVIDER', provider)
-            variable_store(repo, environment, 'PAPER_PUSHOVER_DEVICE', device if provider == 'pushover' else '')
-            for name, value in credentials.items():
-                secret_store(repo, environment, name, value)
+        environment = 'paper-notify'
+        variable_store(repo, environment, 'PAPER_NOTIFY_PROVIDER', provider)
+        variable_store(repo, environment, 'PAPER_PUSHOVER_DEVICE', device if provider == 'pushover' else '')
+        for name, value in credentials.items():
+            secret_store(repo, environment, name, value)
         print(f'{repo}: notification credentials configured.')
 
 
@@ -94,14 +106,15 @@ def notification_main(args):
     parser = argparse.ArgumentParser(
         prog='paper configure-notifications',
         description='Prompt once and configure protected notifications for multiple paper repositories.')
-    parser.add_argument('--provider', choices=['pushover', 'webhook'], default='pushover')
+    parser.add_argument('--provider', choices=['discord', 'pushover', 'webhook'], default='discord')
     parser.add_argument('--device', default='')
     parser.add_argument('repositories', nargs='+', metavar='OWNER/REPOSITORY')
     parsed = parser.parse_args(args)
-    if parsed.provider == 'pushover':
-        names = ['PAPER_PUSHOVER_USER_KEY', 'PAPER_PUSHOVER_APP_TOKEN']
-    else:
-        names = ['PAPER_NOTIFY_WEBHOOK_URL']
+    names = {
+        'discord': ['DISCORD_WEBHOOK_URL'],
+        'pushover': ['PAPER_PUSHOVER_USER_KEY', 'PAPER_PUSHOVER_APP_TOKEN'],
+        'webhook': ['PAPER_NOTIFY_WEBHOOK_URL'],
+    }[parsed.provider]
     print('Enter notification credentials once. Input is hidden and values are never logged.')
     credentials = {name: getpass.getpass(name + ': ') for name in names}
     configure_notifications(parsed.repositories, parsed.provider, parsed.device, credentials)
@@ -127,10 +140,10 @@ def main(args=None):
             return
         settings = config()
         provider = settings['notify_provider']
-        for name in ['paper-publish', 'paper-notify']:
-            for key, value in [('PAPER_NOTIFY_PROVIDER', provider),
-                               ('PAPER_PUSHOVER_DEVICE', settings.get('pushover_device', ''))]:
-                set_variable(repo, name, key, value)
+        for key, value in [('PAPER_NOTIFY_PROVIDER', provider),
+                           ('PAPER_PUSHOVER_DEVICE', settings.get('pushover_device', '')
+                            if provider == 'pushover' else '')]:
+            set_variable(repo, 'paper-notify', key, value)
         fields = [('OVERLEAF_TOKEN', ['paper-publish'])]
         print('Paste the Overleaf credential only into this hidden terminal prompt. Enter preserves an existing value.')
         for key, targets in fields:

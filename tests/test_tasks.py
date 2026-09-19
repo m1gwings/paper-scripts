@@ -42,7 +42,9 @@ class PaperTasksTest(unittest.TestCase):
         agents.write_text('Personal instructions\n')
         (self.root / 'tasks' / 'template.md').unlink()
         self.run_paper('init')
-        self.assertEqual(agents.read_text(), 'Personal instructions\n')
+        self.assertTrue(agents.read_text().startswith('Personal instructions\n'))
+        self.assertIn('paper-scripts:begin managed-notifications', agents.read_text())
+        self.assertIn('Discord is the default delivery provider', agents.read_text())
         self.assertTrue((self.root / 'tasks' / 'template.md').exists())
 
     def test_status_filters_counts_and_nested_directory(self):

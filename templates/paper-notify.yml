@@ -15,7 +15,7 @@ on:
       message:
         type: string
         required: true
-        default: Your paper workflow can send notifications to this phone.
+        default: Your paper workflow can send notifications to this Discord channel.
       url:
         type: string
         required: false
@@ -44,7 +44,8 @@ jobs:
         if: github.event_name == 'workflow_run'
         env:
           GH_TOKEN: ${{ github.token }}
-          PAPER_NOTIFY_PROVIDER: ${{ vars.PAPER_NOTIFY_PROVIDER || 'none' }}
+          PAPER_NOTIFY_PROVIDER: ${{ vars.PAPER_NOTIFY_PROVIDER || 'discord' }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           PAPER_PUSHOVER_DEVICE: ${{ vars.PAPER_PUSHOVER_DEVICE }}
           PAPER_PUSHOVER_USER_KEY: ${{ secrets.PAPER_PUSHOVER_USER_KEY }}
           PAPER_PUSHOVER_APP_TOKEN: ${{ secrets.PAPER_PUSHOVER_APP_TOKEN }}
@@ -53,7 +54,8 @@ jobs:
       - name: Send requested notification
         if: github.event_name == 'workflow_dispatch'
         env:
-          PAPER_NOTIFY_PROVIDER: ${{ vars.PAPER_NOTIFY_PROVIDER || 'none' }}
+          PAPER_NOTIFY_PROVIDER: ${{ vars.PAPER_NOTIFY_PROVIDER || 'discord' }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           PAPER_PUSHOVER_DEVICE: ${{ vars.PAPER_PUSHOVER_DEVICE }}
           PAPER_PUSHOVER_USER_KEY: ${{ secrets.PAPER_PUSHOVER_USER_KEY }}
           PAPER_PUSHOVER_APP_TOKEN: ${{ secrets.PAPER_PUSHOVER_APP_TOKEN }}
