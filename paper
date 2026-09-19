@@ -309,7 +309,7 @@ Link to supporting mathematics or audits instead of copying them. If delegating,
 TASK
 
     printf '\nPaper workflow initialized. Review the files before committing.\n'
-    printf 'Existing files were preserved; merge any desired workflow rules into an existing AGENTS.md manually.\n'
+    printf 'Existing files were preserved; the managed notification block in AGENTS.md was refreshed when needed.\n'
 }
 
 task_command() {
