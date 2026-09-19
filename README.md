@@ -240,7 +240,9 @@ already available HTTPS artifact URL.
    `PAPER_NOTIFY_PROVIDER=discord`. The publication workflow's notification job
    uses that same environment. A repository or organization Actions secret with
    the exact same name also resolves, but the environment secret is recommended
-   because its default-branch restriction is narrower.
+   because its default-branch restriction is narrower. Webhook URLs copied with
+   Discord's legacy `discordapp.com` hostname are accepted and stored using the
+   current `discord.com` hostname, avoiding a credential-bearing redirect.
 5. Commit the generated workflows to each repository's GitHub default branch,
    run `paper configure-ci` once per paper if its environments are not already
    configured, and test with `paper notify-test`.

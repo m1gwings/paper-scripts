@@ -54,6 +54,26 @@ class ConfigureTest(unittest.TestCase):
         self.assertIn(('owner/one', 'paper-notify', 'DISCORD_WEBHOOK_URL',
                        'https://discord.com/api/webhooks/1/token'), secrets)
 
+    def test_bulk_notification_setup_normalizes_legacy_discord_domain(self):
+        secrets = []
+        def api(path, body=None, method=None):
+            if path == 'repos/owner/paper':
+                return {'default_branch': 'main'}
+            if path.endswith('environments?per_page=100'):
+                return {'environments': [{'name': 'paper-publish'}, {'name': 'paper-notify'}]}
+            if 'deployment-branch-policies?' in path:
+                return {'branch_policies': [{'name': 'main', 'type': 'branch'}]}
+            return {'deployment_branch_policy': {'protected_branches': False,
+                                                  'custom_branch_policies': True}}
+        configure_ci.configure_notifications(
+            ['owner/paper'], 'discord', '',
+            {'DISCORD_WEBHOOK_URL': 'https://discordapp.com/api/webhooks/1/token'},
+            call=api,
+            secret_store=lambda *args: secrets.append(args),
+            variable_store=lambda *args: None)
+        self.assertIn(('owner/paper', 'paper-notify', 'DISCORD_WEBHOOK_URL',
+                       'https://discord.com/api/webhooks/1/token'), secrets)
+
     def test_bulk_notification_setup_validates_before_writes(self):
         with self.assertRaisesRegex(ValueError, 'OWNER/REPOSITORY'):
             configure_ci.configure_notifications(

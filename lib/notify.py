@@ -13,17 +13,25 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         return None
 
 
+def discord_webhook_url(value):
+    """Validate a Discord webhook URL and canonicalize Discord's legacy host."""
+    parsed = urllib.parse.urlsplit(value.strip())
+    if (parsed.scheme != 'https'
+            or parsed.hostname not in ('discord.com', 'www.discord.com', 'discordapp.com')
+            or not parsed.path.startswith('/api/webhooks/')
+            or parsed.username or parsed.password):
+        raise ValueError('DISCORD_WEBHOOK_URL must be a Discord HTTPS incoming-webhook URL.')
+    if parsed.hostname == 'discordapp.com':
+        parsed = parsed._replace(netloc='discord.com')
+    return urllib.parse.urlunsplit(parsed)
+
+
 def send(provider, title, message, url='', opener=None, device=None):
     if provider == 'none':
         return False
     payload = {'title': title, 'message': message, 'url': url}
     if provider == 'discord':
-        endpoint = os.environ.get('DISCORD_WEBHOOK_URL', '')
-        parsed = urllib.parse.urlsplit(endpoint)
-        if (parsed.scheme != 'https' or parsed.hostname not in ('discord.com', 'www.discord.com')
-                or not parsed.path.startswith('/api/webhooks/')
-                or parsed.username or parsed.password):
-            raise ValueError('DISCORD_WEBHOOK_URL must be a Discord HTTPS incoming-webhook URL.')
+        endpoint = discord_webhook_url(os.environ.get('DISCORD_WEBHOOK_URL', ''))
         if len(title) > 256 or len(message) > 2048:
             raise ValueError('Discord titles are limited to 256 characters and messages to 2048.')
         embed = {'title': title, 'description': message, 'color': 0x5865F2}

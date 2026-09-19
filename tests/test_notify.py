@@ -49,6 +49,18 @@ class NotifyTest(unittest.TestCase):
                          'https://github.com/owner/paper/actions/runs/1/artifacts/2')
         self.assertNotIn('private-token', captured[0].full_url.rsplit('/', 1)[0])
 
+    def test_discord_legacy_domain_is_canonicalized_without_redirect(self):
+        captured = []
+        def opener(request, **kwargs):
+            captured.append(request)
+            return io.BytesIO(b'')
+        with patch.dict(os.environ, {
+                'DISCORD_WEBHOOK_URL':
+                'https://discordapp.com/api/webhooks/123/private-token'}, clear=True):
+            self.assertTrue(notify.send('discord', 'Title', 'Message', opener=opener))
+        self.assertEqual(captured[0].full_url,
+                         'https://discord.com/api/webhooks/123/private-token')
+
     def test_discord_requires_official_webhook_and_https_link(self):
         with patch.dict(os.environ, DISCORD_WEBHOOK_URL='https://example.com/api/webhooks/1/token'):
             with self.assertRaises(ValueError):

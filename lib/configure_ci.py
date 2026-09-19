@@ -5,9 +5,9 @@ import json
 import re
 import subprocess
 import sys
-import urllib.parse
 from cloud import repository
 from infrastructure import config
+from notify import discord_webhook_url
 
 
 def api(path, body=None, method=None):
@@ -78,11 +78,9 @@ def configure_notifications(repositories, provider, device, credentials,
     if set(credentials) != expected or any(not value for value in credentials.values()):
         raise ValueError('All notification credentials are required for bulk setup.')
     if provider == 'discord':
-        parsed = urllib.parse.urlsplit(credentials['DISCORD_WEBHOOK_URL'])
-        if (parsed.scheme != 'https' or parsed.hostname not in ('discord.com', 'www.discord.com')
-                or not parsed.path.startswith('/api/webhooks/')
-                or parsed.username or parsed.password):
-            raise ValueError('DISCORD_WEBHOOK_URL must be a Discord HTTPS incoming-webhook URL.')
+        credentials = dict(credentials)
+        credentials['DISCORD_WEBHOOK_URL'] = discord_webhook_url(
+            credentials['DISCORD_WEBHOOK_URL'])
     selected = []
     for repo in repositories:
         if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repo):
