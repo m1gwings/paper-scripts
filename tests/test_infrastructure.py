@@ -63,6 +63,10 @@ class InfrastructureTest(test_workflow.WorkflowTest):
         self.assertIn('Keep this paragraph.', text)
         self.assertIn('Keep this too.', text)
         self.assertIn('paper-scripts:begin managed-notifications', text)
+        self.assertIn('## Codex Cloud GitHub access', text)
+        self.assertIn('expect `GH_TOKEN` to be configured as a secret environment variable', text)
+        self.assertIn('token is available in their Google Drive', text)
+        self.assertIn('Local Codex clients and other local agents', text)
         self.assertIn('Discord is the default delivery provider', text)
         before = text
         self.paper('init')
