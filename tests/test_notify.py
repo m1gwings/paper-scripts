@@ -47,6 +47,8 @@ class NotifyTest(unittest.TestCase):
         self.assertEqual(payload['embeds'][0]['footer']['text'], 'owner/paper')
         self.assertEqual(payload['embeds'][0]['url'],
                          'https://github.com/owner/paper/actions/runs/1/artifacts/2')
+        self.assertEqual(captured[0].get_header('User-agent'),
+                         'DiscordBot (https://github.com/m1gwings/paper-scripts, 1)')
         self.assertNotIn('private-token', captured[0].full_url.rsplit('/', 1)[0])
 
     def test_discord_legacy_domain_is_canonicalized_without_redirect(self):

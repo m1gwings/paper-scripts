@@ -248,8 +248,9 @@ already available HTTPS artifact URL.
    configured, and test with `paper notify-test`.
 
 Discord incoming webhooks accept message content or rich embeds. This adapter
-uses a single rich embed, disables mentions, rejects redirects, and validates
-HTTPS links. See Discord's official [webhook API](https://docs.discord.com/developers/resources/webhook#execute-webhook)
+uses a single rich embed, disables mentions, rejects redirects, supplies
+Discord's required API client identification, and validates HTTPS links. See
+Discord's official [webhook API](https://docs.discord.com/developers/resources/webhook#execute-webhook)
 and [webhook setup guide](https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks).
 
 ### Other providers and mobile use

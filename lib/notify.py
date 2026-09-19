@@ -71,8 +71,11 @@ def send(provider, title, message, url='', opener=None, device=None):
         content_type = 'application/json'
     else:
         raise ValueError('Unknown notification provider; use discord, webhook, pushover, or none.')
-    request = urllib.request.Request(endpoint, data=data,
-                                     headers={'Content-Type': content_type}, method='POST')
+    headers = {'Content-Type': content_type}
+    if provider == 'discord':
+        # Discord may block HTTP API clients that omit its required User-Agent.
+        headers['User-Agent'] = 'DiscordBot (https://github.com/m1gwings/paper-scripts, 1)'
+    request = urllib.request.Request(endpoint, data=data, headers=headers, method='POST')
     # Never follow a redirect carrying credentials; never echo server error bodies/URLs.
     opener = opener or urllib.request.build_opener(NoRedirect()).open
     try:
