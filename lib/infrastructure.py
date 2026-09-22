@@ -13,6 +13,8 @@ LIBRARIES = ['notify.py', 'cloud.py', 'ci.py', 'preview.py', 'preview_notify.py'
 WORKFLOWS = ['paper-preview.yml', 'paper-publish.yml', 'paper-notify.yml']
 AGENT_BLOCK_BEGIN = '<!-- paper-scripts:begin managed-notifications -->'
 AGENT_BLOCK_END = '<!-- paper-scripts:end managed-notifications -->'
+AGENT_CLEANUP_BEGIN = '<!-- paper-scripts:begin managed-feature-cleanup -->'
+AGENT_CLEANUP_END = '<!-- paper-scripts:end managed-feature-cleanup -->'
 
 
 def git(*args):
@@ -96,7 +98,7 @@ def generated():
 # Codex cloud chats currently do not accept a repository-level default model.
 model = "gpt-5.6-sol"
 '''
-    files['.paper/WORKFLOW.md'] = b'''# Paper lifecycle\n\nUse paper start NAME before isolated work, paper commit for local checkpoints,\npaper backup for GitHub backup, and paper publish only on explicit publication\nauthorization. Use paper sync from the base branch when returning to a machine.\nUse paper commands for lifecycle operations; raw Git is reserved for resolving\nconflicts or repairing the implementation. Never commit credentials.\n\nUse paper notify for notifications. It dispatches the trusted GitHub Actions\nworkflow; local and cloud agents never receive provider credentials.\n\nCloud clients need GitHub access (Contents write and Actions read/write),\nPython 3, Git, and gh. Set PAPER_EXECUTION=cloud or git config paper.execution cloud.\nNever provide an Overleaf or notification token to the cloud client. See the setup guide.\n'''
+    files['.paper/WORKFLOW.md'] = b'''# Paper lifecycle\n\nUse paper start NAME before isolated work, paper commit for local checkpoints,\npaper backup for GitHub backup, and paper publish only on explicit publication\nauthorization. Use paper sync from the base branch when returning to a machine.\nAfter publishing feature work, verify that the remaining non-base branches are\nintegrated, then remove them with paper clear-feature-branches. Use paper commands\nfor lifecycle operations; raw Git is reserved for resolving conflicts or repairing\nthe implementation. Never commit credentials.\n\nUse paper notify for notifications. It dispatches the trusted GitHub Actions\nworkflow; local and cloud agents never receive provider credentials.\n\nCloud clients need GitHub access (Contents write and Actions read/write),\nPython 3, Git, and gh. Set PAPER_EXECUTION=cloud or git config paper.execution cloud.\nNever provide an Overleaf or notification token to the cloud client. See the setup guide.\n'''
     return files
 
 
@@ -105,33 +107,52 @@ def agent_template():
     return source.split("create_init_file AGENTS.md <<'AGENTS'\n", 1)[1].split('\nAGENTS\n', 1)[0] + '\n'
 
 
-def managed_agent_block(template):
-    start = template.index(AGENT_BLOCK_BEGIN)
-    end = template.index(AGENT_BLOCK_END, start) + len(AGENT_BLOCK_END)
+def managed_agent_block(template, begin, end_marker):
+    start = template.index(begin)
+    end = template.index(end_marker, start) + len(end_marker)
     return template[start:end] + '\n'
 
 
 def merge_agent_instructions(current, template):
     if current == template:
         return template
-    block = managed_agent_block(template)
+    block = managed_agent_block(template, AGENT_BLOCK_BEGIN, AGENT_BLOCK_END)
     if AGENT_BLOCK_BEGIN in current:
         start = current.index(AGENT_BLOCK_BEGIN)
         end = current.index(AGENT_BLOCK_END, start) + len(AGENT_BLOCK_END)
         suffix = current[end:]
         if suffix.startswith('\n'):
             suffix = suffix[1:]
-        return current[:start] + block + suffix
-    heading = '## Notifications\n'
-    start = current.find(heading)
-    if start >= 0:
-        end = current.find('\n## ', start + len(heading))
-        end = len(current) if end < 0 else end + 1
-        old = current[start:end]
-        if 'paper notify --title' in old and 'protected GitHub' in old:
-            return current[:start] + block + current[end:]
+        current = current[:start] + block + suffix
+    else:
+        heading = '## Notifications\n'
+        start = current.find(heading)
+        if start >= 0:
+            end = current.find('\n## ', start + len(heading))
+            end = len(current) if end < 0 else end + 1
+            old = current[start:end]
+            if 'paper notify --title' in old and 'protected GitHub' in old:
+                current = current[:start] + block + current[end:]
+        if AGENT_BLOCK_BEGIN not in current:
+            separator = '' if not current or current.endswith('\n\n') else ('\n' if current.endswith('\n') else '\n\n')
+            current = current + separator + block
+
+    cleanup = managed_agent_block(template, AGENT_CLEANUP_BEGIN, AGENT_CLEANUP_END)
+    if AGENT_CLEANUP_BEGIN in current:
+        start = current.index(AGENT_CLEANUP_BEGIN)
+        end = current.index(AGENT_CLEANUP_END, start) + len(AGENT_CLEANUP_END)
+        suffix = current[end:]
+        if suffix.startswith('\n'):
+            suffix = suffix[1:]
+        return current[:start] + cleanup + suffix
+
+    lines = current.splitlines(keepends=True)
+    for index, line in enumerate(lines):
+        if '.paper/WORKFLOW.md' in line and 'paper publish' in line:
+            lines.insert(index + 1, cleanup)
+            return ''.join(lines)
     separator = '' if not current or current.endswith('\n\n') else ('\n' if current.endswith('\n') else '\n\n')
-    return current + separator + block
+    return current + separator + cleanup
 
 
 def plan():

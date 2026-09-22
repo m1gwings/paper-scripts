@@ -203,6 +203,9 @@ init_paper() {
 ## Project and editing
 
 - Follow `.paper/WORKFLOW.md` for repository lifecycle operations. Use `paper start`, `paper backup`, `paper sync`, and `paper publish`; publish only when explicitly authorized.
+<!-- paper-scripts:begin managed-feature-cleanup -->
+- After a feature branch has been published, do not leave it pending: verify that every listed non-base branch has been integrated, then run `paper clear-feature-branches` to remove published feature branches locally and from GitHub.
+<!-- paper-scripts:end managed-feature-cleanup -->
 - Inspect the existing layout, notation, macros, and build instructions before editing.
 - Keep research knowledge (derivations, conjectures, examples, reusable proof audits) in `notes/`. Keep task management, checkpoints, and revision-specific verification in `tasks/`; link between them instead of duplicating content.
 - Preserve pre-existing user edits. Make the smallest change sufficient for correctness; avoid unrelated stylistic changes.
@@ -316,7 +319,7 @@ Link to supporting mathematics or audits instead of copying them. If delegating,
 TASK
 
     printf '\nPaper workflow initialized. Review the files before committing.\n'
-    printf 'Existing files were preserved; the managed notification block in AGENTS.md was refreshed when needed.\n'
+    printf 'Existing files were preserved; managed paper-scripts blocks in AGENTS.md were refreshed when needed.\n'
 }
 
 task_command() {
@@ -485,7 +488,7 @@ MODEL
 
   github/<base>     private mirror/backup
 
-  github/<feature>  experimental branches
+  github/<feature>  feature branches
 
 
 MENTAL MODEL
@@ -575,11 +578,11 @@ COMMANDS
       Requires typing its exact name.
       Never touches Overleaf.
 
-  paper clear-experiments
+  paper clear-feature-branches
       Delete ALL non-base branches locally and from GitHub.
       Requires typing:
 
-          DELETE EXPERIMENTS
+          DELETE FEATURE BRANCHES
 
       Never touches Overleaf.
 
@@ -685,9 +688,9 @@ EXAMPLE WORKFLOWS
     paper abort
 
 
-6. REMOVE ALL LEFTOVER EXPERIMENTS
+6. REMOVE ALL PUBLISHED FEATURE BRANCHES
 
-    paper clear-experiments
+    paper clear-feature-branches
 
 
 7. ADD .gitignore TO AN EXISTING PAPER
@@ -1044,7 +1047,7 @@ case "$CMD" in
         echo "Overleaf was not modified."
         ;;
 
-    clear-experiments)
+    clear-feature-branches)
         no_git_operation
         clean
 
@@ -1074,7 +1077,7 @@ case "$CMD" in
         )
 
         [[ ${#ALL[@]} -gt 0 ]] || {
-            echo "No experimental branches found."
+            echo "No feature branches found."
             exit 0
         }
 
@@ -1085,9 +1088,9 @@ case "$CMD" in
         echo "Overleaf and '$BASE' will NOT be modified."
         echo
 
-        read -r -p "Type 'DELETE EXPERIMENTS' to confirm: " CONFIRM
+        read -r -p "Type 'DELETE FEATURE BRANCHES' to confirm: " CONFIRM
 
-        [[ "$CONFIRM" == "DELETE EXPERIMENTS" ]] || {
+        [[ "$CONFIRM" == "DELETE FEATURE BRANCHES" ]] || {
             echo "Cancelled."
             exit 0
         }
@@ -1100,7 +1103,7 @@ case "$CMD" in
             git branch -D "$B"
         done
 
-        echo "All experimental branches removed."
+        echo "All feature branches removed."
         ;;
 
     gitignore)

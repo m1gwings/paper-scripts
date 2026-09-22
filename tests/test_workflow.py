@@ -35,9 +35,10 @@ class WorkflowTest(unittest.TestCase):
         self.assertEqual(r.returncode == 0, ok, r.stdout + r.stderr)
         return r.stdout.strip()
 
-    def paper(self, *args, ok=True, env=None):
+    def paper(self, *args, ok=True, env=None, input_text=None):
         r = subprocess.run(['bash', str(SCRIPT), *args], cwd=self.repo,
-                           env=env or self.env, text=True, capture_output=True)
+                           env=env or self.env, text=True, capture_output=True,
+                           input=input_text)
         self.assertEqual(r.returncode == 0, ok, r.stdout + r.stderr)
         return r.stdout + r.stderr
 
@@ -118,6 +119,22 @@ class WorkflowTest(unittest.TestCase):
         self.commit(self.repo, 'feature.tex', 'feature\n')
         self.paper('publish')
         self.assertEqual(self.git('branch', '--show-current'), 'collaboration')
+
+    def test_clear_feature_branches_replaces_clear_experiments(self):
+        self.paper('start', 'published-feature')
+        self.git('switch', 'master')
+        self.git('branch', 'local-feature')
+        self.git('push', '-q', 'github', 'master:refs/heads/remote-feature')
+
+        self.paper('clear-experiments', ok=False)
+        output = self.paper('clear-feature-branches',
+                            input_text='DELETE FEATURE BRANCHES\n')
+
+        self.assertIn('All feature branches removed.', output)
+        self.assertEqual(self.git('for-each-ref', '--format=%(refname:short)',
+                                  'refs/heads/'), 'master')
+        self.assertEqual(self.git('for-each-ref', '--format=%(refname:short)',
+                                  'refs/heads/', cwd=self.root / 'github'), 'master')
 
 
 if __name__ == '__main__':

@@ -95,7 +95,7 @@ paper; each paper is upgraded with `paper init`, reviewed, and committed.
 | `paper build [ROOT.tex]` / `paper clean [ROOT.tex]` | Build or clean locally with `latexmk`; default `main.tex`. |
 | `paper status` / `paper doctor` | Inspect branch, remotes, divergence, configuration, and tools. |
 | `paper abort` | Confirm and delete the current feature locally and on GitHub. Never touch the base or Overleaf. |
-| `paper clear-experiments` | Confirm and delete all non-base branches locally and on GitHub. |
+| `paper clear-feature-branches` | Confirm and delete all non-base branches locally and on GitHub. |
 | `paper task status [--all]` / `paper task delete ID ...` | Inspect or recoverably remove task records. |
 
 Run `paper help` for the complete command reference and `paper examples` for
@@ -126,14 +126,17 @@ paper publish
 `paper start` synchronizes before creating the feature. `paper publish`
 synchronizes again because collaborators may have edited Overleaf while the
 feature was in progress. Successful publication returns to the base branch and
-keeps the feature branch for later inspection.
+keeps the feature branch until it is explicitly cleaned up. After verifying
+that all listed non-base branches have been integrated, run
+`paper clear-feature-branches` to remove them locally and on GitHub.
 
 ## Codex and cloud workflow
 
 `AGENTS.md` tells Codex to use the same `paper` lifecycle, to keep persistent
 research knowledge separate from task checkpoints, and to notify through
-`paper notify` only. The notification section is marker-managed: upgrades can
-refresh that small block while preserving repository-specific instructions.
+`paper notify` only. The notification and published-feature cleanup reminders
+are marker-managed: upgrades can refresh those small blocks while preserving
+repository-specific instructions.
 
 In a cloud checkout, set:
 
@@ -290,7 +293,8 @@ agent notification instructions. The initializer is idempotent:
 - unknown or edited generated-path collisions stop before any write;
 - custom JSON fields, research notes, task records, and repository-specific
   `AGENTS.md` content are preserved;
-- only the marker-managed notification block in a custom `AGENTS.md` is updated;
+- only marker-managed notification and feature-cleanup blocks are updated in a
+  custom `AGENTS.md`;
 - version 2 `none`/`pushover` configurations migrate to the requested Discord
   default while retaining legacy Pushover device metadata;
 - newer unsupported schema versions and symlinked generated paths are refused.

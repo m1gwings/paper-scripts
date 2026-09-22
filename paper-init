@@ -263,7 +263,7 @@ git remote -v
 echo
 echo "Safety model:"
 echo "    Overleaf = collaborative publication target"
-echo "    GitHub   = private mirror / experimental branches"
+echo "    GitHub   = private mirror / feature branches"
 
 echo
 bash "$SCRIPT_DIR/paper" init

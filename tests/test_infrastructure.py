@@ -68,6 +68,8 @@ class InfrastructureTest(test_workflow.WorkflowTest):
         self.assertIn('token is available in their Google Drive', text)
         self.assertIn('Local Codex clients and other local agents', text)
         self.assertIn('Discord is the default delivery provider', text)
+        self.assertIn('paper-scripts:begin managed-feature-cleanup', text)
+        self.assertIn('paper clear-feature-branches', text)
         before = text
         self.paper('init')
         self.assertEqual(agents.read_text(), before)
