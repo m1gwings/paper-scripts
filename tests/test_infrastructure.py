@@ -70,9 +70,28 @@ class InfrastructureTest(test_workflow.WorkflowTest):
         self.assertIn('Discord is the default delivery provider', text)
         self.assertIn('paper-scripts:begin managed-feature-cleanup', text)
         self.assertIn('paper clear-feature-branches', text)
+        self.assertIn('paper-scripts:begin managed-tasking', text)
+        self.assertIn('## Tasks and resumption', text)
+        self.assertIn('tasks/NNN_short_name/task.md', text)
+        self.assertIn('## Token use and delegation', text)
         before = text
         self.paper('init')
         self.assertEqual(agents.read_text(), before)
+
+    def test_unmarked_generated_tasking_section_is_migrated(self):
+        agents = self.repo / 'AGENTS.md'
+        agents.write_text(
+            '# Personal instructions\n\n'
+            '## Tasks and resumption\n\n'
+            '- Before substantial work, use `tasks/NNN_short_name/task.md`.\n\n'
+            '## Token use and delegation\n\n'
+            '- The main agent owns the task checkpoint.\n\n'
+            '## Personal section\n\nKeep this too.\n')
+        self.paper('init')
+        text = agents.read_text()
+        self.assertEqual(text.count('## Tasks and resumption'), 1)
+        self.assertIn('paper-scripts:begin managed-tasking', text)
+        self.assertIn('Keep this too.', text)
 
     def test_custom_workflow_and_symlinks_not_overwritten(self):
         workflows = self.repo / '.github/workflows'

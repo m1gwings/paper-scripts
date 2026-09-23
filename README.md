@@ -134,9 +134,9 @@ that all listed non-base branches have been integrated, run
 
 `AGENTS.md` tells Codex to use the same `paper` lifecycle, to keep persistent
 research knowledge separate from task checkpoints, and to notify through
-`paper notify` only. The notification and published-feature cleanup reminders
-are marker-managed: upgrades can refresh those small blocks while preserving
-repository-specific instructions.
+`paper notify` only. The notification, published-feature cleanup, and tasking
+instructions are marker-managed: upgrades can refresh those blocks while
+preserving repository-specific instructions.
 
 In a cloud checkout, set:
 
@@ -295,8 +295,8 @@ agent notification instructions. The initializer is idempotent:
 - unknown or edited generated-path collisions stop before any write;
 - custom JSON fields, research notes, task records, and repository-specific
   `AGENTS.md` content are preserved;
-- only marker-managed notification and feature-cleanup blocks are updated in a
-  custom `AGENTS.md`;
+- only marker-managed notification, feature-cleanup, and tasking blocks are
+  updated in a custom `AGENTS.md`;
 - version 2 `none`/`pushover` configurations migrate to the requested Discord
   default while retaining legacy Pushover device metadata;
 - newer unsupported schema versions and symlinked generated paths are refused.
@@ -324,8 +324,10 @@ paper-init OVERLEAF_PROJECT_ID OWNER/REPOSITORY paper
 ```
 
 This creates a private GitHub repository, verifies remote identities, installs
-the infrastructure, and pushes initial history. It never repoints an existing
-directory's remotes silently.
+the infrastructure through the canonical `paper init` implementation, commits
+that bootstrap, and pushes the complete initial history. It never repoints an
+existing directory's remotes silently. Running `paper init` directly retains
+the conservative upgrade path for papers that already exist.
 
 ## Secrets and trust boundary
 

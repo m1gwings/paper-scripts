@@ -88,11 +88,14 @@ WHAT THE COMMAND DOES
     4. calls the Overleaf remote 'overleaf';
     5. detects the Overleaf default branch automatically;
     6. creates a standard .gitignore if none exists;
-    7. creates a PRIVATE GitHub repository;
-    8. calls the GitHub remote 'github';
-    9. pushes the initial history to GitHub;
-   10. configures the base branch to track github/<base>;
-   11. configures plain 'git push' to prefer GitHub.
+    7. runs 'paper init' to install the canonical paper instructions,
+       task queue, and versioned workflow infrastructure;
+    8. commits that generated bootstrap when needed;
+    9. creates a PRIVATE GitHub repository;
+   10. calls the GitHub remote 'github';
+   11. pushes the complete initial history to GitHub;
+   12. configures the base branch to track github/<base>;
+   13. configures plain 'git push' to prefer GitHub.
 
 The collaborative branch may be:
 
@@ -221,6 +224,16 @@ else
 fi
 
 echo
+echo "Installing canonical paper workflow and task instructions..."
+
+bash "$SCRIPT_DIR/paper" init
+
+git add -- AGENTS.md .codex .github .paper notes tasks
+if ! git diff --cached --quiet; then
+    git commit -m "Initialize paper workflow"
+fi
+
+echo
 echo "Creating PRIVATE GitHub repository:"
 echo "    $GITHUB_REPO"
 echo
@@ -264,9 +277,6 @@ echo
 echo "Safety model:"
 echo "    Overleaf = collaborative publication target"
 echo "    GitHub   = private mirror / feature branches"
-
-echo
-bash "$SCRIPT_DIR/paper" init
 
 echo "Recommended next commands:"
 echo

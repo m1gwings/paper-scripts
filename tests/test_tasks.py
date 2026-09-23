@@ -39,12 +39,15 @@ class PaperTasksTest(unittest.TestCase):
         self.assertIn('## Notifications', agents.read_text())
         self.assertIn('paper notify --title', agents.read_text())
         self.assertIn('output/pdf/', agents.read_text())
+        self.assertIn('paper-scripts:begin managed-tasking', agents.read_text())
+        self.assertIn('tasks/NNN_short_name/task.md', agents.read_text())
         agents.write_text('Personal instructions\n')
         (self.root / 'tasks' / 'template.md').unlink()
         self.run_paper('init')
         self.assertTrue(agents.read_text().startswith('Personal instructions\n'))
         self.assertIn('paper-scripts:begin managed-notifications', agents.read_text())
         self.assertIn('Discord is the default delivery provider', agents.read_text())
+        self.assertIn('paper-scripts:begin managed-tasking', agents.read_text())
         self.assertTrue((self.root / 'tasks' / 'template.md').exists())
 
     def test_status_filters_counts_and_nested_directory(self):

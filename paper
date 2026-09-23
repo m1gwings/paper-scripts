@@ -254,6 +254,7 @@ paper notify --title "Paper update" --message "Revised PDF is ready." \
 ```
 <!-- paper-scripts:end managed-notifications -->
 
+<!-- paper-scripts:begin managed-tasking -->
 ## Tasks and resumption
 
 - Before substantial execution work, create or resume `tasks/NNN_short_name/task.md` using `tasks/template.md`, and link it in `tasks/index.md`. Reuse the task for related follow-ups. Substantial work includes multi-step edits, sustained proof work, or meaningful verification.
@@ -270,6 +271,7 @@ paper notify --title "Paper update" --message "Revised PDF is ready." \
 - Default to one agent. Use targeted searches and reads; avoid repeatedly loading entire notes, histories, or logs. Run checks appropriate to the change and repeat them only when new evidence warrants it.
 - Delegate bounded independent work to subagents only when the expected time or quality benefit justifies the additional token cost. Do not spawn agents for routine bookkeeping or small edits.
 - The main agent owns the task checkpoint, integration, and compilation. Give parallel editors disjoint file ownership; prefer read-only assignments for independent audits. Record each assignment's scope, dependencies, results, and remaining obligations in the task.
+<!-- paper-scripts:end managed-tasking -->
 AGENTS
 
     create_init_file notes/README.md <<'NOTES'
