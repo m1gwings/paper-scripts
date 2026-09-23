@@ -27,11 +27,15 @@ def environments(repo, default, call=api):
     existing = {x['name'] for x in call(endpoint + '?per_page=100')['environments']}
     for name in ['paper-publish', 'paper-notify']:
         env_path = endpoint + '/' + name
-        if name not in existing:
+        value = call(env_path) if name in existing else None
+        # A workflow job creates a referenced environment automatically. GitHub
+        # leaves that environment without a deployment-branch policy, so finish
+        # the same initialization used for a new environment.
+        if value is None or not value.get('deployment_branch_policy'):
             call(env_path, {'deployment_branch_policy': {
                 'protected_branches': False, 'custom_branch_policies': True}}, 'PUT')
             call(env_path + '/deployment-branch-policies', {'name': default, 'type': 'branch'})
-        value = call(env_path)
+            value = call(env_path)
         policy = value.get('deployment_branch_policy') or {}
         rules = call(env_path + '/deployment-branch-policies?per_page=100')['branch_policies']
         if not (policy.get('custom_branch_policies') and not policy.get('protected_branches')

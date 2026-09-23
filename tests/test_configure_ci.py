@@ -20,13 +20,37 @@ class ConfigureTest(unittest.TestCase):
         configure_ci.environments('owner/paper', 'main', api)
         self.assertEqual(sum(r[2] == 'PUT' for r in requests), 2)
 
-    def test_existing_unrestricted_environment_refused(self):
+    def test_existing_automatic_environment_is_restricted(self):
+        requests = []
+        configured = set()
+        def api(path, body=None, method=None):
+            requests.append((path, body, method))
+            name = next((item for item in ('paper-publish', 'paper-notify')
+                         if f'environments/{item}' in path), None)
+            if body:
+                if method == 'PUT':
+                    configured.add(name)
+                return {}
+            if path.endswith('environments?per_page=100'):
+                return {'environments': [{'name': 'paper-publish'}, {'name': 'paper-notify'}]}
+            if 'deployment-branch-policies?' in path:
+                return {'branch_policies': [{'name': 'main', 'type': 'branch'}]}
+            if name in configured:
+                return {'deployment_branch_policy': {'protected_branches': False,
+                                                      'custom_branch_policies': True}}
+            return {'deployment_branch_policy': None}
+        configure_ci.environments('owner/paper', 'main', api)
+        self.assertEqual(configured, {'paper-publish', 'paper-notify'})
+        self.assertEqual(sum(r[2] == 'PUT' for r in requests), 2)
+
+    def test_existing_conflicting_environment_refused(self):
         def api(path, body=None, method=None):
             if path.endswith('environments?per_page=100'):
                 return {'environments': [{'name': 'paper-publish'}, {'name': 'paper-notify'}]}
             if 'deployment-branch-policies?' in path:
                 return {'branch_policies': [{'name': '*', 'type': 'branch'}]}
-            return {'deployment_branch_policy': None}
+            return {'deployment_branch_policy': {'protected_branches': False,
+                                                  'custom_branch_policies': True}}
         with self.assertRaisesRegex(RuntimeError, 'only the default branch'):
             configure_ci.environments('owner/paper', 'main', api)
 
