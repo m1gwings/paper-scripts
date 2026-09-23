@@ -523,9 +523,9 @@ COMMANDS
       Configure default-branch-only CI environments and the Overleaf token.
       Requires GitHub repository administration access.
 
-  paper configure-notifications [--device NAME] OWNER/REPO [OWNER/REPO ...]
-      Prompt once for notification credentials and install/rotate them across
-      every selected repository's protected GitHub environment.
+  paper configure-notifications [--provider PROVIDER] [--device NAME] [OWNER/REPO ...]
+      Prompt once for notification credentials and install/rotate them in this
+      paper's protected GitHub environment. Optional repositories enable bulk setup.
       Discord is the default; use --provider pushover or webhook for legacy adapters.
 
   paper notify-test

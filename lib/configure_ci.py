@@ -107,11 +107,13 @@ def configure_notifications(repositories, provider, device, credentials,
 def notification_main(args):
     parser = argparse.ArgumentParser(
         prog='paper configure-notifications',
-        description='Prompt once and configure protected notifications for multiple paper repositories.')
+        description='Configure protected notifications for this paper or selected repositories.')
     parser.add_argument('--provider', choices=['discord', 'pushover', 'webhook'], default='discord')
     parser.add_argument('--device', default='')
-    parser.add_argument('repositories', nargs='+', metavar='OWNER/REPOSITORY')
+    parser.add_argument('repositories', nargs='*', metavar='OWNER/REPOSITORY',
+                        help='target repositories; defaults to this paper\'s github remote')
     parsed = parser.parse_args(args)
+    repositories = parsed.repositories or [repository()]
     names = {
         'discord': ['DISCORD_WEBHOOK_URL'],
         'pushover': ['PAPER_PUSHOVER_USER_KEY', 'PAPER_PUSHOVER_APP_TOKEN'],
@@ -119,7 +121,7 @@ def notification_main(args):
     }[parsed.provider]
     print('Enter notification credentials once. Input is hidden and values are never logged.')
     credentials = {name: getpass.getpass(name + ': ') for name in names}
-    configure_notifications(parsed.repositories, parsed.provider, parsed.device, credentials)
+    configure_notifications(repositories, parsed.provider, parsed.device, credentials)
     print('Notification credentials installed for every selected repository.')
 
 

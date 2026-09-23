@@ -91,7 +91,7 @@ paper; each paper is upgraded with `paper init`, reviewed, and committed.
 | `paper notify --title TITLE --message MESSAGE [--url HTTPS_URL]` | Dispatch the trusted notification workflow. The URL becomes a clickable Discord embed title. |
 | `paper notify-test` | Test the configured provider through GitHub Actions. |
 | `paper configure-ci [--environments-only]` | Create/verify protected environments and privately install the Overleaf credential. |
-| `paper configure-notifications [--provider PROVIDER] OWNER/REPO ...` | Prompt once and configure notifications for one or more papers. Discord is the default. |
+| `paper configure-notifications [--provider PROVIDER] [OWNER/REPO ...]` | Configure this paper from its `github` remote, or explicitly configure multiple papers. Discord is the default. |
 | `paper build [ROOT.tex]` / `paper clean [ROOT.tex]` | Build or clean locally with `latexmk`; default `main.tex`. |
 | `paper status` / `paper doctor` | Inspect branch, remotes, divergence, configuration, and tools. |
 | `paper abort` | Confirm and delete the current feature locally and on GitHub. Never touch the base or Overleaf. |
@@ -242,18 +242,20 @@ already available HTTPS artifact URL.
    run the following and paste it only at the hidden prompt:
 
    ```bash
-   paper configure-notifications --provider discord \
-     OWNER/PAPER_ONE OWNER/PAPER_TWO
+   paper configure-notifications --provider discord
    ```
 
-   The helper stores `DISCORD_WEBHOOK_URL` once per repository in the protected
+   The helper reads this paper's credential-free `github` remote and stores
+   `DISCORD_WEBHOOK_URL` in the protected
    `paper-notify` GitHub Actions environment and sets
    `PAPER_NOTIFY_PROVIDER=discord`. The publication workflow's notification job
    uses that same environment. A repository or organization Actions secret with
    the exact same name also resolves, but the environment secret is recommended
    because its default-branch restriction is narrower. Webhook URLs copied with
    Discord's legacy `discordapp.com` hostname are accepted and stored using the
-   current `discord.com` hostname, avoiding a credential-bearing redirect.
+   current `discord.com` hostname, avoiding a credential-bearing redirect. To
+   configure several papers with one prompt, append their `OWNER/REPOSITORY`
+   names explicitly.
 5. Commit the generated workflows to each repository's GitHub default branch,
    run `paper configure-ci` once per paper if its environments are not already
    configured, and test with `paper notify-test`.

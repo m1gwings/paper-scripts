@@ -1,11 +1,32 @@
 import sys
 from pathlib import Path
 import unittest
+from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'lib'))
 import configure_ci
 
 
 class ConfigureTest(unittest.TestCase):
+    def test_notification_setup_defaults_to_current_repository(self):
+        webhook = 'https://discord.com/api/webhooks/1/token'
+        with mock.patch.object(configure_ci, 'repository', return_value='owner/current') as repository:
+            with mock.patch.object(configure_ci.getpass, 'getpass', return_value=webhook):
+                with mock.patch.object(configure_ci, 'configure_notifications') as configure:
+                    configure_ci.notification_main([])
+        repository.assert_called_once_with()
+        configure.assert_called_once_with(
+            ['owner/current'], 'discord', '', {'DISCORD_WEBHOOK_URL': webhook})
+
+    def test_notification_setup_keeps_explicit_bulk_repositories(self):
+        webhook = 'https://discord.com/api/webhooks/1/token'
+        with mock.patch.object(configure_ci, 'repository') as repository:
+            with mock.patch.object(configure_ci.getpass, 'getpass', return_value=webhook):
+                with mock.patch.object(configure_ci, 'configure_notifications') as configure:
+                    configure_ci.notification_main(['owner/one', 'owner/two'])
+        repository.assert_not_called()
+        configure.assert_called_once_with(
+            ['owner/one', 'owner/two'], 'discord', '', {'DISCORD_WEBHOOK_URL': webhook})
+
     def test_create_and_verify_restricted_environments(self):
         requests = []
         def api(path, body=None, method=None):
