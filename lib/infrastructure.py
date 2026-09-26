@@ -95,6 +95,9 @@ def generated():
         files['.github/workflows/' + name] = (SOURCE / 'templates' / name).read_bytes()
         # Templates are vendored too, allowing the pinned runtime to repair itself.
         files['.paper/runtime/templates/' + name] = files['.github/workflows/' + name]
+    for kind in ('paper', 'poster'):
+        name = f'AGENTS.{kind}.md'
+        files['.paper/runtime/templates/' + name] = (SOURCE / 'templates' / name).read_bytes()
     files['.codex/config.toml'] = b'''#:schema https://developers.openai.com/codex/config-schema.json
 # Trusted-project default for the Codex desktop app, CLI, and IDE extension.
 # Codex cloud chats currently do not accept a repository-level default model.
@@ -104,9 +107,8 @@ model = "gpt-5.6-sol"
     return files
 
 
-def agent_template():
-    source = (SOURCE / 'paper').read_text()
-    return source.split("create_init_file AGENTS.md <<'AGENTS'\n", 1)[1].split('\nAGENTS\n', 1)[0] + '\n'
+def agent_template(kind='paper'):
+    return (SOURCE / 'templates' / f'AGENTS.{kind}.md').read_text()
 
 
 def managed_agent_block(template, begin, end_marker):
@@ -184,7 +186,7 @@ def merge_agent_instructions(current, template):
     return current + separator + tasking
 
 
-def plan():
+def plan(poster=False):
     old = read_json('.paper/manifest.json', {'version': VERSION, 'files': {}})
     if old.get('version', 0) > VERSION:
         raise ValueError('Installed infrastructure is newer than this paper-scripts version.')
@@ -196,17 +198,25 @@ def plan():
             previous = old.get('files', {}).get(name)
             if previous is None or digest(path.read_bytes()) != previous:
                 raise ValueError(f'Preserving edited/unmanaged file {name}; reconcile it before upgrading.')
-    template = agent_template()
-    current = agents.read_text() if agents.exists() else template
-    files['AGENTS.md'] = merge_agent_instructions(current, template).encode()
     value = config()
+    if poster:
+        value['document_type'] = 'poster'
+    kind = value.get('document_type', 'paper')
+    if kind not in ('paper', 'poster'):
+        raise ValueError('document_type must be paper or poster.')
+    template = agent_template(kind)
+    current = agents.read_text() if agents.exists() else template
+    # Explicit mode selection may replace the untouched standard template only.
+    if poster and current == agent_template('paper'):
+        current = template
+    files['AGENTS.md'] = merge_agent_instructions(current, template).encode()
     # config is user-owned: preserve custom fields and fill only missing defaults.
     files['.paper/config.json'] = (json.dumps(value, indent=2) + '\n').encode()
     return files
 
 
-def install():
-    files = plan()  # Preflight every conflict before writing any generated file.
+def install(poster=False):
+    files = plan(poster)  # Preflight every conflict before writing any generated file.
     manifest = {'version': VERSION, 'files': {name: digest(data) for name, data in files.items()
                                             if name not in ('.paper/config.json', 'AGENTS.md')}}
     files['.paper/manifest.json'] = (json.dumps(manifest, indent=2, sort_keys=True) + '\n').encode()
@@ -237,12 +247,13 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('action', choices=['preflight', 'install', 'get'])
     parser.add_argument('key', nargs='?')
+    parser.add_argument('--poster', action='store_true')
     args = parser.parse_args()
     try:
         if args.action == 'preflight':
-            plan()
+            plan(args.poster)
         elif args.action == 'install':
-            install()
+            install(args.poster)
         else:
             value = read_json('.paper/config.json', {})
             result = value.get(args.key)

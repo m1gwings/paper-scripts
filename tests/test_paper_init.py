@@ -4,6 +4,7 @@ import subprocess
 import test_workflow
 
 INIT = Path(__file__).resolve().parents[1] / 'paper-init'
+TEMPLATES = INIT.parent / 'templates'
 
 
 class ExistingInitTest(test_workflow.WorkflowTest):
@@ -37,8 +38,9 @@ class ExistingInitTest(test_workflow.WorkflowTest):
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse((self.repo / '.paper').exists())
 
-    def test_new_repository_commits_and_pushes_canonical_initialization(self):
-        fresh = self.root / 'fresh'
+    def initialize_new(self, *arguments, directory, kind):
+        fresh = self.root / directory
+        overleaf_head = self.git('rev-parse', 'master', cwd=self.root / 'overleaf')
         github = self.root / 'new-github'
         config = self.root / 'gitconfig'
         config.write_text(
@@ -59,18 +61,79 @@ class ExistingInitTest(test_workflow.WorkflowTest):
         env = dict(self.env, GIT_CONFIG_GLOBAL=str(config),
                    TEST_GITHUB_REMOTE=str(github))
         result = subprocess.run(
-            ['bash', str(INIT), 'abc123', 'owner/new-paper', str(fresh)],
+            ['bash', str(INIT), *arguments],
             cwd=self.root, env=env, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(self.git('status', '--porcelain', cwd=fresh), '')
         self.assertEqual(self.git('log', '-1', '--format=%s', cwd=fresh),
                          'Initialize paper workflow')
         agents = (fresh / 'AGENTS.md').read_text()
+        self.assertEqual(agents, (TEMPLATES / f'AGENTS.{kind}.md').read_text())
+        self.assertEqual(self.git('rev-parse', 'master', cwd=self.root / 'overleaf'),
+                         overleaf_head)
+        self.assertEqual(self.git('config', 'remote.pushDefault', cwd=fresh), 'github')
+        self.assertEqual(self.git('rev-parse', '--abbrev-ref', '@{upstream}', cwd=fresh),
+                         'github/master')
         self.assertIn('paper-scripts:begin managed-tasking', agents)
         self.assertIn('tasks/NNN_short_name/task.md', agents)
         self.assertEqual(
             self.git('--git-dir', str(github), 'show', 'master:AGENTS.md', cwd=self.root),
             agents.rstrip())
+
+    def test_new_repository_commits_and_pushes_canonical_initialization(self):
+        self.initialize_new('abc123', 'owner/new-paper', 'fresh',
+                            directory='fresh', kind='paper')
+
+    def test_default_paper_directory_and_template_unchanged(self):
+        self.initialize_new('abc123', 'owner/new-paper', directory='paper', kind='paper')
+        self.assertFalse((self.root / 'poster').exists())
+
+    def test_poster_default_directory_and_template(self):
+        self.initialize_new('--poster', 'abc123', 'owner/new-poster',
+                            directory='poster', kind='poster')
+        self.assertFalse((self.root / 'paper').exists())
+
+    def test_poster_explicit_directory_and_trailing_flag(self):
+        self.initialize_new('abc123', 'owner/new-poster', 'custom poster', '--poster',
+                            directory='custom poster', kind='poster')
+        self.assertFalse((self.root / 'poster').exists())
+
+    def test_end_of_options_allows_directory_with_leading_dash(self):
+        self.initialize_new('--poster', 'abc123', 'owner/new-poster', '--', './-poster',
+                            directory='-poster', kind='poster')
+
+    def test_existing_directory_receives_poster_instructions_without_commit(self):
+        head = self.git('rev-parse', 'HEAD')
+        result = subprocess.run(
+            ['bash', str(INIT), '--poster', 'abc123', 'owner/paper', str(self.repo)],
+            cwd=self.root, env=self.env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.git('rev-parse', 'HEAD'), head)
+        self.assertEqual((self.repo / 'AGENTS.md').read_text(),
+                         (TEMPLATES / 'AGENTS.poster.md').read_text())
+
+    def test_help_and_invalid_arguments_do_not_authenticate_or_create_files(self):
+        marker = self.root / 'gh-called'
+        gh = self.root / 'tools/gh'
+        gh.write_text('#!/bin/sh\ntouch "$TEST_GH_CALLED"\nexit 99\n')
+        env = dict(self.env, TEST_GH_CALLED=str(marker))
+        for args in [('--help',), ('-h',), ('--poster', '--help')]:
+            with self.subTest(args=args):
+                result = subprocess.run(['bash', str(INIT), *args], cwd=self.root,
+                                        env=env, text=True, capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn('--poster', result.stdout)
+                self.assertIn('./poster', result.stdout)
+        for args in [(), ('--poster',), ('--poster', 'abc123'),
+                     ('abc123', 'repo', 'dir', 'extra'),
+                     ('--poster', 'abc123', 'repo', '--typo')]:
+            with self.subTest(args=args):
+                result = subprocess.run(['bash', str(INIT), *args], cwd=self.root,
+                                        env=env, text=True, capture_output=True)
+                self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(marker.exists())
+        self.assertFalse((self.root / 'paper').exists())
+        self.assertFalse((self.root / 'poster').exists())
 
 for name in list(test_workflow.WorkflowTest.__dict__):
     if name.startswith('test_'):

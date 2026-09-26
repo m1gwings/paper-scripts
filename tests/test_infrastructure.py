@@ -5,8 +5,77 @@ import tempfile
 import unittest
 import test_workflow
 
+TEMPLATES = Path(__file__).resolve().parents[1] / 'templates'
+
 
 class InfrastructureTest(test_workflow.WorkflowTest):
+    def test_explicit_poster_mode_replaces_only_untouched_paper_template(self):
+        self.paper('init')
+        self.paper('init', '--poster')
+        agents = self.repo / 'AGENTS.md'
+        self.assertEqual(agents.read_text(), (TEMPLATES / 'AGENTS.poster.md').read_text())
+        custom = (TEMPLATES / 'AGENTS.paper.md').read_text() + '\nMy custom rule.\n'
+        agents.write_text(custom)
+        self.paper('init', '--poster')
+        self.assertEqual(agents.read_text(), custom)
+
+    def test_poster_selection_persists_and_vendored_runtime_recovers_agents(self):
+        self.paper('init', '--poster')
+        agents = self.repo / 'AGENTS.md'
+        expected = (TEMPLATES / 'AGENTS.poster.md').read_text()
+        self.assertEqual(agents.read_text(), expected)
+        self.assertEqual(json.loads((self.repo / '.paper/config.json').read_text())[
+            'document_type'], 'poster')
+        before = {p.relative_to(self.repo): p.read_bytes() for p in self.repo.rglob('*')
+                  if p.is_file() and '.git' not in p.parts}
+        self.paper('init')
+        self.paper('init', '--poster')
+        after = {p.relative_to(self.repo): p.read_bytes() for p in self.repo.rglob('*')
+                 if p.is_file() and '.git' not in p.parts}
+        self.assertEqual(before, after)
+        agents.unlink()
+        subprocess.run(['bash', '.paper/runtime/paper', 'init'], cwd=self.repo,
+                       env=self.env, check=True, capture_output=True)
+        self.assertEqual(agents.read_text(), expected)
+        for kind in ('paper', 'poster'):
+            name = f'AGENTS.{kind}.md'
+            self.assertEqual((self.repo / '.paper/runtime/templates' / name).read_bytes(),
+                             (TEMPLATES / name).read_bytes())
+
+    def test_poster_preserves_custom_agents_and_configuration(self):
+        agents = self.repo / 'AGENTS.md'
+        agents.write_text('# My poster\n\nKeep my theme instructions.\n')
+        self.paper('init', '--poster')
+        self.assertTrue(agents.read_text().startswith('# My poster\n\nKeep my theme instructions.\n'))
+        self.assertIn('GH_TOKEN', agents.read_text())
+        config = self.repo / '.paper/config.json'
+        value = json.loads(config.read_text())
+        value['root_tex'] = 'poster.tex'
+        value['custom'] = 'preserved'
+        config.write_text(json.dumps(value))
+        self.paper('init')
+        self.assertEqual(json.loads(config.read_text()), value)
+
+    def test_poster_and_paper_templates_share_generic_workflow_instructions(self):
+        paper = (TEMPLATES / 'AGENTS.paper.md').read_text()
+        poster = (TEMPLATES / 'AGENTS.poster.md').read_text()
+        # Only the title and LaTeX editing guidance differ.
+        self.assertEqual(paper.split('## Project and editing\n', 1)[1].split('## LaTeX')[0],
+                         poster.split('## Project and editing\n', 1)[1].split('## Poster LaTeX')[0])
+        marker = '<!-- paper-scripts:begin managed-notifications -->'
+        self.assertEqual(paper.split(marker, 1)[1], poster.split(marker, 1)[1])
+
+    def test_invalid_init_option_and_document_type_do_not_write_files(self):
+        self.paper('init', '--typo', ok=False)
+        self.paper('init', '--poster', 'extra', ok=False)
+        self.assertFalse((self.repo / '.paper').exists())
+        (self.repo / '.paper').mkdir()
+        config = self.repo / '.paper/config.json'
+        config.write_text('{"document_type": "unknown"}\n')
+        self.paper('init', ok=False)
+        self.assertFalse((self.repo / 'AGENTS.md').exists())
+        self.assertFalse((self.repo / 'tasks').exists())
+
     def test_idempotent_upgrade_preserves_user_configuration(self):
         self.paper('init')
         config = self.repo / '.paper/config.json'
@@ -14,6 +83,9 @@ class InfrastructureTest(test_workflow.WorkflowTest):
         self.assertEqual(value['base_branch'], 'master')
         self.assertEqual(value['notify_provider'], 'discord')
         self.assertEqual(value['version'], 3)
+        self.assertNotIn('document_type', value)
+        self.assertEqual((self.repo / 'AGENTS.md').read_text(),
+                         (TEMPLATES / 'AGENTS.paper.md').read_text())
         value['root_tex'] = 'manuscript.tex'
         value['custom'] = 'preserved'
         config.write_text(json.dumps(value))

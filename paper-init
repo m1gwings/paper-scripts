@@ -52,11 +52,17 @@ GITIGNORE
 
 usage() {
     cat <<'HELP'
-paper-init — create a local Overleaf + GitHub paper repository
+paper-init — create a local Overleaf + GitHub paper or poster repository
 
 USAGE
 
-    paper-init OVERLEAF_PROJECT_ID GITHUB_REPOSITORY [LOCAL_DIRECTORY]
+    paper-init [--poster] OVERLEAF_PROJECT_ID GITHUB_REPOSITORY [LOCAL_DIRECTORY]
+
+OPTIONS
+
+    --poster    Default to ./poster and install beamerposter/TikZ instructions.
+                An explicit LOCAL_DIRECTORY still takes precedence.
+    -h, --help  Show this help.
 
 
 EXAMPLES
@@ -72,6 +78,12 @@ EXAMPLES
     paper-init abc123def456 my-paper manuscript
 
         Uses ./manuscript instead of ./paper.
+
+
+    paper-init --poster abc123def456 my-poster
+
+        Creates ./poster with poster-specific AGENTS.md instructions.
+        Uses the same paper commands for sync, preview, notify, and publish.
 
 
     paper-init abc123def456 my-organization/my-paper paper
@@ -138,10 +150,20 @@ The username is:
 HELP
 }
 
-if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-    usage
-    exit 0
-fi
+INIT_OPTIONS=()
+POSITIONAL=()
+DEFAULT_DIR=paper
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --poster) INIT_OPTIONS=(--poster); DEFAULT_DIR=poster ;;
+        -h|--help) usage; exit 0 ;;
+        --) shift; POSITIONAL+=("$@"); break ;;
+        -*) die "Unknown option: $1. Run paper-init --help." ;;
+        *) POSITIONAL+=("$1") ;;
+    esac
+    shift
+done
+set -- "${POSITIONAL[@]}"
 
 if [[ $# -lt 2 || $# -gt 3 ]]; then
     usage
@@ -150,7 +172,7 @@ fi
 
 OVERLEAF_ID="$1"
 GITHUB_REPO="$2"
-LOCAL_DIR="${3:-paper}"
+LOCAL_DIR="${3:-$DEFAULT_DIR}"
 
 need git
 need gh
@@ -177,7 +199,7 @@ if [[ -e "$LOCAL_DIR" ]]; then
     EXPECTED_GITHUB="$(gh repo view "$GITHUB_REPO" --json nameWithOwner --jq .nameWithOwner)"
     [[ "$EXISTING_GITHUB" == "https://github.com/$EXPECTED_GITHUB" || "$EXISTING_GITHUB" == "https://github.com/$EXPECTED_GITHUB.git" || "$EXISTING_GITHUB" == "git@github.com:$EXPECTED_GITHUB.git" ]] \
         || die "Existing GitHub remote does not match; refusing to repoint it."
-    exec bash "$SCRIPT_DIR/paper" init
+    exec bash "$SCRIPT_DIR/paper" init "${INIT_OPTIONS[@]}"
 fi
 
 OVERLEAF_URL="https://git@git.overleaf.com/${OVERLEAF_ID}"
@@ -226,7 +248,7 @@ fi
 echo
 echo "Installing canonical paper workflow and task instructions..."
 
-bash "$SCRIPT_DIR/paper" init
+bash "$SCRIPT_DIR/paper" init "${INIT_OPTIONS[@]}"
 
 git add -- AGENTS.md .codex .github .paper notes tasks
 if ! git diff --cached --quiet; then
