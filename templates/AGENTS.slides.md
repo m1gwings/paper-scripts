@@ -15,23 +15,74 @@
 
 ## Slides LaTeX and verification (Beamer + TikZ)
 
+### One canvas for a complex slide
+
 - Author slides in LaTeX Beamer. Inspect the existing theme, aspect ratio, frame title/footer, macros, and build workflow before editing. Simple layouts may use ordinary Beamer and LaTeX constructs.
 - Implement each non-trivial layout as ONE full-slide TikZ picture that owns its text, equations, figures, and annotations. Do not assemble complex layouts from nested boxes/minipages or fragile manual spacing and visual nudges.
-- Treat the slide as a precise coordinate system. Define meaningful dimensions from the actual slide and theme geometry: slide width/height, safe-area margins, centers, object widths/heights, gaps, and row/column boundaries. Derive placements algebraically from these variables, not from unexplained numeric offsets.
-- Default major TikZ objects to `anchor=center` at derived centers. Use a different anchor only for a concrete geometric reason such as baseline or boundary alignment. Account for intentional node padding in the geometry.
-- Give the picture a fixed slide-sized canvas or bounding box. Keep the coordinate origin and usable area explicit; account for theme chrome when positioning content. Separate geometry calculations from styling and content where practical, and use semantic coordinate and node names.
-- Allocate enough space for text and figures, then adjust named dimensions or content when either changes. Check exact alignment, consistent spacing, wrapping, overlap, and clipping instead of accumulating magic-number fixes.
+
+### Geometry, anchors, and bounds
+
+- Treat the slide as a precise coordinate system. Derive `slideW` and `slideH` from `\paperwidth` and `\paperheight`; name safe-area margins, centers, object widths/heights, gaps, and row/column boundaries. Use one origin and unit system. Account explicitly for any frame title, footline, or theme padding.
+- Solve placements before drawing. For two equal columns in usable width `W`, side margin `p`, and gap `g`, encode `w=(W-2p-g)/2`, `leftX=p+w/2`, and `rightX=p+w+g+w/2`; derive row centers and alignment lines similarly. Choose design dimensions deliberately, then compute constrained positions instead of nudging them.
+- Default major TikZ nodes to `anchor=center` at derived centers, with `inner sep=0pt, outer sep=0pt`. Use another anchor only for a concrete geometric reason, and include any intentional padding in the equations. Use semantic coordinate and node names; separate Geometry / Content / Debug sections.
+- Allocate text and figures within named cells and check their actual bounds. If content changes or overflows, revise the cells or content; do not hide overflow with a fixed canvas or add unexplained offsets.
+- For a plain frame, anchor the full-slide picture at `current page.south west` with `remember picture,overlay`. The Beamer page itself has fixed dimensions; do not let nodes, labels, or guides alter the frame layout. For a frame with theme chrome, derive the usable region inside the page rather than assuming the whole page is available.
 
 ### Reusable layout guides
 
 - Define one preamble-wide boolean, for example `\newif\ifslidesdebug` with `\slidesdebugfalse` by default; use `\slidesdebugtrue` to inspect every complex slide. Reuse an existing equivalent flag if the project has one.
 - Under `\ifslidesdebug ... \fi`, draw guides from the SAME named geometry and nodes as the content: slide bounds, safe-area/margin lines, horizontal and vertical centers, relevant grid/alignment lines, named reference coordinates, and useful object bounding boxes and anchors.
-- Draw guides in a bounding-box-neutral TikZ overlay/scope. Toggling the flag must remove every guide in normal mode without changing the canvas size, content placement, or surrounding Beamer layout.
+- Draw guides in a bounding-box-neutral TikZ overlay/scope. Show both allocated cells and actual node bounds, using `(name.north west)` to `(name.south east)` and `(name.center)` for rectangular nodes. Toggling the flag must remove every guide in normal mode without changing the canvas size, content placement, or surrounding Beamer layout.
+
+Minimal two-column plain-frame pattern (requires TikZ; adapt the named safe area to the theme). Enable `\slidesdebugtrue` in the preamble when inspecting layout, then restore `\slidesdebugfalse`:
+
+```latex
+% Preamble, after loading TikZ:
+\newif\ifslidesdebug
+\slidesdebugfalse
+
+% In the document:
+\begin{frame}[plain]
+\begin{tikzpicture}[remember picture,overlay,x=1pt,y=1pt,
+  every node/.style={anchor=center,inner sep=0pt,outer sep=0pt}]
+  % Geometry: one page coordinate system, origin at its lower-left corner.
+  \pgfmathsetmacro{\slideW}{\the\paperwidth}
+  \pgfmathsetmacro{\slideH}{\the\paperheight}
+  \pgfmathsetmacro{\marginX}{0.08*\slideW}
+  \pgfmathsetmacro{\marginY}{0.12*\slideH}
+  \pgfmathsetmacro{\gap}{0.04*\slideW}
+  \pgfmathsetmacro{\colW}{(\slideW-2*\marginX-\gap)/2}
+  \pgfmathsetmacro{\leftX}{\marginX+\colW/2}
+  \pgfmathsetmacro{\rightX}{\leftX+\colW+\gap}
+  \pgfmathsetmacro{\centerX}{\slideW/2}
+  \pgfmathsetmacro{\centerY}{\slideH/2}
+  \begin{scope}[shift={(current page.south west)}]
+    % Content: centers follow the solved geometry.
+    \node[text width=\colW pt,align=center] (left)
+      at (\leftX,\centerY) {Left content};
+    \node[text width=\colW pt,align=center] (right)
+      at (\rightX,\centerY) {Right content};
+    % Debug: derives from the same dimensions and nodes; changes no geometry.
+    \ifslidesdebug
+      \draw[red,thin] (0,0) rectangle (\slideW,\slideH);
+      \draw[orange,dotted] (\marginX,\marginY) rectangle
+        (\slideW-\marginX,\slideH-\marginY);
+      \draw[red,dashed] (\centerX,0) -- (\centerX,\slideH)
+        (0,\centerY) -- (\slideW,\centerY);
+      \foreach \name in {left,right} {
+        \draw[magenta,thin] (\name.north west) rectangle (\name.south east);
+        \fill[magenta] (\name.center) circle[radius=1pt];
+      }
+    \fi
+  \end{scope}
+\end{tikzpicture}
+\end{frame}
+```
 
 ### Overlays and verification
 
-- If using Beamer overlays or animations, keep the TikZ canvas, coordinates, and reserved dimensions stable across all overlay states. Reveal content without shifting other objects; check every state for overlap and clipping.
-- Compile with the project's build command and visually inspect the rendered slides after non-trivial layout changes, including debug guides when useful. Turn debug off and inspect the final PDF before delivery. Record any verification limits.
+- If using Beamer overlays or animations, keep the TikZ canvas, named coordinates, and reserved dimensions stable across all overlay states. Reveal content without shifting other objects or removing reference nodes needed by the guides; check every state for overlap and clipping.
+- Compile with the project's build command and visually inspect every rendered overlay after non-trivial layout changes. Inspect debug guides against actual objects, then turn debug off, recompile, and inspect the final PDF. Record the build command and any verification limits.
 - Preserve mathematical meaning, notation, macros, labels, and references; summarize content changes separately from layout changes.
 
 <!-- paper-scripts:begin managed-notifications -->
