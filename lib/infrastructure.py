@@ -11,6 +11,7 @@ VERSION = 3
 SOURCE = Path(__file__).resolve().parents[1]
 LIBRARIES = ['notify.py', 'cloud.py', 'ci.py', 'preview.py', 'preview_notify.py', 'infrastructure.py', 'configure_ci.py']
 WORKFLOWS = ['paper-preview.yml', 'paper-publish.yml', 'paper-notify.yml']
+DOCUMENT_TYPES = ('paper', 'poster', 'slides')
 AGENT_BLOCK_BEGIN = '<!-- paper-scripts:begin managed-notifications -->'
 AGENT_BLOCK_END = '<!-- paper-scripts:end managed-notifications -->'
 AGENT_CLEANUP_BEGIN = '<!-- paper-scripts:begin managed-feature-cleanup -->'
@@ -95,7 +96,7 @@ def generated():
         files['.github/workflows/' + name] = (SOURCE / 'templates' / name).read_bytes()
         # Templates are vendored too, allowing the pinned runtime to repair itself.
         files['.paper/runtime/templates/' + name] = files['.github/workflows/' + name]
-    for kind in ('paper', 'poster'):
+    for kind in DOCUMENT_TYPES:
         name = f'AGENTS.{kind}.md'
         files['.paper/runtime/templates/' + name] = (SOURCE / 'templates' / name).read_bytes()
     files['.codex/config.toml'] = b'''#:schema https://developers.openai.com/codex/config-schema.json
@@ -186,7 +187,7 @@ def merge_agent_instructions(current, template):
     return current + separator + tasking
 
 
-def plan(poster=False):
+def plan(document_type=None):
     old = read_json('.paper/manifest.json', {'version': VERSION, 'files': {}})
     if old.get('version', 0) > VERSION:
         raise ValueError('Installed infrastructure is newer than this paper-scripts version.')
@@ -199,15 +200,16 @@ def plan(poster=False):
             if previous is None or digest(path.read_bytes()) != previous:
                 raise ValueError(f'Preserving edited/unmanaged file {name}; reconcile it before upgrading.')
     value = config()
-    if poster:
-        value['document_type'] = 'poster'
+    if document_type is not None:
+        value['document_type'] = document_type
     kind = value.get('document_type', 'paper')
-    if kind not in ('paper', 'poster'):
-        raise ValueError('document_type must be paper or poster.')
+    if kind not in DOCUMENT_TYPES:
+        raise ValueError('document_type must be paper, poster, or slides.')
     template = agent_template(kind)
     current = agents.read_text() if agents.exists() else template
-    # Explicit mode selection may replace the untouched standard template only.
-    if poster and current == agent_template('paper'):
+    # Explicit selection may replace an untouched built-in template only.
+    if document_type is not None and any(
+            current == agent_template(previous) for previous in DOCUMENT_TYPES):
         current = template
     files['AGENTS.md'] = merge_agent_instructions(current, template).encode()
     # config is user-owned: preserve custom fields and fill only missing defaults.
@@ -215,8 +217,8 @@ def plan(poster=False):
     return files
 
 
-def install(poster=False):
-    files = plan(poster)  # Preflight every conflict before writing any generated file.
+def install(document_type=None):
+    files = plan(document_type)  # Preflight every conflict before writing any generated file.
     manifest = {'version': VERSION, 'files': {name: digest(data) for name, data in files.items()
                                             if name not in ('.paper/config.json', 'AGENTS.md')}}
     files['.paper/manifest.json'] = (json.dumps(manifest, indent=2, sort_keys=True) + '\n').encode()
@@ -247,13 +249,15 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('action', choices=['preflight', 'install', 'get'])
     parser.add_argument('key', nargs='?')
-    parser.add_argument('--poster', action='store_true')
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument('--poster', action='store_const', const='poster', dest='document_type')
+    mode.add_argument('--slides', action='store_const', const='slides', dest='document_type')
     args = parser.parse_args()
     try:
         if args.action == 'preflight':
-            plan(args.poster)
+            plan(args.document_type)
         elif args.action == 'install':
-            install(args.poster)
+            install(args.document_type)
         else:
             value = read_json('.paper/config.json', {})
             result = value.get(args.key)

@@ -52,15 +52,17 @@ GITIGNORE
 
 usage() {
     cat <<'HELP'
-paper-init — create a local Overleaf + GitHub paper or poster repository
+paper-init — create a local Overleaf + GitHub paper, poster, or slides repository
 
 USAGE
 
-    paper-init [--poster] OVERLEAF_PROJECT_ID GITHUB_REPOSITORY [LOCAL_DIRECTORY]
+    paper-init [--poster | --slides] OVERLEAF_PROJECT_ID GITHUB_REPOSITORY [LOCAL_DIRECTORY]
 
 OPTIONS
 
     --poster    Default to ./poster and install beamerposter/TikZ instructions.
+                An explicit LOCAL_DIRECTORY still takes precedence.
+    --slides    Default to ./slides and install Beamer slide instructions.
                 An explicit LOCAL_DIRECTORY still takes precedence.
     -h, --help  Show this help.
 
@@ -83,6 +85,12 @@ EXAMPLES
     paper-init --poster abc123def456 my-poster
 
         Creates ./poster with poster-specific AGENTS.md instructions.
+        Uses the same paper commands for sync, preview, notify, and publish.
+
+
+    paper-init --slides abc123def456 my-slides
+
+        Creates ./slides with Beamer slide-specific AGENTS.md instructions.
         Uses the same paper commands for sync, preview, notify, and publish.
 
 
@@ -153,9 +161,17 @@ HELP
 INIT_OPTIONS=()
 POSITIONAL=()
 DEFAULT_DIR=paper
+DOCUMENT_TYPE=paper
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --poster) INIT_OPTIONS=(--poster); DEFAULT_DIR=poster ;;
+        --poster|--slides)
+            SELECTED_TYPE="${1#--}"
+            [[ "$DOCUMENT_TYPE" == paper || "$DOCUMENT_TYPE" == "$SELECTED_TYPE" ]] \
+                || die "--poster and --slides are mutually exclusive."
+            DOCUMENT_TYPE="$SELECTED_TYPE"
+            INIT_OPTIONS=("$1")
+            DEFAULT_DIR="$SELECTED_TYPE"
+            ;;
         -h|--help) usage; exit 0 ;;
         --) shift; POSITIONAL+=("$@"); break ;;
         -*) die "Unknown option: $1. Run paper-init --help." ;;

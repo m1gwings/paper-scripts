@@ -86,8 +86,8 @@ paper; each paper is upgraded with `paper init`, reviewed, and committed.
 | `paper backup` | Push the current committed branch to GitHub. Never touch Overleaf. |
 | `paper sync` | Reconcile GitHub and Overleaf into the local base. Run from a clean base branch. |
 | `paper publish` | Reconcile fresh state, integrate committed work, back it up, and publish to Overleaf. Requires explicit authorization. |
-| `paper init [--poster]` | Create missing research files and install or upgrade generated infrastructure without overwriting custom content. |
-| `paper-init [--poster] OVERLEAF_ID OWNER/REPO [DIRECTORY]` | Create a new private GitHub/Overleaf paper or poster and then run `paper init`. |
+| `paper init [--poster \| --slides]` | Create missing research files and install or upgrade generated infrastructure without overwriting custom content. |
+| `paper-init [--poster \| --slides] OVERLEAF_ID OWNER/REPO [DIRECTORY]` | Create a new private GitHub/Overleaf paper, poster, or slides repository and then run `paper init`. |
 | `paper notify --title TITLE --message MESSAGE [--url HTTPS_URL]` | Dispatch the trusted notification workflow. The URL becomes a clickable Discord embed title. |
 | `paper notify-test` | Test the configured provider through GitHub Actions. |
 | `paper configure-ci [--environments-only]` | Create/verify protected environments and privately install the Overleaf credential. |
@@ -114,16 +114,32 @@ beamerposter complex blocks to use one fixed TikZ canvas, geometry derived from
 equations, centered anchors, explicit padding, a global debug overlay, and PDF
 visual inspection. Ordinary initialization uses
 [`templates/AGENTS.paper.md`](templates/AGENTS.paper.md).
+In an existing Git repository, use `paper init --poster`. The selection persists
+as `document_type: "poster"` in `.paper/config.json`.
 
-Both modes use the same `paper` commands, remotes, Cloud Codex instructions,
-notifications, and publication rules. This selects instructions for the cloned
-Overleaf source; it does not create a new LaTeX poster/theme. In an existing Git
-repository, use `paper init --poster`. The selection is saved in
-`.paper/config.json` as `document_type: "poster"`, so later `paper init` upgrades
-and recovery of a missing `AGENTS.md` retain poster mode. An untouched standard
-paper template is replaced when explicitly selecting `--poster`. Customized
-`AGENTS.md` content is preserved; only the usual managed workflow sections are
-refreshed. Adapt any custom editing guidance explicitly using the poster template.
+### Slides
+
+```bash
+paper-init --slides OVERLEAF_ID OWNER/my-slides
+```
+
+This creates `./slides` instead of `./paper`; an explicit final directory
+overrides the default. Slides mode selects
+[`templates/AGENTS.slides.md`](templates/AGENTS.slides.md) for LaTeX Beamer.
+Simple slides may use normal Beamer constructs; complex slides use one full-slide
+TikZ picture with algebraic geometry and reusable debug guides. In an existing
+Git repository, use `paper init --slides`. The selection persists as
+`document_type: "slides"` in `.paper/config.json` across later plain `paper init`
+upgrades and recovery of a missing `AGENTS.md`.
+
+All three modes use the same `paper` commands, remotes, Cloud Codex instructions,
+notifications, and publication rules. They select instructions for the cloned
+Overleaf source; they do not create a new LaTeX document or theme. Plain
+`paper init` retains the saved type and restores a missing `AGENTS.md`.
+Explicitly selecting `--poster` or `--slides` replaces an untouched built-in
+template, including when switching types. Customized `AGENTS.md` content is
+preserved; only the usual managed workflow sections are refreshed. Adapt any
+custom editing guidance explicitly using the selected template.
 
 ## Everyday local workflow
 

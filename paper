@@ -430,12 +430,12 @@ MENTAL MODEL
 
 COMMANDS
 
-  paper init [--poster]
-      Initialize paper (or beamerposter/TikZ poster) instructions, research notes,
+  paper init [--poster | --slides]
+      Initialize paper, beamerposter poster, or Beamer slides instructions, research notes,
       and a lightweight resumable task queue in this Git repository.
       Install/upgrade versioned preview and publication infrastructure.
       Preserve custom files; require no configured remotes. No commit/push.
-      Remember poster mode for later upgrades with plain 'paper init'.
+      Remember poster or slides mode for later upgrades with plain 'paper init'.
 
   paper status
       Show base branch, current branch, status, branches,
@@ -647,13 +647,16 @@ EXAMPLE WORKFLOWS
     paper status
 
 
-11. INITIALIZE A THEORETICAL PAPER
+11. INITIALIZE A PAPER, POSTER, OR SLIDES PROJECT
 
     # Inside an existing Git repository (remotes are optional):
     paper init
+    paper init --poster
+    paper init --slides
 
     # Review AGENTS.md, notes/README.md, and tasks/.
-    # Existing files are preserved, including on repeated runs.
+    # Choose one mode; plain paper init retains the saved selection.
+    # Existing custom files are preserved, including on repeated runs.
 
 
 12. REVIEW OR REMOVE TASKS
@@ -709,13 +712,15 @@ case "$CMD" in
 
     init)
         if [[ $# -eq 1 && ( "$1" == --help || "$1" == -h ) ]]; then
-            echo "Usage: paper init [--poster]"
+            echo "Usage: paper init [--poster | --slides]"
             echo "Create research files and install/upgrade versioned .paper and Actions infrastructure."
             echo "--poster selects beamerposter/TikZ instructions and is remembered for later upgrades."
+            echo "--slides selects Beamer slide instructions and is remembered for later upgrades."
             echo "Run inside a Git repository; no remotes required. Existing files are preserved."
             exit 0
         fi
-        [[ $# -eq 0 || ( $# -eq 1 && "$1" == --poster ) ]] || die "Usage: paper init [--poster]"
+        [[ $# -eq 0 || ( $# -eq 1 && ( "$1" == --poster || "$1" == --slides ) ) ]] \
+            || die "Usage: paper init [--poster | --slides]"
         need git
         REPO_ROOT="$(root)"
         cd "$REPO_ROOT"

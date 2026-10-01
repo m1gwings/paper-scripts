@@ -37,10 +37,39 @@ class InfrastructureTest(test_workflow.WorkflowTest):
         subprocess.run(['bash', '.paper/runtime/paper', 'init'], cwd=self.repo,
                        env=self.env, check=True, capture_output=True)
         self.assertEqual(agents.read_text(), expected)
-        for kind in ('paper', 'poster'):
+        for kind in ('paper', 'poster', 'slides'):
             name = f'AGENTS.{kind}.md'
             self.assertEqual((self.repo / '.paper/runtime/templates' / name).read_bytes(),
                              (TEMPLATES / name).read_bytes())
+
+    def test_slides_selection_persists_and_vendored_runtime_recovers_agents(self):
+        self.paper('init')
+        self.paper('init', '--slides')
+        agents = self.repo / 'AGENTS.md'
+        expected = (TEMPLATES / 'AGENTS.slides.md').read_text()
+        self.assertEqual(agents.read_text(), expected)
+        self.assertEqual(json.loads((self.repo / '.paper/config.json').read_text())[
+            'document_type'], 'slides')
+        self.paper('init')
+        self.assertEqual(agents.read_text(), expected)
+        agents.unlink()
+        subprocess.run(['bash', '.paper/runtime/paper', 'init'], cwd=self.repo,
+                       env=self.env, check=True, capture_output=True)
+        self.assertEqual(agents.read_text(), expected)
+        self.assertEqual((self.repo / '.paper/runtime/templates/AGENTS.slides.md').read_bytes(),
+                         (TEMPLATES / 'AGENTS.slides.md').read_bytes())
+
+    def test_explicit_mode_switch_replaces_only_untouched_builtin_template(self):
+        self.paper('init', '--poster')
+        self.paper('init', '--slides')
+        agents = self.repo / 'AGENTS.md'
+        slides = (TEMPLATES / 'AGENTS.slides.md').read_text()
+        self.assertEqual(agents.read_text(), slides)
+        agents.write_text(slides + '\nMy custom rule.\n')
+        self.paper('init', '--poster')
+        self.assertEqual(agents.read_text(), slides + '\nMy custom rule.\n')
+        self.assertEqual(json.loads((self.repo / '.paper/config.json').read_text())[
+            'document_type'], 'poster')
 
     def test_poster_preserves_custom_agents_and_configuration(self):
         agents = self.repo / 'AGENTS.md'
@@ -56,18 +85,23 @@ class InfrastructureTest(test_workflow.WorkflowTest):
         self.paper('init')
         self.assertEqual(json.loads(config.read_text()), value)
 
-    def test_poster_and_paper_templates_share_generic_workflow_instructions(self):
+    def test_document_templates_share_generic_workflow_instructions(self):
         paper = (TEMPLATES / 'AGENTS.paper.md').read_text()
-        poster = (TEMPLATES / 'AGENTS.poster.md').read_text()
         # Only the title and LaTeX editing guidance differ.
-        self.assertEqual(paper.split('## Project and editing\n', 1)[1].split('## LaTeX')[0],
-                         poster.split('## Project and editing\n', 1)[1].split('## Poster LaTeX')[0])
         marker = '<!-- paper-scripts:begin managed-notifications -->'
-        self.assertEqual(paper.split(marker, 1)[1], poster.split(marker, 1)[1])
+        generic = paper.split('## Project and editing\n', 1)[1].split('## LaTeX')[0]
+        for kind, heading in (('poster', '## Poster LaTeX'),
+                              ('slides', '## Slides LaTeX')):
+            with self.subTest(kind=kind):
+                template = (TEMPLATES / f'AGENTS.{kind}.md').read_text()
+                self.assertEqual(generic, template.split('## Project and editing\n', 1)[1].split(heading)[0])
+                self.assertEqual(paper.split(marker, 1)[1], template.split(marker, 1)[1])
 
     def test_invalid_init_option_and_document_type_do_not_write_files(self):
         self.paper('init', '--typo', ok=False)
         self.paper('init', '--poster', 'extra', ok=False)
+        self.paper('init', '--slides', 'extra', ok=False)
+        self.paper('init', '--poster', '--slides', ok=False)
         self.assertFalse((self.repo / '.paper').exists())
         (self.repo / '.paper').mkdir()
         config = self.repo / '.paper/config.json'

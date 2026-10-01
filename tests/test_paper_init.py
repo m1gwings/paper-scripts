@@ -87,6 +87,7 @@ class ExistingInitTest(test_workflow.WorkflowTest):
     def test_default_paper_directory_and_template_unchanged(self):
         self.initialize_new('abc123', 'owner/new-paper', directory='paper', kind='paper')
         self.assertFalse((self.root / 'poster').exists())
+        self.assertFalse((self.root / 'slides').exists())
 
     def test_poster_default_directory_and_template(self):
         self.initialize_new('--poster', 'abc123', 'owner/new-poster',
@@ -97,6 +98,16 @@ class ExistingInitTest(test_workflow.WorkflowTest):
         self.initialize_new('abc123', 'owner/new-poster', 'custom poster', '--poster',
                             directory='custom poster', kind='poster')
         self.assertFalse((self.root / 'poster').exists())
+
+    def test_slides_default_directory_and_template(self):
+        self.initialize_new('--slides', 'abc123', 'owner/new-slides',
+                            directory='slides', kind='slides')
+        self.assertFalse((self.root / 'paper').exists())
+
+    def test_slides_explicit_directory_and_trailing_flag(self):
+        self.initialize_new('abc123', 'owner/new-slides', 'custom slides', '--slides',
+                            directory='custom slides', kind='slides')
+        self.assertFalse((self.root / 'slides').exists())
 
     def test_end_of_options_allows_directory_with_leading_dash(self):
         self.initialize_new('--poster', 'abc123', 'owner/new-poster', '--', './-poster',
@@ -112,21 +123,37 @@ class ExistingInitTest(test_workflow.WorkflowTest):
         self.assertEqual((self.repo / 'AGENTS.md').read_text(),
                          (TEMPLATES / 'AGENTS.poster.md').read_text())
 
+    def test_existing_directory_receives_slides_instructions_without_commit(self):
+        head = self.git('rev-parse', 'HEAD')
+        result = subprocess.run(
+            ['bash', str(INIT), '--slides', 'abc123', 'owner/paper', str(self.repo)],
+            cwd=self.root, env=self.env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.git('rev-parse', 'HEAD'), head)
+        self.assertEqual((self.repo / 'AGENTS.md').read_text(),
+                         (TEMPLATES / 'AGENTS.slides.md').read_text())
+
     def test_help_and_invalid_arguments_do_not_authenticate_or_create_files(self):
         marker = self.root / 'gh-called'
         gh = self.root / 'tools/gh'
         gh.write_text('#!/bin/sh\ntouch "$TEST_GH_CALLED"\nexit 99\n')
         env = dict(self.env, TEST_GH_CALLED=str(marker))
-        for args in [('--help',), ('-h',), ('--poster', '--help')]:
+        for args in [('--help',), ('-h',), ('--poster', '--help'), ('--slides', '--help')]:
             with self.subTest(args=args):
                 result = subprocess.run(['bash', str(INIT), *args], cwd=self.root,
                                         env=env, text=True, capture_output=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn('--poster', result.stdout)
                 self.assertIn('./poster', result.stdout)
-        for args in [(), ('--poster',), ('--poster', 'abc123'),
+                self.assertIn('--slides', result.stdout)
+                self.assertIn('./slides', result.stdout)
+        for args in [(), ('--poster',), ('--slides',),
+                     ('--poster', 'abc123'), ('--slides', 'abc123'),
                      ('abc123', 'repo', 'dir', 'extra'),
-                     ('--poster', 'abc123', 'repo', '--typo')]:
+                     ('--poster', 'abc123', 'repo', '--typo'),
+                     ('--slides', 'abc123', 'repo', '--typo'),
+                     ('--poster', '--slides', 'abc123', 'repo'),
+                     ('--slides', '--poster', 'abc123', 'repo')]:
             with self.subTest(args=args):
                 result = subprocess.run(['bash', str(INIT), *args], cwd=self.root,
                                         env=env, text=True, capture_output=True)
@@ -134,6 +161,7 @@ class ExistingInitTest(test_workflow.WorkflowTest):
         self.assertFalse(marker.exists())
         self.assertFalse((self.root / 'paper').exists())
         self.assertFalse((self.root / 'poster').exists())
+        self.assertFalse((self.root / 'slides').exists())
 
 for name in list(test_workflow.WorkflowTest.__dict__):
     if name.startswith('test_'):
