@@ -232,6 +232,13 @@ commands are primary definitions; no `AuthorInline` or `Codex...` aliases are
 provided in the new package. Existing projects keep their old macro files and
 markup until explicitly migrated.
 
+Agent comments accept optional model attribution: `\Agent[GPT-6 Astra]{Check this assumption.}`
+and `\AgentOut[GPT-6 Astra]{Check this assumption.}`. The model name replaces
+“Agent” in the title, retaining the AG label and review color. Existing
+`\Agent{comment}` calls still work. Defaults require agents to identify their
+actual model in new comments when the loaded package supports it; an unavailable
+identity is explicitly labeled `Model unavailable`, never guessed.
+
 All default `AGENTS.md` files document the review modes, block/math operations,
 structural-change exceptions, and legacy-project fallback. Their new
 `managed-drafting` block updates conservatively and defers to project-specific
@@ -500,6 +507,12 @@ Requirements:
 When updating an existing checkout, inspect its status, preserve local work, and
 fast-forward normally. Do not replace the directory or use destructive reset
 commands to force an upgrade.
+
+Automatic preview notifications skip delivery with a clear Actions notice when the
+selected provider has no credentials configured in the protected `paper-notify`
+environment. The build result and artifact stay available in Actions. Invalid
+configuration and delivery failures still fail; explicitly requested
+`paper notify` calls continue to require working delivery configuration.
 
 ## Validation
 

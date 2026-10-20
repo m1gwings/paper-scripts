@@ -1,8 +1,9 @@
 \NeedsTeXFormat{LaTeX2e}
-\ProvidesPackage{papermacros}[2026/10/20 v1.0.1 Shared notation and agent review]
+\ProvidesPackage{papermacros}[2026/10/20 v1.0.2 Shared notation and agent review]
 % Shared definitions only. Put manuscript notation in projectmacros.tex.
 \RequirePackage{kvoptions}
 \RequirePackage{etoolbox}
+\RequirePackage{xparse}
 \SetupKeyvalOptions{family=ps,prefix=ps@}
 \DeclareStringOption[paper]{profile}
 \DeclareStringOption[visible]{review}
@@ -219,6 +220,16 @@
 \DeclarePaperAuthor{DA}{Diego}{DA}{006C7D}
 \DeclarePaperAuthor{GG}{Gianmarco}{GG}{855D00}
 \DeclarePaperAuthor{Agent}{Agent}{AG}{B34700}
+% Optional model attribution changes the comment title, retaining the AG cue.
+% Existing one-argument calls keep their original meaning.
+\RenewDocumentCommand{\Agent}{O{Agent} +m}{\ps@note{AgentColor}{#1}{AG}{#2}}
+\RenewDocumentCommand{\AgentOut}{O{Agent} +m}{\ps@out{AgentColor}{#1}{AG}{#2}}
+% Consume both forms in PDF strings, without leaking the optional name/body.
+\NewExpandableDocumentCommand{\ps@pdfnote}{o m}{}
+\AtBeginDocument{%
+  \@ifundefined{pdfstringdefDisableCommands}{}{%
+    \pdfstringdefDisableCommands{\let\Agent\ps@pdfnote\let\AgentOut\ps@pdfnote}}%
+}
 \DeclarePaperAuthor{Rebuttal}{Reviewed rebuttal}{REV}{0000AA}
 \newcommand{\TODO}[1]{\Agent{TODO: #1}}
 \newcommand{\TODOOut}[1]{\AgentOut{TODO: #1}}

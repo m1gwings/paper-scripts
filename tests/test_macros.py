@@ -69,8 +69,12 @@ $\Reals,\Reals[0],\Prob(A),\vec{x},\norm*{x},\AgentDel{x^2}\AgentIns{y^2}$.
 \AgentDelBlock{BLOCKOLD \[u+v=w.\]}
 \Agent{REVIEWNOTE}
 '''
+                    named_notes = r'\Agent[GPT-6 Astra]{NAMEDNOTE}\AgentOut[GPT-6 Sol]{OUTSIDENOTE}'
                     if not is_paper:
                         body = r'\begin{frame}{Review}' + body + r'\end{frame}'
+                        body += r'\begin{frame}{Model comments}' + named_notes + r'\end{frame}'
+                    else:
+                        body += named_notes
                     bibliography = r'''
 \begin{thebibliography}{1}
 \bibitem[Author(2026)]{example} Author. Example reference.
@@ -84,6 +88,29 @@ $\Reals,\Reals[0],\Prob(A),\vec{x},\norm*{x},\AgentDel{x^2}\AgentIns{y^2}$.
                     self.assertEqual('DELETEDWORD' in text, mode != 'applied')
                     self.assertEqual('BLOCKOLD' in text, mode != 'applied')
                     self.assertEqual('REVIEWNOTE' in text, mode == 'visible')
+                    for token in ('GPT-6 Astra', 'GPT-6 Sol', 'NAMEDNOTE', 'OUTSIDENOTE'):
+                        self.assertEqual(token in text, mode == 'visible', token)
+                    if mode == 'visible':
+                        self.assertIn('Agent (AG)', text)
+                        self.assertIn('GPT-6 Astra (AG)', text)
+
+    def test_optional_comment_names_are_consumed_in_pdf_bookmarks(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            shutil.copyfile(PACKAGE, root / 'papermacros.sty')
+            (root / 'main.tex').write_text(r'''\documentclass{article}
+\usepackage{papermacros}
+\usepackage{hyperref}
+\begin{document}
+\pdfbookmark{Heading\Agent[GPT-6 Astra]{HIDDENCOMMENT}\Agent{DEFAULTCOMMENT}\AgentOut[GPT-6 Sol]{OUTCOMMENT}\AgentOut{DEFAULTNOTE}}{test}
+Visible body.
+\end{document}''')
+            self.compile(root)
+            bookmarks = (root / 'main.out').read_text()
+            self.assertIn(r'\000H\000e\000a\000d\000i\000n\000g', bookmarks)
+            self.assertNotIn(r'\000[', bookmarks)
+            self.assertNotIn(r'\000G\000P\000T', bookmarks)
+            self.assertNotIn(r'\000C\000O\000M\000M\000E\000N\000T', bookmarks)
 
     def test_applied_deletion_does_not_execute_deleted_invalid_commands(self):
         with tempfile.TemporaryDirectory() as tmp:
