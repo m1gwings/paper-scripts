@@ -1,0 +1,17 @@
+\documentclass{article}
+\usepackage[profile=paper,theorems=standard,algorithms=true]{papermacros}
+\input{projectmacros}
+\usepackage{hyperref}
+\title{@@TITLE@@}
+\author{@@AUTHOR@@}
+\date{@@DATE@@}
+% Visible is the default; Applied/Reverted change rendering, not source history.
+\CommentsVisible
+\begin{document}
+\maketitle
+\input{content/01_introduction}
+\bibliographystyle{plain}
+\bibliography{references}
+\appendix
+\input{appendix/01_proofs}
+\end{document}

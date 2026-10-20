@@ -6,10 +6,11 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import scaffold
 
-VERSION = 3
+VERSION = 4
 SOURCE = Path(__file__).resolve().parents[1]
-LIBRARIES = ['notify.py', 'cloud.py', 'ci.py', 'preview.py', 'preview_notify.py', 'infrastructure.py', 'configure_ci.py', 'create.sh']
+LIBRARIES = ['notify.py', 'cloud.py', 'ci.py', 'preview.py', 'preview_notify.py', 'infrastructure.py', 'configure_ci.py', 'create.sh', 'scaffold.py']
 WORKFLOWS = ['paper-preview.yml', 'paper-publish.yml', 'paper-notify.yml']
 DOCUMENT_TYPES = ('paper', 'poster', 'slides')
 # Remove only the exact, manifest-owned model default shipped by earlier releases.
@@ -20,6 +21,8 @@ AGENT_CLEANUP_BEGIN = '<!-- paper-scripts:begin managed-feature-cleanup -->'
 AGENT_CLEANUP_END = '<!-- paper-scripts:end managed-feature-cleanup -->'
 AGENT_TASKING_BEGIN = '<!-- paper-scripts:begin managed-tasking -->'
 AGENT_TASKING_END = '<!-- paper-scripts:end managed-tasking -->'
+AGENT_DRAFT_BEGIN = '<!-- paper-scripts:begin managed-drafting -->'
+AGENT_DRAFT_END = '<!-- paper-scripts:end managed-drafting -->'
 
 
 def git(*args):
@@ -102,6 +105,9 @@ def generated():
         name = f'AGENTS.{kind}.md'
         agent_template(kind)  # Validate editable defaults before any initialization writes.
         files['.paper/runtime/templates/' + name] = (SOURCE / 'templates' / name).read_bytes()
+    for path in sorted((SOURCE / 'templates/latex').rglob('*')):
+        if path.is_file():
+            files['.paper/runtime/templates/latex/' + path.relative_to(SOURCE / 'templates/latex').as_posix()] = path.read_bytes()
     files['.paper/WORKFLOW.md'] = b'''# Paper lifecycle\n\nUse paper start NAME before isolated work, paper commit for local checkpoints,\npaper backup for GitHub backup, and paper publish only on explicit publication\nauthorization. Use paper sync from the base branch when returning to a machine.\nAfter publishing feature work, verify that the remaining non-base branches are\nintegrated, then remove them with paper clear-feature-branches. Use paper commands\nfor lifecycle operations; raw Git is reserved for resolving conflicts or repairing\nthe implementation. Never commit credentials.\n\nUse paper notify for notifications. It dispatches the trusted GitHub Actions\nworkflow; local and cloud agents never receive provider credentials.\n\nCloud clients need GitHub access (Contents write and Actions read/write),\nPython 3, Git, and gh. Set PAPER_EXECUTION=cloud or git config paper.execution cloud.\nNever provide an Overleaf or notification token to the cloud client. See the setup guide.\n'''
     return files
 
@@ -112,7 +118,8 @@ def agent_template(kind='paper'):
     intervals = []
     for begin, end in ((AGENT_BLOCK_BEGIN, AGENT_BLOCK_END),
                        (AGENT_CLEANUP_BEGIN, AGENT_CLEANUP_END),
-                       (AGENT_TASKING_BEGIN, AGENT_TASKING_END)):
+                       (AGENT_TASKING_BEGIN, AGENT_TASKING_END),
+                       (AGENT_DRAFT_BEGIN, AGENT_DRAFT_END)):
         if template.count(begin) != 1 or template.count(end) != 1:
             raise ValueError(f'{path}: keep exactly one {begin} and {end}.')
         start, stop = template.index(begin), template.index(end)
@@ -132,6 +139,14 @@ def managed_agent_block(template, begin, end_marker):
 
 
 def merge_agent_instructions(current, template):
+    draft = managed_agent_block(template, AGENT_DRAFT_BEGIN, AGENT_DRAFT_END)
+    if AGENT_DRAFT_BEGIN in current:
+        start = current.index(AGENT_DRAFT_BEGIN)
+        stop = current.index(AGENT_DRAFT_END, start) + len(AGENT_DRAFT_END)
+        current = current[:start] + draft.rstrip('\n') + current[stop:]
+    elif current != template:
+        current = current.rstrip() + '\n\n' + draft
+
     if current == template:
         return template
     block = managed_agent_block(template, AGENT_BLOCK_BEGIN, AGENT_BLOCK_END)
@@ -200,25 +215,39 @@ def merge_agent_instructions(current, template):
     return current + separator + tasking
 
 
-def plan(document_type=None):
+def plan(document_type=None, force=False, verbose=False):
     old = read_json('.paper/manifest.json', {'version': VERSION, 'files': {}})
     if old.get('version', 0) > VERSION:
         raise ValueError('Installed infrastructure is newer than this paper-scripts version.')
     retired_paths(old)  # Validate retired managed paths before any writes.
     files = generated()
     agents = safe_path('AGENTS.md')
-    for name, data in files.items():
-        path = safe_path(name)
-        if path.exists() and path.read_bytes() != data:
-            previous = old.get('files', {}).get(name)
-            if previous is None or digest(path.read_bytes()) != previous:
-                raise ValueError(f'Preserving edited/unmanaged file {name}; reconcile it before upgrading.')
     value = config()
     if document_type is not None:
         value['document_type'] = document_type
     kind = value.get('document_type', 'paper')
     if kind not in DOCUMENT_TYPES:
         raise ValueError('document_type must be paper, poster, or slides.')
+    sources, scaffold_kind, message = scaffold.plan(SOURCE, kind, value, old, force)
+    files.update(sources)
+    if scaffold_kind:
+        value['scaffold_type'] = scaffold_kind
+        value['drafting_api'] = 'agent-v1'
+        value['root_tex'] = 'main.tex'
+    for name, data in files.items():
+        path = safe_path(name)
+        if name in scaffold.PROJECT_FILES or (force and name == scaffold.PACKAGE):
+            continue
+        if path.exists() and path.read_bytes() != data:
+            previous = old.get('files', {}).get(name)
+            if previous is None or digest(path.read_bytes()) != previous:
+                raise ValueError(f'Preserving edited/unmanaged file {name}; reconcile it before upgrading.')
+    if sources:
+        safe_path('.paper/scaffold-backups/placeholder')
+    if verbose:
+        print(message)
+        if scaffold_kind:
+            print('Starter paths: ' + ', '.join(sources))
     template = agent_template(kind)
     current = agents.read_text() if agents.exists() else template
     # Explicit type selection may replace only a recognized untouched default.
@@ -227,6 +256,12 @@ def plan(document_type=None):
     files['AGENTS.md'] = merge_agent_instructions(current, template).encode()
     # config is user-owned: preserve custom fields and fill only missing defaults.
     files['.paper/config.json'] = (json.dumps(value, indent=2) + '\n').encode()
+    for name, data in files.items():
+        path = Path(name)
+        if not path.exists() or path.read_bytes() != data:
+            temporary = path.with_name(path.name + '.paper-new')
+            if temporary.exists() or temporary.is_symlink():
+                raise ValueError(f'Remove or review leftover temporary file {temporary}.')
     return files
 
 
@@ -257,16 +292,17 @@ def retired_paths(manifest):
     return paths
 
 
-def install(document_type=None):
-    files = plan(document_type)  # Preflight every conflict before writing any generated file.
+def install(document_type=None, force=False):
+    files = plan(document_type, force)  # Preflight every conflict before writing any generated file.
     old = read_json('.paper/manifest.json', {'files': {}})
     agents = Path('AGENTS.md')
     untouched = not agents.exists() or matches_agent_default(agents.read_text(), old)
+    scaffold.backup(files)
     for path in retired_paths(old):
         path.unlink()
         print(f'Removed retired generated file {path}')
     manifest = {'version': VERSION, 'files': {name: digest(data) for name, data in files.items()
-                                            if name not in ('.paper/config.json', 'AGENTS.md')}}
+                                            if name not in ('.paper/config.json', 'AGENTS.md') + scaffold.PROJECT_FILES}}
     if untouched:
         manifest['agents_default_sha256'] = digest(files['AGENTS.md'])
     files['.paper/manifest.json'] = (json.dumps(manifest, indent=2, sort_keys=True) + '\n').encode()
@@ -300,12 +336,13 @@ def main():
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument('--poster', action='store_const', const='poster', dest='document_type')
     mode.add_argument('--slides', action='store_const', const='slides', dest='document_type')
+    parser.add_argument('--force', action='store_true', help='Reinstall the selected starter; back up replaced files.')
     args = parser.parse_args()
     try:
         if args.action == 'preflight':
-            plan(args.document_type)
+            plan(args.document_type, args.force, verbose=True)
         elif args.action == 'install':
-            install(args.document_type)
+            install(args.document_type, args.force)
         else:
             value = read_json('.paper/config.json', {})
             result = value.get(args.key)

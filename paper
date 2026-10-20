@@ -430,17 +430,18 @@ MENTAL MODEL
 
 COMMANDS
 
-  paper create [--poster | --slides] OVERLEAF_PROJECT_ID GITHUB_REPOSITORY [LOCAL_DIRECTORY]
+  paper create [--poster | --slides] [--force] OVERLEAF_PROJECT_ID GITHUB_REPOSITORY [LOCAL_DIRECTORY]
       Clone Overleaf, initialize the project, create a private GitHub repository,
       and configure remotes. Default directory: paper, poster, or slides.
       Run 'paper create --help' for the full creation guide.
 
-  paper init [--poster | --slides]
+  paper init [--poster | --slides] [--force]
       Initialize paper, beamerposter poster, or Beamer slides instructions, research notes,
       and a lightweight resumable task queue in this Git repository.
       Install/upgrade versioned preview and publication infrastructure.
       Preserve custom files; require no configured remotes. No commit/push.
       Remember poster or slides mode for later upgrades with plain 'paper init'.
+      Scaffold recognized blank projects; --force reinstalls starter paths with backups.
 
   paper status
       Show base branch, current branch, status, branches,
@@ -726,15 +727,27 @@ case "$CMD" in
 
     init)
         if [[ $# -eq 1 && ( "$1" == --help || "$1" == -h ) ]]; then
-            echo "Usage: paper init [--poster | --slides]"
+            echo "Usage: paper init [--poster | --slides] [--force]"
             echo "Create research files and install/upgrade versioned .paper and Actions infrastructure."
             echo "--poster selects beamerposter/TikZ instructions and is remembered for later upgrades."
             echo "--slides selects Beamer slide instructions and is remembered for later upgrades."
-            echo "Run inside a Git repository; no remotes required. Existing files are preserved."
+            echo "Recognized blank projects receive a starter. Existing manuscripts are preserved."
+            echo "--force reinstalls starter files, backing up replacements under .paper/scaffold-backups/."
+            echo "Run inside a Git repository; no remotes required. Overleaf changes require paper publish."
             exit 0
         fi
-        [[ $# -eq 0 || ( $# -eq 1 && ( "$1" == --poster || "$1" == --slides ) ) ]] \
-            || die "Usage: paper init [--poster | --slides]"
+        SELECTED_TYPE=""
+        for option in "$@"; do
+            case "$option" in
+                --poster|--slides)
+                    [[ -z "$SELECTED_TYPE" || "$SELECTED_TYPE" == "$option" ]] \
+                        || die "--poster and --slides are mutually exclusive."
+                    SELECTED_TYPE="$option"
+                    ;;
+                --force) ;;
+                *) die "Usage: paper init [--poster | --slides] [--force]" ;;
+            esac
+        done
         need git
         REPO_ROOT="$(root)"
         cd "$REPO_ROOT"

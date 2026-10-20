@@ -85,8 +85,8 @@ paper; each paper is upgraded with `paper init`, reviewed, and committed.
 | `paper backup` | Push the current committed branch to GitHub. Never touch Overleaf. |
 | `paper sync` | Reconcile GitHub and Overleaf into the local base. Run from a clean base branch. |
 | `paper publish` | Reconcile fresh state, integrate committed work, back it up, and publish to Overleaf. Requires explicit authorization. |
-| `paper init [--poster \| --slides]` | Create missing research files and install or upgrade generated infrastructure without overwriting custom content. |
-| `paper create [--poster \| --slides] OVERLEAF_ID OWNER/REPO [DIRECTORY]` | Create a new private GitHub/Overleaf paper, poster, or slides repository and then run `paper init`. |
+| `paper init [--poster \| --slides] [--force]` | Initialize or upgrade conservatively; scaffold blank sources. Explicit --force reinstalls starter paths with backups. |
+| `paper create [--poster \| --slides] [--force] OVERLEAF_ID OWNER/REPO [DIRECTORY]` | Create a new private GitHub/Overleaf paper, poster, or slides repository and then run `paper init`. |
 | `paper notify --title TITLE --message MESSAGE [--url HTTPS_URL]` | Dispatch the trusted notification workflow. The URL becomes a clickable Discord embed title. |
 | `paper notify-test` | Test the configured provider through GitHub Actions. |
 | `paper configure-ci [--environments-only]` | Create/verify protected environments and privately install the Overleaf credential. |
@@ -139,8 +139,8 @@ Git repository, use `paper init --slides`. The selection persists as
 upgrades and recovery of a missing `AGENTS.md`.
 
 All three modes use the same `paper` commands, remotes, Cloud Codex instructions,
-notifications, and publication rules. They select instructions for the cloned
-Overleaf source; they do not create a new LaTeX document or theme. Plain
+notifications, and publication rules. Recognized blank projects also receive a minimal compilable LaTeX starter
+for the selected document type. Existing manuscripts retain their sources. Plain
 `paper init` retains the saved type and restores a missing `AGENTS.md`.
 Explicitly selecting `--poster` or `--slides` replaces an untouched built-in
 template, including when switching types. Customized `AGENTS.md` content is
@@ -164,7 +164,7 @@ to keep your defaults on GitHub. See [`templates/README.md`](templates/README.md
 for the editing and upgrade contract.
 
 Existing repositories change only when you run `paper init`. It preserves
-repository-specific instructions outside the three marker-managed workflow
+repository-specific instructions outside the four marker-managed workflow
 blocks. Those blocks are refreshed from the selected template. Keep their
 `paper-scripts:begin` and `paper-scripts:end` comments intact; the initializer
 validates them before writing files. Other sections may differ freely between
@@ -176,6 +176,66 @@ A missing `AGENTS.md` is restored from the current selected default. An explicit
 when it exactly matches a current default or an unchanged, manifest-verified
 previously installed template. Edited files keep their custom text, including
 when switching types. Vendored defaults remain pinned until a reviewed upgrade.
+
+## Blank projects and starter structures
+
+Create a blank project on Overleaf, then run:
+
+```bash
+paper create OVERLEAF_ID OWNER/my-paper
+paper create --slides OVERLEAF_ID OWNER/my-slides
+paper create --poster OVERLEAF_ID OWNER/my-poster
+```
+
+Both creation and initialization explain their source classification:
+
+- An empty source tree or recognized stock Overleaf blank project receives the
+  selected starter. Title, author, and date are preserved when recognizable.
+- An existing or unrecognized manuscript keeps all its source files, macros,
+  bibliography, and layout. The output reminds you how to opt into scaffolding.
+- An already installed starter keeps its user-owned sources; only untouched
+  managed files, including the shared macro package, are upgraded.
+
+To explicitly reinstall a starter:
+
+```bash
+paper init --force
+paper init --slides --force
+paper create --force OVERLEAF_ID OWNER/my-paper
+```
+
+`--force` replaces only named starter paths. Every differing existing file is
+copied under `.paper/scaffold-backups/UNIQUE_ID/` before replacement. Other files,
+custom `AGENTS.md` text, notes, tasks, and custom configuration fields survive.
+It does not bypass symlink protection or edited workflow/runtime conflicts.
+When changing the starter type later, use the matching type flag with `--force`;
+an ordinary type selection continues to preserve manuscript source.
+
+The starter includes `main.tex`, `content/`, `appendix/`, `algs/`, `figures/`,
+`tables/`, `references.bib`, `projectmacros.tex`, and `papermacros.sty`. Source
+templates live in `templates/latex/{paper,poster,slides}/`. The one shared package
+lives in `templates/latex/papermacros.sty`; edit it there for future projects.
+The main file, project macros, bibliography, and content are copied once.
+The shared package is manifest-managed: untouched copies can upgrade; edited
+copies stop an ordinary upgrade rather than being overwritten.
+
+Creation commits the full starter to GitHub. Inspect it, then run `paper publish`
+to send it to Overleaf. Creation never publishes to Overleaf implicitly.
+No default `.codex/config.toml` is installed.
+
+## Shared macros and agent revisions
+
+See [the package guide](templates/latex/README.md) for options and examples.
+The public review interface is agent-neutral: `\AgentIns`, `\AgentDel`,
+`\AgentDelBlock`, `\AgentReplaceMath`, `\Agent`, and `\AgentOut`. Insertion
+commands are primary definitions; no `AuthorInline` or `Codex...` aliases are
+provided in the new package. Existing projects keep their old macro files and
+markup until explicitly migrated.
+
+All default `AGENTS.md` files document the review modes, block/math operations,
+structural-change exceptions, and legacy-project fallback. Their new
+`managed-drafting` block updates conservatively and defers to project-specific
+review/rebuttal policy. It never instructs an agent to use undefined commands.
 
 ## Everyday local workflow
 
@@ -353,15 +413,16 @@ Inside an existing Git repository:
 paper init
 ```
 
-Infrastructure schema version 3 supports Discord and managed agent notification
-instructions. The initializer is idempotent:
+Infrastructure schema version 4 adds conservative LaTeX scaffolding, shared macros,
+and capability-aware drafting instructions. Older initializers refuse this version
+rather than downgrading the new ownership contracts. The initializer is idempotent:
 
 - missing generated files are restored;
 - known, unedited generated files are upgraded using manifest hashes;
 - unknown or edited generated-path collisions stop before any write;
 - custom JSON fields, research notes, task records, and repository-specific
   `AGENTS.md` content are preserved;
-- only marker-managed notification, feature-cleanup, and tasking blocks are
+- only marker-managed notification, feature-cleanup, tasking, and capability-aware drafting blocks are
   updated in a custom `AGENTS.md`;
 - version 2 `none`/`pushover` configurations migrate to the requested Discord
   default while retaining legacy Pushover device metadata;
@@ -371,7 +432,7 @@ Review the result before committing. A typical non-secret configuration is:
 
 ```json
 {
-  "version": 3,
+  "version": 4,
   "base_branch": "main",
   "overleaf_project_id": "YOUR_PROJECT_ID",
   "root_tex": "main.tex",

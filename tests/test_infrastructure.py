@@ -200,7 +200,7 @@ class InfrastructureTest(test_workflow.WorkflowTest):
         value = json.loads(config.read_text())
         self.assertEqual(value['base_branch'], 'master')
         self.assertEqual(value['notify_provider'], 'discord')
-        self.assertEqual(value['version'], 3)
+        self.assertEqual(value['version'], 4)
         self.assertNotIn('document_type', value)
         self.assertEqual((self.repo / 'AGENTS.md').read_text(),
                          (TEMPLATES / 'AGENTS.paper.md').read_text())

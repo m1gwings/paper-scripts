@@ -87,6 +87,16 @@ class ExistingCreateTest(test_workflow.WorkflowTest):
         self.initialize_new('--slides', 'abc123', 'owner/new-slides',
                             directory='slides', kind='slides')
 
+    def test_force_creation_commits_the_entire_starter_to_github_only(self):
+        self.initialize_new('--force', '--slides', 'abc123', 'owner/new-slides',
+                            directory='slides', kind='slides')
+        fresh = self.root / 'slides'
+        self.assertTrue((fresh / 'papermacros.sty').exists())
+        self.assertIn(r'\documentclass{beamer}', (fresh / 'main.tex').read_text())
+        self.assertEqual(self.git('--git-dir', str(self.root / 'new-github'), 'show',
+                                  'master:papermacros.sty', cwd=self.root),
+                         (fresh / 'papermacros.sty').read_text().rstrip())
+
     def test_new_repository_commits_and_pushes_canonical_initialization(self):
         self.initialize_new('abc123', 'owner/new-paper', 'fresh',
                             directory='fresh', kind='paper')

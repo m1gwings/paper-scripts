@@ -56,7 +56,7 @@ paper create — create a local Overleaf + GitHub paper, poster, or slides repos
 
 USAGE
 
-    paper create [--poster | --slides] OVERLEAF_PROJECT_ID GITHUB_REPOSITORY [LOCAL_DIRECTORY]
+    paper create [--poster | --slides] [--force] OVERLEAF_PROJECT_ID GITHUB_REPOSITORY [LOCAL_DIRECTORY]
 
 OPTIONS
 
@@ -64,6 +64,7 @@ OPTIONS
                 An explicit LOCAL_DIRECTORY still takes precedence.
     --slides    Default to ./slides and install Beamer slide instructions.
                 An explicit LOCAL_DIRECTORY still takes precedence.
+    --force     Install the starter even for an existing manuscript; back up replacements.
     -h, --help  Show this help.
 
 
@@ -169,9 +170,10 @@ while [[ $# -gt 0 ]]; do
             [[ "$DOCUMENT_TYPE" == paper || "$DOCUMENT_TYPE" == "$SELECTED_TYPE" ]] \
                 || die "--poster and --slides are mutually exclusive."
             DOCUMENT_TYPE="$SELECTED_TYPE"
-            INIT_OPTIONS=("$1")
+            INIT_OPTIONS+=("$1")
             DEFAULT_DIR="$SELECTED_TYPE"
             ;;
+        --force) INIT_OPTIONS+=("$1") ;;
         -h|--help) usage; exit 0 ;;
         --) shift; POSITIONAL+=("$@"); break ;;
         -*) die "Unknown option: $1. Run paper create --help." ;;
@@ -266,7 +268,7 @@ echo "Installing canonical paper workflow and task instructions..."
 
 bash "$SCRIPT_DIR/paper" init "${INIT_OPTIONS[@]}"
 
-git add -- AGENTS.md .github .paper notes tasks
+git add -A -- .
 if ! git diff --cached --quiet; then
     git commit -m "Initialize paper workflow"
 fi
@@ -318,6 +320,7 @@ echo "    GitHub   = private mirror / feature branches"
 
 echo "Recommended next commands:"
 echo
+echo "    paper publish  # after reviewing, to send the starter to Overleaf"
 echo "    paper doctor"
 echo "    paper help"
 echo "    paper examples"

@@ -8,11 +8,12 @@ build step. Commit your edits to preserve them on GitHub.
 You can change the title, editing guidance, verification rules, and other
 project-specific sections independently for each project type.
 
-Keep these three pairs of marker comments, with one begin and one end per block:
+Keep these four pairs of marker comments, with one begin and one end per block:
 
 - `managed-notifications`
 - `managed-feature-cleanup`
 - `managed-tasking`
+- `managed-drafting`
 
 These blocks carry the shared lifecycle contracts. Editing their contents also
 updates that block in existing projects the next time `paper init` runs there.
@@ -30,3 +31,6 @@ Each project vendors its own copies under `.paper/runtime/templates/` for repair
 and reproducibility. Edit the defaults here in paper-scripts for future projects,
 not a project's vendored copies. To upgrade an existing project, run `paper init`
 with the updated paper-scripts installation, then review and commit the changes.
+
+The drafting block documents the Agent review API and safely handles legacy projects.
+LaTeX starters and the unified macro package are documented in [latex/README.md](latex/README.md).

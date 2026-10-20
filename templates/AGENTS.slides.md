@@ -85,6 +85,18 @@ Minimal two-column plain-frame pattern (requires TikZ; adapt the named safe area
 - Compile with the project's build command and visually inspect every rendered overlay after non-trivial layout changes. Inspect debug guides against actual objects, then turn debug off, recompile, and inspect the final PDF. Record the build command and any verification limits.
 - Preserve mathematical meaning, notation, macros, labels, and references; summarize content changes separately from layout changes.
 
+<!-- paper-scripts:begin managed-drafting -->
+## Draft revisions and review
+
+- Unless the user explicitly asks otherwise, track manuscript edits using the collaboration API actually loaded by the project. The paper-scripts starter loads `papermacros.sty`: use `\AgentIns{new}`, `\AgentDel{old}`, and `\AgentDel{old}\AgentIns{new}` for replacements. Use `\Agent{comment}` for an explanatory review box and `\AgentOut{comment}` for an outer note (inline on slides/posters).
+- Use `\AgentDelBlock{...}` for deleted paragraphs, proofs, displays, or environments that cannot safely go inside an inline strikeout. Use `\AgentReplaceMath{old}{new}` inside math mode for a displayed replacement that stacks the two versions. These commands support all three review modes. In Beamer frames, split large blocks to fit the frame; frames are not automatically paginated.
+- Never wrap a whole file, preamble, package definition, environment boundary, verbatim material, or other syntactically incompatible change in an inline revision command. Keep labels unique across visible old/new material. Record structural/non-LaTeX changes precisely in the task checkpoint and change report.
+- Preserve existing author/reviewer markup; use the appropriate author commands only when attributing that person's changes. Do not nest revision wrappers or silently relabel someone else's work as agent work. The shared API uses `Ins` as the primary insertion name; do not introduce `AuthorInline` or `Codex...` aliases.
+- `\CommentsVisible` shows revisions, `\CommentsApplied` renders insertions and hides deletions, and `\CommentsReverted` hides insertions and restores deletions. Rendering a clean PDF does not accept/reject changes in source. Preserve the project's selected mode unless the task requests another; use visible mode for draft review. Permanently accepting/rejecting changes requires user authorization.
+- Existing projects may load older `\CodexIns`, `\CodexDel`, or other collaboration macros. Inspect their loaded definitions and follow their project-specific review/rebuttal policy. Do not insert undefined Agent commands, import a second macro package, rename old commands, or migrate old markup implicitly. If no tracking API exists, report that limitation instead of silently adding one.
+- After edits, compile and check the affected document. When changing shared review macros, validate visible/applied/reverted output including citations, references, math, and block edits. Keep paper-specific notation in `projectmacros.tex`; theorem and remark numbering belongs to the project or venue setup. Never modify a venue style file to accommodate the shared package.
+<!-- paper-scripts:end managed-drafting -->
+
 <!-- paper-scripts:begin managed-notifications -->
 ## Codex Cloud GitHub access
 
