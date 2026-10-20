@@ -64,6 +64,7 @@ class ExistingInitTest(test_workflow.WorkflowTest):
             ['bash', str(INIT), *arguments],
             cwd=self.root, env=env, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse((fresh / '.codex/config.toml').exists())
         self.assertEqual(self.git('status', '--porcelain', cwd=fresh), '')
         self.assertEqual(self.git('log', '-1', '--format=%s', cwd=fresh),
                          'Initialize paper workflow')

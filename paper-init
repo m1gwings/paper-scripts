@@ -266,7 +266,7 @@ echo "Installing canonical paper workflow and task instructions..."
 
 bash "$SCRIPT_DIR/paper" init "${INIT_OPTIONS[@]}"
 
-git add -- AGENTS.md .codex .github .paper notes tasks
+git add -- AGENTS.md .github .paper notes tasks
 if ! git diff --cached --quiet; then
     git commit -m "Initialize paper workflow"
 fi

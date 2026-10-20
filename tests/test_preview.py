@@ -17,7 +17,8 @@ class PreviewTest(unittest.TestCase):
             root = Path(tmp)
             (root / '.paper').mkdir()
             (root / '.paper/config.json').write_text(json.dumps({'root_tex': 'main.tex'}))
-            (root / 'main.tex').write_text('\\documentclass{article}\n\\begin{document}\nPreview works.\\end{document}\n')
+            (root / 'main.tex').write_text('\\documentclass{article}\n\\usepackage{soul}\n'
+                                         '\\begin{document}\n\\ul{Preview works.}\\end{document}\n')
             # -norc must prevent arbitrary project Perl from running.
             (root / '.latexmkrc').write_text('die "project configuration executed";')
             result = subprocess.run(['python3', str(SCRIPT)], cwd=root, capture_output=True, text=True)

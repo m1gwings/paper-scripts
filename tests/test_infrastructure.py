@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 import subprocess
@@ -138,7 +139,67 @@ class InfrastructureTest(test_workflow.WorkflowTest):
         notify = self.repo / '.github/workflows/paper-notify.yml'
         self.assertIn('Notification provider is not configured', notify.read_text())
         codex = self.repo / '.codex/config.toml'
-        self.assertIn('model = "gpt-5.6-sol"', codex.read_text())
+        self.assertFalse(codex.exists())
+        self.assertNotIn('.codex/config.toml', json.loads(
+            (self.repo / '.paper/manifest.json').read_text())['files'])
+
+    def legacy_codex_default(self):
+        self.paper('init')
+        path = self.repo / '.codex/config.toml'
+        path.parent.mkdir()
+        path.write_text(
+            '#:schema https://developers.openai.com/codex/config-schema.json\n'
+            '# Trusted-project default for the Codex desktop app, CLI, and IDE extension.\n'
+            '# Codex cloud chats currently do not accept a repository-level default model.\n'
+            'model = "gpt-5.6-sol"\n')
+        manifest = self.repo / '.paper/manifest.json'
+        value = json.loads(manifest.read_text())
+        value['files']['.codex/config.toml'] = hashlib.sha256(path.read_bytes()).hexdigest()
+        manifest.write_text(json.dumps(value))
+        return path
+
+    def test_upgrade_removes_only_untouched_managed_codex_default(self):
+        path = self.legacy_codex_default()
+        self.paper('init')
+        self.assertFalse(path.exists())
+        self.paper('init')
+        self.assertFalse(path.exists())
+
+    def test_upgrade_preserves_customized_and_unmanaged_codex_configuration(self):
+        path = self.legacy_codex_default()
+        path.write_text('model = "my-preferred-model"\n')
+        self.paper('init')
+        self.assertEqual(path.read_text(), 'model = "my-preferred-model"\n')
+        self.paper('init')
+        self.assertEqual(path.read_text(), 'model = "my-preferred-model"\n')
+
+    def test_upgrade_preserves_unmanaged_legacy_default(self):
+        path = self.legacy_codex_default()
+        manifest = self.repo / '.paper/manifest.json'
+        value = json.loads(manifest.read_text())
+        del value['files']['.codex/config.toml']
+        manifest.write_text(json.dumps(value))
+        before = path.read_bytes()
+        self.paper('init')
+        self.assertEqual(path.read_bytes(), before)
+
+    def test_upgrade_preflights_before_removing_codex_default(self):
+        path = self.legacy_codex_default()
+        workflow = self.repo / '.github/workflows/paper-preview.yml'
+        workflow.write_text('custom workflow')
+        self.paper('init', ok=False)
+        self.assertTrue(path.exists())
+
+    def test_upgrade_refuses_symlinked_retired_codex_file(self):
+        path = self.legacy_codex_default()
+        original = path.read_bytes()
+        target = self.repo / 'private-config.toml'
+        target.write_bytes(original)
+        path.unlink()
+        path.symlink_to(target)
+        self.paper('init', ok=False)
+        self.assertEqual(target.read_bytes(), original)
+        self.assertTrue(path.is_symlink())
 
     def test_version_two_notification_config_migrates_to_discord(self):
         paper = self.repo / '.paper'

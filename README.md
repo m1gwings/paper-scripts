@@ -61,7 +61,6 @@ Generated infrastructure inside a paper looks like this:
 
 ```text
 AGENTS.md                              paper and agent instructions
-.codex/config.toml                    trusted-project local Codex defaults
 .paper/config.json                    non-secret paper settings
 .paper/manifest.json                  generated-file version and hashes
 .paper/WORKFLOW.md                     concise lifecycle contract
@@ -201,20 +200,10 @@ it never needs Overleaf or notification credentials.
 
 ### Codex model configuration
 
-`paper init` generates `.codex/config.toml` with:
-
-```toml
-#:schema https://developers.openai.com/codex/config-schema.json
-model = "gpt-5.6-sol"
-```
-
-`gpt-5.6-sol` is the official identifier for GPT-5.6 Sol. The project file is a
-supported default for trusted repositories in the Codex desktop app, CLI, and
-IDE extension. **Codex cloud chats currently do not support a repository-level
-default model.** Choose Sol in the cloud model picker; the repository cannot
-enforce that choice today. See the official [Codex configuration
-documentation](https://developers.openai.com/codex/config-basic) and [model
-guide](https://developers.openai.com/codex/models).
+`paper init` leaves Codex model selection to your user settings. It no longer
+creates `.codex/config.toml`. On upgrade, an untouched, manifest-owned copy of
+the old model default is removed. Customized or unmanaged Codex configuration
+is preserved. `AGENTS.md` remains the repository's workflow instructions.
 
 ## Synchronization and branch safety
 
@@ -327,8 +316,8 @@ Inside an existing Git repository:
 paper init
 ```
 
-Infrastructure schema version 3 adds Discord, `.codex/config.toml`, and managed
-agent notification instructions. The initializer is idempotent:
+Infrastructure schema version 3 supports Discord and managed agent notification
+instructions. The initializer is idempotent:
 
 - missing generated files are restored;
 - known, unedited generated files are upgraded using manifest hashes;

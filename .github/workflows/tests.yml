@@ -10,4 +10,8 @@ jobs:
         with:
           persist-credentials: false
       - run: bash -n paper paper-init install.sh
+      - name: Install the preview TeX dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends latexmk texlive-latex-extra texlive-fonts-recommended texlive-science texlive-plain-generic
       - run: python3 -m unittest discover -s tests -v

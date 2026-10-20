@@ -12,6 +12,8 @@ SOURCE = Path(__file__).resolve().parents[1]
 LIBRARIES = ['notify.py', 'cloud.py', 'ci.py', 'preview.py', 'preview_notify.py', 'infrastructure.py', 'configure_ci.py']
 WORKFLOWS = ['paper-preview.yml', 'paper-publish.yml', 'paper-notify.yml']
 DOCUMENT_TYPES = ('paper', 'poster', 'slides')
+# Remove only the exact, manifest-owned model default shipped by earlier releases.
+RETIRED_FILES = {'.codex/config.toml': '25e69687ee62b45820a6f775de911508c84bc3266e91a630b49e734ad6f562c9'}
 AGENT_BLOCK_BEGIN = '<!-- paper-scripts:begin managed-notifications -->'
 AGENT_BLOCK_END = '<!-- paper-scripts:end managed-notifications -->'
 AGENT_CLEANUP_BEGIN = '<!-- paper-scripts:begin managed-feature-cleanup -->'
@@ -99,11 +101,6 @@ def generated():
     for kind in DOCUMENT_TYPES:
         name = f'AGENTS.{kind}.md'
         files['.paper/runtime/templates/' + name] = (SOURCE / 'templates' / name).read_bytes()
-    files['.codex/config.toml'] = b'''#:schema https://developers.openai.com/codex/config-schema.json
-# Trusted-project default for the Codex desktop app, CLI, and IDE extension.
-# Codex cloud chats currently do not accept a repository-level default model.
-model = "gpt-5.6-sol"
-'''
     files['.paper/WORKFLOW.md'] = b'''# Paper lifecycle\n\nUse paper start NAME before isolated work, paper commit for local checkpoints,\npaper backup for GitHub backup, and paper publish only on explicit publication\nauthorization. Use paper sync from the base branch when returning to a machine.\nAfter publishing feature work, verify that the remaining non-base branches are\nintegrated, then remove them with paper clear-feature-branches. Use paper commands\nfor lifecycle operations; raw Git is reserved for resolving conflicts or repairing\nthe implementation. Never commit credentials.\n\nUse paper notify for notifications. It dispatches the trusted GitHub Actions\nworkflow; local and cloud agents never receive provider credentials.\n\nCloud clients need GitHub access (Contents write and Actions read/write),\nPython 3, Git, and gh. Set PAPER_EXECUTION=cloud or git config paper.execution cloud.\nNever provide an Overleaf or notification token to the cloud client. See the setup guide.\n'''
     return files
 
@@ -191,6 +188,7 @@ def plan(document_type=None):
     old = read_json('.paper/manifest.json', {'version': VERSION, 'files': {}})
     if old.get('version', 0) > VERSION:
         raise ValueError('Installed infrastructure is newer than this paper-scripts version.')
+    retired_paths(old)  # Validate retired managed paths before any writes.
     files = generated()
     agents = safe_path('AGENTS.md')
     for name, data in files.items():
@@ -217,8 +215,23 @@ def plan(document_type=None):
     return files
 
 
+def retired_paths(manifest):
+    paths = []
+    for name, expected in RETIRED_FILES.items():
+        if manifest.get('files', {}).get(name) != expected:
+            continue
+        path = safe_path(name)
+        if path.exists() and digest(path.read_bytes()) == expected:
+            paths.append(path)
+    return paths
+
+
 def install(document_type=None):
     files = plan(document_type)  # Preflight every conflict before writing any generated file.
+    old = read_json('.paper/manifest.json', {'files': {}})
+    for path in retired_paths(old):
+        path.unlink()
+        print(f'Removed retired generated file {path}')
     manifest = {'version': VERSION, 'files': {name: digest(data) for name, data in files.items()
                                             if name not in ('.paper/config.json', 'AGENTS.md')}}
     files['.paper/manifest.json'] = (json.dumps(manifest, indent=2, sort_keys=True) + '\n').encode()
