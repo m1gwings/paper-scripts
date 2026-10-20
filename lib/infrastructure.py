@@ -138,6 +138,12 @@ def managed_agent_block(template, begin, end_marker):
     return template[start:end] + '\n'
 
 
+def agent_section_end(text, start):
+    """Keep the next heading or managed block outside a legacy section."""
+    boundary = re.search(r'\n(?=## |<!-- paper-scripts:begin )', text[start:])
+    return start + boundary.end() if boundary else len(text)
+
+
 def merge_agent_instructions(current, template):
     draft = managed_agent_block(template, AGENT_DRAFT_BEGIN, AGENT_DRAFT_END)
     if AGENT_DRAFT_BEGIN in current:
@@ -161,8 +167,7 @@ def merge_agent_instructions(current, template):
         heading = '## Notifications\n'
         start = current.find(heading)
         if start >= 0:
-            end = current.find('\n## ', start + len(heading))
-            end = len(current) if end < 0 else end + 1
+            end = agent_section_end(current, start + len(heading))
             old = current[start:end]
             if 'paper notify --title' in old and 'protected GitHub' in old:
                 current = current[:start] + block + current[end:]
@@ -203,12 +208,13 @@ def merge_agent_instructions(current, template):
     start = current.find('## Tasks and resumption\n')
     delegation = current.find('## Token use and delegation\n', start) if start >= 0 else -1
     if delegation >= 0:
-        end = current.find('\n## ', delegation + len('## Token use and delegation\n'))
-        end = len(current) if end < 0 else end + 1
-        old = current[start:end]
-        if ('tasks/NNN_short_name/task.md' in old
-                and 'The main agent owns the task checkpoint' in old):
-            return current[:start] + tasking + current[end:]
+        tasks_end = agent_section_end(current, start + len('## Tasks and resumption\n'))
+        delegation_end = agent_section_end(current, delegation + len('## Token use and delegation\n'))
+        if ('tasks/NNN_short_name/task.md' in current[start:tasks_end]
+                and 'The main agent owns the task checkpoint' in current[delegation:delegation_end]):
+            # Custom sections may sit between the two legacy generated sections.
+            return (current[:start] + tasking + current[tasks_end:delegation]
+                    + current[delegation_end:])
 
     separator = ('' if not current or current.endswith('\n\n')
                  else ('\n' if current.endswith('\n') else '\n\n'))

@@ -343,6 +343,39 @@ class InfrastructureTest(test_workflow.WorkflowTest):
         self.assertIn('paper-scripts:begin managed-tasking', text)
         self.assertIn('Keep this too.', text)
 
+    def test_unmarked_tasking_at_eof_preserves_drafting_marker(self):
+        agents = self.repo / 'AGENTS.md'
+        agents.write_text(
+            '# Personal instructions\n\n'
+            '## Tasks and resumption\n\n'
+            '- Before substantial work, use `tasks/NNN_short_name/task.md`.\n\n'
+            '## Token use and delegation\n\n'
+            '- The main agent owns the task checkpoint.\n')
+        self.paper('init')
+        text = agents.read_text()
+        self.assertEqual(text.count('<!-- paper-scripts:begin managed-drafting -->'), 1)
+        self.assertEqual(text.count('<!-- paper-scripts:end managed-drafting -->'), 1)
+        self.paper('init')
+        self.assertEqual(agents.read_text(), text)
+
+    def test_unmarked_tasking_preserves_intervening_custom_section(self):
+        agents = self.repo / 'AGENTS.md'
+        reminder = '## Dated reminders\n\nKeep this project-specific reminder.\n\n'
+        agents.write_text(
+            '# Personal instructions\n\n'
+            '## Tasks and resumption\n\n'
+            '- Before substantial work, use `tasks/NNN_short_name/task.md`.\n\n'
+            + reminder +
+            '## Token use and delegation\n\n'
+            '- The main agent owns the task checkpoint.\n')
+        self.paper('init')
+        text = agents.read_text()
+        self.assertIn(reminder, text)
+        self.assertEqual(text.count('## Tasks and resumption'), 1)
+        self.assertEqual(text.count('## Token use and delegation'), 1)
+        self.paper('init')
+        self.assertEqual(agents.read_text(), text)
+
     def test_custom_workflow_and_symlinks_not_overwritten(self):
         workflows = self.repo / '.github/workflows'
         workflows.mkdir(parents=True)
