@@ -98,6 +98,29 @@ $\Reals,\Reals[0],\Prob(A),\vec{x},\norm*{x},\AgentDel{x^2}\AgentIns{y^2}$.
 \end{document}''')
             self.assertIn('Kept text.', self.compile(root))
 
+    def test_revisions_in_headings_and_captions_survive_auxiliary_file_roundtrip(self):
+        for mode in ('visible', 'applied', 'reverted'):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                shutil.copyfile(PACKAGE, root / 'papermacros.sty')
+                (root / 'main.tex').write_text(
+                    r'\documentclass{article}\usepackage[review=' + mode + r''']{papermacros}
+\usepackage{hyperref}
+\begin{document}
+\tableofcontents
+\listoffigures
+\section{\AgentDel{OLDHEADING}\AgentIns{NEWHEADING}}
+\begin{figure}
+\centering Example figure.
+\caption{\AgentDel{OLDCAPTION}\AgentIns{NEWCAPTION}}
+\end{figure}
+\end{document}''')
+                text = self.compile(root)
+                self.assertEqual('NEWHEADING' in text, mode != 'reverted')
+                self.assertEqual('OLDHEADING' in text, mode != 'applied')
+                self.assertEqual('NEWCAPTION' in text, mode != 'reverted')
+                self.assertEqual('OLDCAPTION' in text, mode != 'applied')
+
     def test_external_theorems_and_margin_dimensions_are_preserved(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

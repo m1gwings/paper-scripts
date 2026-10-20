@@ -66,6 +66,10 @@ tested for at least 4.5:1 text contrast on white. Labels preserve attribution
 when colors are hard to distinguish or output is printed in grayscale. No
 finite palette guarantees distinguishability for every color-vision condition.
 
+Revision commands also support section headings and captions through auxiliary-file
+round trips. PDF bookmarks use the proposed text in visible/applied mode and the
+original text in reverted mode, without review colors or labels.
+
 Use inline deletion for plain text, citations/references, and short math.
 Use block deletion for displays or whole proofs; keep old and new labels unique.
 Do not put preambles, environment boundaries, verbatim, or arbitrary file edits

@@ -1,5 +1,5 @@
 \NeedsTeXFormat{LaTeX2e}
-\ProvidesPackage{papermacros}[2026/10/20 v1.0 Shared notation and agent review]
+\ProvidesPackage{papermacros}[2026/10/20 v1.0.1 Shared notation and agent review]
 % Shared definitions only. Put manuscript notation in projectmacros.tex.
 \RequirePackage{kvoptions}
 \RequirePackage{etoolbox}
@@ -192,12 +192,26 @@
 % No venue geometry or margin-note dimensions are changed.
 \newcommand{\DeclarePaperAuthor}[4]{%
   \definecolor{#1Color}{HTML}{#4}%
-  \expandafter\newcommand\csname #1\endcsname[1]{\ps@note{#1Color}{#2}{#3}{##1}}%
-  \expandafter\newcommand\csname #1Out\endcsname[1]{\ps@out{#1Color}{#2}{#3}{##1}}%
-  \expandafter\newcommand\csname #1Ins\endcsname[1]{\ps@ins{#1Color}{#3}{##1}}%
-  \expandafter\newcommand\csname #1Del\endcsname[1]{\ps@del{#1Color}{#3}{##1}}%
-  \expandafter\newcommand\csname #1DelBlock\endcsname[1]{\ps@delblock{#1Color}{#2}{#3}{##1}}%
-  \expandafter\newcommand\csname #1ReplaceMath\endcsname[2]{\ps@replacemath{#1Color}{#3}{##1}{##2}}%
+  \expandafter\DeclareRobustCommand\csname #1\endcsname[1]{\ps@note{#1Color}{#2}{#3}{##1}}%
+  \expandafter\DeclareRobustCommand\csname #1Out\endcsname[1]{\ps@out{#1Color}{#2}{#3}{##1}}%
+  \expandafter\DeclareRobustCommand\csname #1Ins\endcsname[1]{\ps@ins{#1Color}{#3}{##1}}%
+  \expandafter\DeclareRobustCommand\csname #1Del\endcsname[1]{\ps@del{#1Color}{#3}{##1}}%
+  \expandafter\DeclareRobustCommand\csname #1DelBlock\endcsname[1]{\ps@delblock{#1Color}{#2}{#3}{##1}}%
+  \expandafter\DeclareRobustCommand\csname #1ReplaceMath\endcsname[2]{\ps@replacemath{#1Color}{#3}{##1}{##2}}%
+  % Moving arguments keep robust commands in .toc/.lof. PDF bookmarks use
+  % proposed clean text (original text in reverted mode), without review colors.
+  \AtBeginDocument{%
+    \@ifundefined{pdfstringdefDisableCommands}{}{%
+      \pdfstringdefDisableCommands{%
+        \expandafter\def\csname #1Ins\endcsname##1{\ifcommentsreverted\else##1\fi}%
+        \expandafter\def\csname #1Del\endcsname##1{\ifcommentsreverted##1\fi}%
+        \expandafter\def\csname #1DelBlock\endcsname##1{\ifcommentsreverted##1\fi}%
+        \expandafter\def\csname #1ReplaceMath\endcsname##1##2{\ifcommentsreverted##1\else##2\fi}%
+        \expandafter\def\csname #1\endcsname##1{}%
+        \expandafter\def\csname #1Out\endcsname##1{}%
+      }%
+    }%
+  }%
 }
 \DeclarePaperAuthor{CM}{Cristiano}{CM}{0072B2}
 \DeclarePaperAuthor{MM}{Marco}{MM}{944C80}
