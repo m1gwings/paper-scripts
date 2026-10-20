@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PROGRAM="paper-init"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROGRAM="paper create"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 die() {
     echo "$PROGRAM: $*" >&2
@@ -52,11 +52,11 @@ GITIGNORE
 
 usage() {
     cat <<'HELP'
-paper-init — create a local Overleaf + GitHub paper, poster, or slides repository
+paper create — create a local Overleaf + GitHub paper, poster, or slides repository
 
 USAGE
 
-    paper-init [--poster | --slides] OVERLEAF_PROJECT_ID GITHUB_REPOSITORY [LOCAL_DIRECTORY]
+    paper create [--poster | --slides] OVERLEAF_PROJECT_ID GITHUB_REPOSITORY [LOCAL_DIRECTORY]
 
 OPTIONS
 
@@ -69,7 +69,7 @@ OPTIONS
 
 EXAMPLES
 
-    paper-init abc123def456 my-paper
+    paper create abc123def456 my-paper
 
         Creates ./paper connected to:
 
@@ -77,24 +77,24 @@ EXAMPLES
             github   -> new private GitHub repository my-paper
 
 
-    paper-init abc123def456 my-paper manuscript
+    paper create abc123def456 my-paper manuscript
 
         Uses ./manuscript instead of ./paper.
 
 
-    paper-init --poster abc123def456 my-poster
+    paper create --poster abc123def456 my-poster
 
         Creates ./poster with poster-specific AGENTS.md instructions.
         Uses the same paper commands for sync, preview, notify, and publish.
 
 
-    paper-init --slides abc123def456 my-slides
+    paper create --slides abc123def456 my-slides
 
         Creates ./slides with Beamer slide-specific AGENTS.md instructions.
         Uses the same paper commands for sync, preview, notify, and publish.
 
 
-    paper-init abc123def456 my-organization/my-paper paper
+    paper create abc123def456 my-organization/my-paper paper
 
         Creates the private GitHub repository under the specified
         organization/account.
@@ -174,7 +174,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         -h|--help) usage; exit 0 ;;
         --) shift; POSITIONAL+=("$@"); break ;;
-        -*) die "Unknown option: $1. Run paper-init --help." ;;
+        -*) die "Unknown option: $1. Run paper create --help." ;;
         *) POSITIONAL+=("$1") ;;
     esac
     shift
@@ -201,7 +201,7 @@ if ! gh auth status >/dev/null 2>&1; then
 Run:
     gh auth login
 
-Then rerun paper-init."
+Then rerun paper create."
 fi
 
 if [[ -e "$LOCAL_DIR" ]]; then

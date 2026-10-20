@@ -430,6 +430,11 @@ MENTAL MODEL
 
 COMMANDS
 
+  paper create [--poster | --slides] OVERLEAF_PROJECT_ID GITHUB_REPOSITORY [LOCAL_DIRECTORY]
+      Clone Overleaf, initialize the project, create a private GitHub repository,
+      and configure remotes. Default directory: paper, poster, or slides.
+      Run 'paper create --help' for the full creation guide.
+
   paper init [--poster | --slides]
       Initialize paper, beamerposter poster, or Beamer slides instructions, research notes,
       and a lightweight resumable task queue in this Git repository.
@@ -647,7 +652,12 @@ EXAMPLE WORKFLOWS
     paper status
 
 
-11. INITIALIZE A PAPER, POSTER, OR SLIDES PROJECT
+11. CREATE OR INITIALIZE A PAPER, POSTER, OR SLIDES PROJECT
+
+    # Clone an Overleaf project and create its private GitHub repository:
+    paper create OVERLEAF_PROJECT_ID OWNER/my-paper
+    paper create --poster OVERLEAF_PROJECT_ID OWNER/my-poster
+    paper create --slides OVERLEAF_PROJECT_ID OWNER/my-slides
 
     # Inside an existing Git repository (remotes are optional):
     paper init
@@ -674,6 +684,10 @@ CMD="${1:-help}"
 [[ $# -gt 0 ]] && shift
 
 case "$CMD" in
+    create)
+        exec bash "$SCRIPT_DIR/lib/create.sh" "$@"
+        ;;
+
     help|-h|--help)
         help_text
         exit 0

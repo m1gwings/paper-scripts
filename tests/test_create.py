@@ -3,11 +3,11 @@ from pathlib import Path
 import subprocess
 import test_workflow
 
-INIT = Path(__file__).resolve().parents[1] / 'paper-init'
-TEMPLATES = INIT.parent / 'templates'
+PAPER = Path(__file__).resolve().parents[1] / 'paper'
+TEMPLATES = PAPER.parent / 'templates'
 
 
-class ExistingInitTest(test_workflow.WorkflowTest):
+class ExistingCreateTest(test_workflow.WorkflowTest):
     def setUp(self):
         super().setUp()
         self.git('remote', 'set-url', 'github', 'https://github.com/owner/paper.git')
@@ -21,7 +21,7 @@ class ExistingInitTest(test_workflow.WorkflowTest):
 
     def test_existing_directory_upgraded_without_repointing_or_committing(self):
         head = self.git('rev-parse', 'HEAD')
-        result = subprocess.run(['bash', str(INIT), 'abc123', 'owner/paper', str(self.repo)],
+        result = subprocess.run(['bash', str(PAPER), 'create', 'abc123', 'owner/paper', str(self.repo)],
                                 cwd=self.root, env=self.env, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(self.git('rev-parse', 'HEAD'), head)
@@ -33,7 +33,7 @@ class ExistingInitTest(test_workflow.WorkflowTest):
         self.assertTrue((self.repo / 'tasks/index.md').exists())
 
     def test_mismatched_existing_project_refused(self):
-        result = subprocess.run(['bash', str(INIT), 'wrongproject', 'owner/paper', str(self.repo)],
+        result = subprocess.run(['bash', str(PAPER), 'create', 'wrongproject', 'owner/paper', str(self.repo)],
                                 cwd=self.root, env=self.env, text=True, capture_output=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse((self.repo / '.paper').exists())
@@ -61,7 +61,7 @@ class ExistingInitTest(test_workflow.WorkflowTest):
         env = dict(self.env, GIT_CONFIG_GLOBAL=str(config),
                    TEST_GITHUB_REMOTE=str(github))
         result = subprocess.run(
-            ['bash', str(INIT), *arguments],
+            ['bash', str(getattr(self, 'entrypoint', PAPER)), 'create', *arguments],
             cwd=self.root, env=env, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertFalse((fresh / '.codex/config.toml').exists())
@@ -80,6 +80,12 @@ class ExistingInitTest(test_workflow.WorkflowTest):
         self.assertEqual(
             self.git('--git-dir', str(github), 'show', 'master:AGENTS.md', cwd=self.root),
             agents.rstrip())
+
+    def test_vendored_runtime_supports_creation(self):
+        self.paper('init')
+        self.entrypoint = self.repo / '.paper/runtime/paper'
+        self.initialize_new('--slides', 'abc123', 'owner/new-slides',
+                            directory='slides', kind='slides')
 
     def test_new_repository_commits_and_pushes_canonical_initialization(self):
         self.initialize_new('abc123', 'owner/new-paper', 'fresh',
@@ -117,7 +123,7 @@ class ExistingInitTest(test_workflow.WorkflowTest):
     def test_existing_directory_receives_poster_instructions_without_commit(self):
         head = self.git('rev-parse', 'HEAD')
         result = subprocess.run(
-            ['bash', str(INIT), '--poster', 'abc123', 'owner/paper', str(self.repo)],
+            ['bash', str(PAPER), 'create', '--poster', 'abc123', 'owner/paper', str(self.repo)],
             cwd=self.root, env=self.env, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(self.git('rev-parse', 'HEAD'), head)
@@ -127,7 +133,7 @@ class ExistingInitTest(test_workflow.WorkflowTest):
     def test_existing_directory_receives_slides_instructions_without_commit(self):
         head = self.git('rev-parse', 'HEAD')
         result = subprocess.run(
-            ['bash', str(INIT), '--slides', 'abc123', 'owner/paper', str(self.repo)],
+            ['bash', str(PAPER), 'create', '--slides', 'abc123', 'owner/paper', str(self.repo)],
             cwd=self.root, env=self.env, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(self.git('rev-parse', 'HEAD'), head)
@@ -141,7 +147,7 @@ class ExistingInitTest(test_workflow.WorkflowTest):
         env = dict(self.env, TEST_GH_CALLED=str(marker))
         for args in [('--help',), ('-h',), ('--poster', '--help'), ('--slides', '--help')]:
             with self.subTest(args=args):
-                result = subprocess.run(['bash', str(INIT), *args], cwd=self.root,
+                result = subprocess.run(['bash', str(PAPER), 'create', *args], cwd=self.root,
                                         env=env, text=True, capture_output=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn('--poster', result.stdout)
@@ -156,7 +162,7 @@ class ExistingInitTest(test_workflow.WorkflowTest):
                      ('--poster', '--slides', 'abc123', 'repo'),
                      ('--slides', '--poster', 'abc123', 'repo')]:
             with self.subTest(args=args):
-                result = subprocess.run(['bash', str(INIT), *args], cwd=self.root,
+                result = subprocess.run(['bash', str(PAPER), 'create', *args], cwd=self.root,
                                         env=env, text=True, capture_output=True)
                 self.assertNotEqual(result.returncode, 0)
         self.assertFalse(marker.exists())
@@ -166,4 +172,4 @@ class ExistingInitTest(test_workflow.WorkflowTest):
 
 for name in list(test_workflow.WorkflowTest.__dict__):
     if name.startswith('test_'):
-        setattr(ExistingInitTest, name, None)
+        setattr(ExistingCreateTest, name, None)

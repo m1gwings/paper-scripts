@@ -9,7 +9,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: bash -n paper paper-init install.sh
+      - run: bash -n paper lib/create.sh install.sh
       - name: Install the preview TeX dependencies
         run: |
           sudo apt-get update -qq

@@ -86,7 +86,7 @@ paper; each paper is upgraded with `paper init`, reviewed, and committed.
 | `paper sync` | Reconcile GitHub and Overleaf into the local base. Run from a clean base branch. |
 | `paper publish` | Reconcile fresh state, integrate committed work, back it up, and publish to Overleaf. Requires explicit authorization. |
 | `paper init [--poster \| --slides]` | Create missing research files and install or upgrade generated infrastructure without overwriting custom content. |
-| `paper-init [--poster \| --slides] OVERLEAF_ID OWNER/REPO [DIRECTORY]` | Create a new private GitHub/Overleaf paper, poster, or slides repository and then run `paper init`. |
+| `paper create [--poster \| --slides] OVERLEAF_ID OWNER/REPO [DIRECTORY]` | Create a new private GitHub/Overleaf paper, poster, or slides repository and then run `paper init`. |
 | `paper notify --title TITLE --message MESSAGE [--url HTTPS_URL]` | Dispatch the trusted notification workflow. The URL becomes a clickable Discord embed title. |
 | `paper notify-test` | Test the configured provider through GitHub Actions. |
 | `paper configure-ci [--environments-only]` | Create/verify protected environments and privately install the Overleaf credential. |
@@ -100,10 +100,17 @@ paper; each paper is upgraded with `paper init`, reviewed, and committed.
 Run `paper help` for the complete command reference and `paper examples` for
 compact workflows.
 
+### Creation and initialization
+
+`paper create` replaces the former standalone `paper-init` executable with the
+same flags and positional arguments. Use it outside a repository to clone
+Overleaf and create its private GitHub mirror. `paper init` remains the local,
+non-committing initializer/upgrader for an existing Git repository.
+
 ### Posters
 
 ```bash
-paper-init --poster OVERLEAF_ID OWNER/my-poster
+paper create --poster OVERLEAF_ID OWNER/my-poster
 ```
 
 This creates `./poster` instead of the usual `./paper`. An explicit final
@@ -119,7 +126,7 @@ as `document_type: "poster"` in `.paper/config.json`.
 ### Slides
 
 ```bash
-paper-init --slides OVERLEAF_ID OWNER/my-slides
+paper create --slides OVERLEAF_ID OWNER/my-slides
 ```
 
 This creates `./slides` instead of `./paper`; an explicit final directory
@@ -139,6 +146,36 @@ Explicitly selecting `--poster` or `--slides` replaces an untouched built-in
 template, including when switching types. Customized `AGENTS.md` content is
 preserved; only the usual managed workflow sections are refreshed. Adapt any
 custom editing guidance explicitly using the selected template.
+
+### Editing the default AGENTS.md instructions
+
+Edit these ordinary Markdown files in your paper-scripts checkout (normally
+`~/.local/bin`):
+
+| Project type | Default instructions |
+| --- | --- |
+| Paper | [`templates/AGENTS.paper.md`](templates/AGENTS.paper.md) |
+| Poster | [`templates/AGENTS.poster.md`](templates/AGENTS.poster.md) |
+| Slides | [`templates/AGENTS.slides.md`](templates/AGENTS.slides.md) |
+
+The next `paper create` uses the selected file as its new project's `AGENTS.md`.
+No build or installation step is needed after editing. Commit template changes
+to keep your defaults on GitHub. See [`templates/README.md`](templates/README.md)
+for the editing and upgrade contract.
+
+Existing repositories change only when you run `paper init`. It preserves
+repository-specific instructions outside the three marker-managed workflow
+blocks. Those blocks are refreshed from the selected template. Keep their
+`paper-scripts:begin` and `paper-scripts:end` comments intact; the initializer
+validates them before writing files. Other sections may differ freely between
+paper, poster, and slides defaults.
+
+Plain `paper init` preserves the saved project type and existing custom text.
+A missing `AGENTS.md` is restored from the current selected default. An explicit
+`paper init --poster` or `paper init --slides` may replace the whole file only
+when it exactly matches a current default or an unchanged, manifest-verified
+previously installed template. Edited files keep their custom text, including
+when switching types. Vendored defaults remain pinned until a reviewed upgrade.
 
 ## Everyday local workflow
 
@@ -349,7 +386,7 @@ discovered from the Overleaf remote when possible. Custom fields are preserved.
 For a new repository:
 
 ```bash
-paper-init OVERLEAF_PROJECT_ID OWNER/REPOSITORY paper
+paper create OVERLEAF_PROJECT_ID OWNER/REPOSITORY paper
 ```
 
 This creates a private GitHub repository, verifies remote identities, installs
@@ -386,7 +423,7 @@ git clone https://github.com/m1gwings/paper-scripts.git ~/.local/bin
 ~/.local/bin/install.sh
 ```
 
-Keep `paper`, `paper-init`, `lib/`, `templates/`, and `tests/` together. Copying
+Keep `paper`, `lib/`, `templates/`, and `tests/` together. Copying
 only the `paper` executable is not a complete installation. `install.sh` checks
 dependencies and can add `~/.local/bin` to `PATH`; it does not install system
 packages.
@@ -408,7 +445,7 @@ commands to force an upgrade.
 The lightweight validation suite is:
 
 ```bash
-bash -n paper paper-init install.sh
+bash -n paper lib/create.sh install.sh
 python3 -m unittest discover -s tests -v
 ```
 

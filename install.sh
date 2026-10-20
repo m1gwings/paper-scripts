@@ -13,7 +13,6 @@ echo
 
 chmod +x \
     "$SCRIPT_DIR/paper" \
-    "$SCRIPT_DIR/paper-init" \
     "$SCRIPT_DIR/install.sh"
 
 EXPECTED_DIR="$HOME/.local/bin"
@@ -72,7 +71,7 @@ fi
 if command -v gh >/dev/null 2>&1; then
     echo "  gh       [OK]"
 else
-    echo "  gh       [MISSING - required by paper-init]"
+    echo "  gh       [MISSING - required by paper create]"
 fi
 
 if command -v code >/dev/null 2>&1; then

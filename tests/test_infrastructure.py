@@ -1,5 +1,6 @@
 import hashlib
 import json
+import shutil
 from pathlib import Path
 import subprocess
 import tempfile
@@ -86,17 +87,99 @@ class InfrastructureTest(test_workflow.WorkflowTest):
         self.paper('init')
         self.assertEqual(json.loads(config.read_text()), value)
 
-    def test_document_templates_share_generic_workflow_instructions(self):
-        paper = (TEMPLATES / 'AGENTS.paper.md').read_text()
-        # Only the title and LaTeX editing guidance differ.
-        marker = '<!-- paper-scripts:begin managed-notifications -->'
-        generic = paper.split('## Project and editing\n', 1)[1].split('## LaTeX')[0]
-        for kind, heading in (('poster', '## Poster LaTeX'),
-                              ('slides', '## Slides LaTeX')):
+    def editable_tooling(self):
+        source = TEMPLATES.parent
+        target = self.root / 'tooling'
+        shutil.copytree(source, target, ignore=shutil.ignore_patterns('.git', '__pycache__'))
+        for kind in ('paper', 'poster', 'slides'):
+            path = target / 'templates' / f'AGENTS.{kind}.md'
+            content = path.read_text()
+            content = content.replace('<!-- paper-scripts:begin managed-tasking -->',
+                                      '<!-- paper-scripts:begin managed-tasking -->\n'
+                                      f'New managed task rule for {kind}.')
+            path.write_text(content + f'\nNew default guidance for {kind}.\n')
+        return target
+
+    def init_from(self, tooling, *args, ok=True):
+        result = subprocess.run(['bash', str(tooling / 'paper'), 'init', *args],
+                                cwd=self.repo, env=self.env, capture_output=True, text=True)
+        self.assertEqual(result.returncode == 0, ok, result.stdout + result.stderr)
+        return result
+
+    def test_edited_defaults_seed_each_project_type_exactly(self):
+        tooling = self.editable_tooling()
+        for kind, options in (('paper', ()), ('poster', ('--poster',)),
+                              ('slides', ('--slides',))):
             with self.subTest(kind=kind):
-                template = (TEMPLATES / f'AGENTS.{kind}.md').read_text()
-                self.assertEqual(generic, template.split('## Project and editing\n', 1)[1].split(heading)[0])
-                self.assertEqual(paper.split(marker, 1)[1], template.split(marker, 1)[1])
+                agents = self.repo / 'AGENTS.md'
+                agents.unlink(missing_ok=True)
+                self.init_from(tooling, *options)
+                self.assertEqual(agents.read_text(),
+                                 (tooling / 'templates' / f'AGENTS.{kind}.md').read_text())
+
+    def test_changed_default_preserves_existing_custom_text_and_refreshes_managed_block(self):
+        self.paper('init', '--slides')
+        agents = self.repo / 'AGENTS.md'
+        agents.write_text(agents.read_text() + '\nMy repository-specific guidance.\n')
+        tooling = self.editable_tooling()
+        self.init_from(tooling)
+        updated = agents.read_text()
+        self.assertIn('My repository-specific guidance.', updated)
+        self.assertIn('New managed task rule for slides.', updated)
+        self.assertNotIn('New default guidance for slides.', updated)
+        self.assertEqual(json.loads((self.repo / '.paper/config.json').read_text())[
+            'document_type'], 'slides')
+        self.init_from(tooling)
+        self.assertEqual(agents.read_text(), updated)
+
+    def test_explicit_switch_recognizes_previous_untouched_default(self):
+        self.paper('init')
+        tooling = self.editable_tooling()
+        self.init_from(tooling, '--slides')
+        self.assertEqual((self.repo / 'AGENTS.md').read_text(),
+                         (tooling / 'templates/AGENTS.slides.md').read_text())
+
+    def test_plain_upgrade_keeps_old_default_recognizable_for_later_switch(self):
+        self.paper('init')
+        tooling = self.editable_tooling()
+        self.init_from(tooling)
+        agents = self.repo / 'AGENTS.md'
+        self.assertNotIn('New default guidance for paper.', agents.read_text())
+        self.assertIn('New managed task rule for paper.', agents.read_text())
+        self.init_from(tooling)
+        self.init_from(tooling, '--slides')
+        self.assertEqual(agents.read_text(),
+                         (tooling / 'templates/AGENTS.slides.md').read_text())
+
+    def test_edit_after_plain_upgrade_is_not_treated_as_untouched_default(self):
+        self.paper('init')
+        tooling = self.editable_tooling()
+        self.init_from(tooling)
+        agents = self.repo / 'AGENTS.md'
+        agents.write_text(agents.read_text() + '\nMy subsequent customization.\n')
+        self.init_from(tooling, '--slides')
+        self.assertIn('My subsequent customization.', agents.read_text())
+        self.assertNotIn('New default guidance for slides.', agents.read_text())
+
+    def test_explicit_switch_with_changed_defaults_preserves_customized_agents(self):
+        self.paper('init')
+        agents = self.repo / 'AGENTS.md'
+        agents.write_text(agents.read_text() + '\nMy repository-specific guidance.\n')
+        tooling = self.editable_tooling()
+        self.init_from(tooling, '--slides')
+        self.assertIn('My repository-specific guidance.', agents.read_text())
+        self.assertIn('New managed task rule for slides.', agents.read_text())
+        self.assertNotIn('New default guidance for slides.', agents.read_text())
+
+    def test_malformed_editable_template_fails_before_initialization_writes(self):
+        tooling = self.editable_tooling()
+        template = tooling / 'templates/AGENTS.paper.md'
+        template.write_text(template.read_text().replace(
+            '<!-- paper-scripts:end managed-tasking -->', ''))
+        result = self.init_from(tooling, ok=False)
+        self.assertIn('keep exactly one', result.stderr)
+        for name in ('AGENTS.md', 'notes', 'tasks', '.paper'):
+            self.assertFalse((self.repo / name).exists())
 
     def test_invalid_init_option_and_document_type_do_not_write_files(self):
         self.paper('init', '--typo', ok=False)
