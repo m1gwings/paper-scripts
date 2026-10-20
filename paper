@@ -243,8 +243,8 @@ User request, constraints, authorization, and completion criteria.
 Link to supporting mathematics or audits instead of copying them. If delegating, record each assignment's scope, file ownership, dependencies, and result here. Keep only information needed to resume and verify the work.
 TASK
 
-    printf '\nPaper workflow initialized. Review the files before committing.\n'
-    printf 'Existing files were preserved; managed paper-scripts blocks in AGENTS.md were refreshed when needed.\n'
+    printf '\nResearch notes and task records are ready; existing entries were preserved.\n'
+    printf 'Starter installation and managed infrastructure upgrades follow below.\n'
 }
 
 task_command() {
