@@ -43,7 +43,6 @@ regret notation, and algorithm names are intentionally absent.
 | Addition | \AgentIns{new} |
 | Inline deletion | \AgentDel{old} |
 | Replacement | \AgentDel{old}\AgentIns{new} |
-| Deleted paragraph/proof/environment | \AgentDelBlock{old block} |
 | Stacked mathematical replacement | \AgentReplaceMath{old}{new}, inside math mode |
 | Explanatory review box | \Agent{comment} |
 | Outer note, inline in presentations | \AgentOut{comment} |
@@ -60,7 +59,7 @@ Public insertion commands end in Ins. There are no Inline or Codex aliases.
 shows insertions and suppresses deletions. \CommentsReverted does the converse.
 These switches change rendering only: author review is required to accept or
 reject changes permanently in the source. Color is paired with short labels
-such as AG+ and AG- by default; deletions also have strikeout or a labelled box.
+such as AG+ and AG- by default; deletions always use strikeout.
 The dark, Okabe--Ito-derived palette is designed for white backgrounds and
 tested for at least 4.5:1 text contrast on white. Labels preserve attribution
 when colors are hard to distinguish or output is printed in grayscale. No
@@ -71,10 +70,16 @@ round trips. PDF bookmarks use the proposed text in visible/applied mode and the
 original text in reverted mode, without review colors or labels.
 
 Use inline deletion for plain text, citations/references, and short math.
-Use block deletion for displays or whole proofs; keep old and new labels unique.
+For displays or whole proofs, strike safe prose spans and individual math
+expressions/alignment cells with \AgentDel (brace a leading alignment cell as
+{\AgentDel{old}} so TeX enters math mode before expanding it). Keep display
+delimiters and environment boundaries outside wrappers. Use the existing review-mode
+conditionals to suppress deleted environments in applied mode and restore them
+in reverted mode. Do not define or use a separate block-deletion mechanism;
+keep old and new labels unique.
 Do not put preambles, environment boundaries, verbatim, or arbitrary file edits
 inside revision macros. Avoid nesting wrappers. Presentation blocks must fit
-their frames; split large deleted blocks. Structural edits should remain valid
+their frames; split long revisions. Structural edits should remain valid
 LaTeX and be described precisely in the task checkpoint and change report.
 
 The package is not a drop-in replacement for old mymacros files: it deliberately

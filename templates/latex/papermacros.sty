@@ -1,5 +1,5 @@
 \NeedsTeXFormat{LaTeX2e}
-\ProvidesPackage{papermacros}[2026/10/20 v1.0.2 Shared notation and agent review]
+\ProvidesPackage{papermacros}[2026/10/21 v1.0.3 Shared notation and agent review]
 % Shared definitions only. Put manuscript notation in projectmacros.tex.
 \RequirePackage{kvoptions}
 \RequirePackage{etoolbox}
@@ -166,15 +166,6 @@
       \else\setstcolor{#1}\ps@strikeout{#3}\fi
     \endgroup
   \else\ifcommentsreverted#3\fi\fi}
-\newcommand{\ps@delblock}[4]{%
-  \ifcommentsvisible
-    \ifps@presentation
-      \begin{tcolorbox}[colback=white,colframe=#1,title={#2 (#3): deletion}]
-    \else
-      \begin{tcolorbox}[breakable,colback=white,colframe=#1,title={#2 (#3): deletion}]
-    \fi
-    #4\end{tcolorbox}%
-  \else\ifcommentsreverted#4\fi\fi}
 \newcommand{\ps@replacemath}[4]{%
   \ifcommentsvisible
     \begin{gathered}\ps@del{#1}{#2}{#3}\\\ps@ins{#1}{#2}{#4}\end{gathered}%
@@ -197,7 +188,6 @@
   \expandafter\DeclareRobustCommand\csname #1Out\endcsname[1]{\ps@out{#1Color}{#2}{#3}{##1}}%
   \expandafter\DeclareRobustCommand\csname #1Ins\endcsname[1]{\ps@ins{#1Color}{#3}{##1}}%
   \expandafter\DeclareRobustCommand\csname #1Del\endcsname[1]{\ps@del{#1Color}{#3}{##1}}%
-  \expandafter\DeclareRobustCommand\csname #1DelBlock\endcsname[1]{\ps@delblock{#1Color}{#2}{#3}{##1}}%
   \expandafter\DeclareRobustCommand\csname #1ReplaceMath\endcsname[2]{\ps@replacemath{#1Color}{#3}{##1}{##2}}%
   % Moving arguments keep robust commands in .toc/.lof. PDF bookmarks use
   % proposed clean text (original text in reverted mode), without review colors.
@@ -206,7 +196,6 @@
       \pdfstringdefDisableCommands{%
         \expandafter\def\csname #1Ins\endcsname##1{\ifcommentsreverted\else##1\fi}%
         \expandafter\def\csname #1Del\endcsname##1{\ifcommentsreverted##1\fi}%
-        \expandafter\def\csname #1DelBlock\endcsname##1{\ifcommentsreverted##1\fi}%
         \expandafter\def\csname #1ReplaceMath\endcsname##1##2{\ifcommentsreverted##1\else##2\fi}%
         \expandafter\def\csname #1\endcsname##1{}%
         \expandafter\def\csname #1Out\endcsname##1{}%

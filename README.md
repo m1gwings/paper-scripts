@@ -227,7 +227,7 @@ No default `.codex/config.toml` is installed.
 
 See [the package guide](templates/latex/README.md) for options and examples.
 The public review interface is agent-neutral: `\AgentIns`, `\AgentDel`,
-`\AgentDelBlock`, `\AgentReplaceMath`, `\Agent`, and `\AgentOut`. Insertion
+`\AgentReplaceMath`, `\Agent`, and `\AgentOut`. Insertion
 commands are primary definitions; no `AuthorInline` or `Codex...` aliases are
 provided in the new package. Existing projects keep their old macro files and
 markup until explicitly migrated.
@@ -239,8 +239,8 @@ and `\AgentOut[GPT-6 Astra]{Check this assumption.}`. The model name replaces
 actual model in new comments when the loaded package supports it; an unavailable
 identity is explicitly labeled `Model unavailable`, never guessed.
 
-All default `AGENTS.md` files document the review modes, block/math operations,
-structural-change exceptions, and legacy-project fallback. Their new
+All default `AGENTS.md` files document review modes, strikethrough deletions,
+math operations, structural-change exceptions, and legacy-project fallback. Their new
 `managed-drafting` block updates conservatively and defers to project-specific
 review/rebuttal policy. It never instructs an agent to use undefined commands.
 

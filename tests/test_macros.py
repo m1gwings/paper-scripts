@@ -36,7 +36,7 @@ class MacroCompilationTest(unittest.TestCase):
                 self.assertEqual(preview.returncode, 0, preview.stdout[-3000:] + preview.stderr)
                 self.assertTrue((root / '.paper-preview/paper.pdf').read_bytes().startswith(b'%PDF'))
 
-    def test_review_modes_have_correct_text_and_math_and_block_semantics(self):
+    def test_review_modes_have_correct_strikethrough_text_and_math_semantics(self):
         for profile in ('paper', 'slides', 'poster'):
             for mode in ('visible', 'applied', 'reverted'):
                 with self.subTest(profile=profile, mode=mode), tempfile.TemporaryDirectory() as tmp:
@@ -55,6 +55,13 @@ class MacroCompilationTest(unittest.TestCase):
 \@ifundefined{AgentIns}{\errmessage{Agent API missing}}{}
 \@ifundefined{CodexIns}{}{\errmessage{Obsolete Codex API leaked}}
 \@ifundefined{CMInline}{}{\errmessage{Obsolete Inline API leaked}}
+\@ifundefined{AgentDelBlock}{}{\errmessage{Obsolete deletion API leaked}}
+\@ifundefined{CMDelBlock}{}{\errmessage{Obsolete deletion API leaked}}
+\@ifundefined{MMDelBlock}{}{\errmessage{Obsolete deletion API leaked}}
+\@ifundefined{AMMDelBlock}{}{\errmessage{Obsolete deletion API leaked}}
+\@ifundefined{DADelBlock}{}{\errmessage{Obsolete deletion API leaked}}
+\@ifundefined{GGDelBlock}{}{\errmessage{Obsolete deletion API leaked}}
+\@ifundefined{RebuttalDelBlock}{}{\errmessage{Obsolete deletion API leaked}}
 \makeatother
 \begin{document}
 '''
@@ -66,8 +73,17 @@ class MacroCompilationTest(unittest.TestCase):
 $\Reals,\Reals[0],\Prob(A),\vec{x},\norm*{x},\AgentDel{x^2}\AgentIns{y^2}$.
 \wp a statement.
 \[\AgentReplaceMath{a+b}{c+d}\]
-\AgentDelBlock{BLOCKOLD \[u+v=w.\]}
+\ifcommentsapplied\else
+\AgentDel{PARAGRAPHOLD}
+\[\AgentDel{u+v=w.}\]
+\fi
 \Agent{REVIEWNOTE}
+'''
+                    if is_paper:
+                        body += r'''\begin{align*}
+{\AgentDel{a}}&{\AgentDel{=b}}\\
+{\AgentDel{c}}&{\AgentDel{=d}}
+\end{align*}
 '''
                     named_notes = r'\Agent[GPT-6 Astra]{NAMEDNOTE}\AgentOut[GPT-6 Sol]{OUTSIDENOTE}'
                     if not is_paper:
@@ -86,7 +102,7 @@ $\Reals,\Reals[0],\Prob(A),\vec{x},\norm*{x},\AgentDel{x^2}\AgentIns{y^2}$.
                     text = self.compile(root)
                     self.assertEqual('INSERTEDWORD' in text, mode != 'reverted')
                     self.assertEqual('DELETEDWORD' in text, mode != 'applied')
-                    self.assertEqual('BLOCKOLD' in text, mode != 'applied')
+                    self.assertEqual('PARAGRAPHOLD' in text, mode != 'applied')
                     self.assertEqual('REVIEWNOTE' in text, mode == 'visible')
                     for token in ('GPT-6 Astra', 'GPT-6 Sol', 'NAMEDNOTE', 'OUTSIDENOTE'):
                         self.assertEqual(token in text, mode == 'visible', token)
@@ -120,7 +136,6 @@ Visible body.
 \usepackage[review=applied]{papermacros}
 \begin{document}
 \AgentDel{\UndefinedDeletedCommand}
-\AgentDelBlock{\UndefinedDeletedBlock}
 \AgentIns{Kept text.}
 \end{document}''')
             self.assertIn('Kept text.', self.compile(root))
