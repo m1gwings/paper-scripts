@@ -32,6 +32,12 @@
 - Summarize mathematical changes separately from typographical changes.
 
 <!-- paper-scripts:begin managed-drafting -->
+## Scientific writing
+
+- Define technical terms before using them unless they are widely familiar—for example, to a second-year STEM undergraduate.
+- Prefer simple phrasing unless greater complexity is necessary for precision.
+- When a concept already has an established symbol, use that symbol rather than repeatedly describing it in elaborate words. Where helpful, pair a brief verbal explanation with the mathematical notation.
+
 ## Draft revisions and review
 
 - Unless the user explicitly asks otherwise, track manuscript edits using the collaboration API actually loaded by the project. The paper-scripts starter loads `papermacros.sty`: use `\AgentIns{new}`, `\AgentDel{old}`, and `\AgentDel{old}\AgentIns{new}` for replacements. Use `\Agent[MODEL NAME]{comment}` for an explanatory review box and `\AgentOut[MODEL NAME]{comment}` for an outer note (inline on slides/posters).
