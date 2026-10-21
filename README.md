@@ -226,16 +226,16 @@ No default `.codex/config.toml` is installed.
 ## Shared macros and agent revisions
 
 See [the package guide](templates/latex/README.md) for options and examples.
-The public review interface is agent-neutral: `\AgentIns`, `\AgentDel`,
-`\AgentReplaceMath`, `\Agent`, and `\AgentOut`. Insertion
+The public review interface is agent-neutral: `\AgentsIns`, `\AgentsDel`,
+`\AgentsReplaceMath`, `\Agents`, and `\AgentsOut`. Insertion
 commands are primary definitions; no `AuthorInline` or `Codex...` aliases are
 provided in the new package. Existing projects keep their old macro files and
-markup until explicitly migrated.
+markup until explicitly migrated. The former singular `\Agent...` family remains supported for compatibility.
 
-Agent comments accept optional model attribution: `\Agent[GPT-6 Astra]{Check this assumption.}`
-and `\AgentOut[GPT-6 Astra]{Check this assumption.}`. The model name replaces
+Agent comments accept optional model attribution: `\Agents[GPT-6 Astra]{Check this assumption.}`
+and `\AgentsOut[GPT-6 Astra]{Check this assumption.}`. The model name replaces
 “Agent” in the title, retaining the AG label and review color. Existing
-`\Agent{comment}` calls still work. Defaults require agents to identify their
+`\Agents{comment}` calls still work. Defaults require agents to identify their
 actual model in new comments when the loaded package supports it; an unavailable
 identity is explicitly labeled `Model unavailable`, never guessed.
 
@@ -243,6 +243,11 @@ All default `AGENTS.md` files document review modes, strikethrough deletions,
 math operations, structural-change exceptions, and legacy-project fallback. Their new
 `managed-drafting` block updates conservatively and defers to project-specific
 review/rebuttal policy. It never instructs an agent to use undefined commands.
+
+Finalizing reviewed agent edits permanently deletes `Del` contents and unwraps
+`Ins` contents. “Finalize all edits” is scoped to the revisions discussed so far;
+uncertain scope requires clarification, rather than accepting unseen manuscript
+revisions globally. See the managed drafting instructions in each template.
 
 ## Everyday local workflow
 

@@ -208,19 +208,35 @@
 \DeclarePaperAuthor{AMM}{Alberto}{AMM}{007558}
 \DeclarePaperAuthor{DA}{Diego}{DA}{006C7D}
 \DeclarePaperAuthor{GG}{Gianmarco}{GG}{855D00}
-\DeclarePaperAuthor{Agent}{Agent}{AG}{B34700}
+\DeclarePaperAuthor{Agents}{Agents}{AG}{B34700}
 % Optional model attribution changes the comment title, retaining the AG cue.
 % Existing one-argument calls keep their original meaning.
-\RenewDocumentCommand{\Agent}{O{Agent} +m}{\ps@note{AgentColor}{#1}{AG}{#2}}
-\RenewDocumentCommand{\AgentOut}{O{Agent} +m}{\ps@out{AgentColor}{#1}{AG}{#2}}
+\RenewDocumentCommand{\Agents}{O{Agents} +m}{\ps@note{AgentsColor}{#1}{AG}{#2}}
+\RenewDocumentCommand{\AgentsOut}{O{Agents} +m}{\ps@out{AgentsColor}{#1}{AG}{#2}}
 % Consume both forms in PDF strings, without leaking the optional name/body.
 \NewExpandableDocumentCommand{\ps@pdfnote}{o m}{}
 \AtBeginDocument{%
   \@ifundefined{pdfstringdefDisableCommands}{}{%
-    \pdfstringdefDisableCommands{\let\Agent\ps@pdfnote\let\AgentOut\ps@pdfnote}}%
+    \pdfstringdefDisableCommands{\let\Agents\ps@pdfnote\let\AgentsOut\ps@pdfnote}}%
+}
+% Compatibility for projects already using the former singular Agent family.
+\let\Agent\Agents
+\let\AgentOut\AgentsOut
+\let\AgentIns\AgentsIns
+\let\AgentDel\AgentsDel
+\let\AgentReplaceMath\AgentsReplaceMath
+\AtBeginDocument{%
+  \@ifundefined{pdfstringdefDisableCommands}{}{%
+    \pdfstringdefDisableCommands{%
+      \let\Agent\ps@pdfnote\let\AgentOut\ps@pdfnote
+      \def\AgentIns#1{\ifcommentsreverted\else#1\fi}%
+      \def\AgentDel#1{\ifcommentsreverted#1\fi}%
+      \def\AgentReplaceMath#1#2{\ifcommentsreverted#1\else#2\fi}%
+    }%
+  }%
 }
 \DeclarePaperAuthor{Rebuttal}{Reviewed rebuttal}{REV}{0000AA}
-\newcommand{\TODO}[1]{\Agent{TODO: #1}}
-\newcommand{\TODOOut}[1]{\AgentOut{TODO: #1}}
+\newcommand{\TODO}[1]{\Agents{TODO: #1}}
+\newcommand{\TODOOut}[1]{\AgentsOut{TODO: #1}}
 \newcommand{\err}[1]{\ifcommentsvisible\textcolor{red}{#1}\else#1\fi}
 \endinput

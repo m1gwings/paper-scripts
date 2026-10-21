@@ -47,7 +47,7 @@ class ScaffoldTest(test_workflow.WorkflowTest):
         self.assertIn('paper create --force', output)
         self.assertEqual((self.repo / 'main.tex').read_bytes(), original)
         self.assertFalse((self.repo / 'papermacros.sty').exists())
-        self.assertIn('Do not insert undefined Agent commands', (self.repo / 'AGENTS.md').read_text())
+        self.assertIn('Never insert undefined commands', (self.repo / 'AGENTS.md').read_text())
 
     def test_blank_main_with_other_asset_is_not_assumed_empty(self):
         (self.repo / 'main.tex').write_text(BLANK)

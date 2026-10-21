@@ -52,7 +52,7 @@ class MacroCompilationTest(unittest.TestCase):
 \usepackage{natbib}
 \usepackage{hyperref}
 \makeatletter
-\@ifundefined{AgentIns}{\errmessage{Agent API missing}}{}
+\@ifundefined{AgentsIns}{\errmessage{Agent API missing}}{}
 \@ifundefined{CodexIns}{}{\errmessage{Obsolete Codex API leaked}}
 \@ifundefined{CMInline}{}{\errmessage{Obsolete Inline API leaked}}
 \@ifundefined{AgentDelBlock}{}{\errmessage{Obsolete deletion API leaked}}
@@ -67,25 +67,26 @@ class MacroCompilationTest(unittest.TestCase):
 '''
                     body = r'''
 \section{Test}\label{sec:test}
-\AgentDel{DELETEDWORD \ref{sec:test} \citep{example}}
-\AgentIns{INSERTEDWORD}
+\AgentsDel{DELETEDWORD \ref{sec:test} \citep{example}}
+\AgentsIns{INSERTEDWORD}
+\par\AgentIns{COMPATADD} \AgentDel{COMPATDROP}\par
 \CMIns{Author insertion.}\MMDel{Author deletion.}
-$\Reals,\Reals[0],\Prob(A),\vec{x},\norm*{x},\AgentDel{x^2}\AgentIns{y^2}$.
+$\Reals,\Reals[0],\Prob(A),\vec{x},\norm*{x},\AgentsDel{x^2}\AgentsIns{y^2}$.
 \wp a statement.
-\[\AgentReplaceMath{a+b}{c+d}\]
+\[\AgentsReplaceMath{a+b}{c+d}\]
 \ifcommentsapplied\else
-\AgentDel{PARAGRAPHOLD}
-\[\AgentDel{u+v=w.}\]
+\AgentsDel{PARAGRAPHOLD}
+\[\AgentsDel{u+v=w.}\]
 \fi
-\Agent{REVIEWNOTE}
+\Agents{REVIEWNOTE}
 '''
                     if is_paper:
                         body += r'''\begin{align*}
-{\AgentDel{a}}&{\AgentDel{=b}}\\
-{\AgentDel{c}}&{\AgentDel{=d}}
+{\AgentsDel{a}}&{\AgentsDel{=b}}\\
+{\AgentsDel{c}}&{\AgentsDel{=d}}
 \end{align*}
 '''
-                    named_notes = r'\Agent[GPT-6 Astra]{NAMEDNOTE}\AgentOut[GPT-6 Sol]{OUTSIDENOTE}'
+                    named_notes = r'\Agents[GPT-6 Astra]{NAMEDNOTE}\AgentsOut[GPT-6 Sol]{OUTSIDENOTE}'
                     if not is_paper:
                         body = r'\begin{frame}{Review}' + body + r'\end{frame}'
                         body += r'\begin{frame}{Model comments}' + named_notes + r'\end{frame}'
@@ -102,12 +103,14 @@ $\Reals,\Reals[0],\Prob(A),\vec{x},\norm*{x},\AgentDel{x^2}\AgentIns{y^2}$.
                     text = self.compile(root)
                     self.assertEqual('INSERTEDWORD' in text, mode != 'reverted')
                     self.assertEqual('DELETEDWORD' in text, mode != 'applied')
+                    self.assertEqual('COMPATADD' in text, mode != 'reverted')
+                    self.assertEqual('COMPATDROP' in text, mode != 'applied')
                     self.assertEqual('PARAGRAPHOLD' in text, mode != 'applied')
                     self.assertEqual('REVIEWNOTE' in text, mode == 'visible')
                     for token in ('GPT-6 Astra', 'GPT-6 Sol', 'NAMEDNOTE', 'OUTSIDENOTE'):
                         self.assertEqual(token in text, mode == 'visible', token)
                     if mode == 'visible':
-                        self.assertIn('Agent (AG)', text)
+                        self.assertIn('Agents (AG)', text)
                         self.assertIn('GPT-6 Astra (AG)', text)
 
     def test_optional_comment_names_are_consumed_in_pdf_bookmarks(self):
@@ -118,7 +121,7 @@ $\Reals,\Reals[0],\Prob(A),\vec{x},\norm*{x},\AgentDel{x^2}\AgentIns{y^2}$.
 \usepackage{papermacros}
 \usepackage{hyperref}
 \begin{document}
-\pdfbookmark{Heading\Agent[GPT-6 Astra]{HIDDENCOMMENT}\Agent{DEFAULTCOMMENT}\AgentOut[GPT-6 Sol]{OUTCOMMENT}\AgentOut{DEFAULTNOTE}}{test}
+\pdfbookmark{Heading\Agents[GPT-6 Astra]{HIDDENCOMMENT}\Agents{DEFAULTCOMMENT}\AgentsOut[GPT-6 Sol]{OUTCOMMENT}\AgentsOut{DEFAULTNOTE}}{test}
 Visible body.
 \end{document}''')
             self.compile(root)
@@ -135,8 +138,8 @@ Visible body.
             (root / 'main.tex').write_text(r'''\documentclass{article}
 \usepackage[review=applied]{papermacros}
 \begin{document}
-\AgentDel{\UndefinedDeletedCommand}
-\AgentIns{Kept text.}
+\AgentsDel{\UndefinedDeletedCommand}
+\AgentsIns{Kept text.}
 \end{document}''')
             self.assertIn('Kept text.', self.compile(root))
 
@@ -151,10 +154,10 @@ Visible body.
 \begin{document}
 \tableofcontents
 \listoffigures
-\section{\AgentDel{OLDHEADING}\AgentIns{NEWHEADING}}
+\section{\AgentsDel{OLDHEADING}\AgentsIns{NEWHEADING}}
 \begin{figure}
 \centering Example figure.
-\caption{\AgentDel{OLDCAPTION}\AgentIns{NEWCAPTION}}
+\caption{\AgentsDel{OLDCAPTION}\AgentsIns{NEWCAPTION}}
 \end{figure}
 \end{document}''')
                 text = self.compile(root)

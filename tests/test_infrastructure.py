@@ -1,5 +1,6 @@
 import hashlib
 import json
+import re
 import shutil
 from pathlib import Path
 import subprocess
@@ -11,6 +12,21 @@ TEMPLATES = Path(__file__).resolve().parents[1] / 'templates'
 
 
 class InfrastructureTest(test_workflow.WorkflowTest):
+    def test_finalization_policy_upgrade_preserves_custom_instructions(self):
+        agents = self.repo / 'AGENTS.md'
+        custom = '# Project policy\n\nKeep reviewer colors and pending appendix edits.\n'
+        agents.write_text(custom)
+        self.paper('init')
+        text = agents.read_text()
+        self.assertIn(custom, text)
+        self.assertIn(r'\AgentsDel{old}', text)
+        self.assertIn('entire contents', text)
+        self.assertIn('removing only the surrounding insertion command/braces', text)
+        self.assertIn('absence of evidence that a passage was reviewed is not approval', text)
+        self.assertIn('ask the user before permanently removing', text)
+        self.paper('init')
+        self.assertEqual(agents.read_text(), text)
+
     def test_explicit_poster_mode_replaces_only_untouched_paper_template(self):
         self.paper('init')
         self.paper('init', '--poster')
@@ -19,7 +35,12 @@ class InfrastructureTest(test_workflow.WorkflowTest):
         custom = (TEMPLATES / 'AGENTS.paper.md').read_text() + '\nMy custom rule.\n'
         agents.write_text(custom)
         self.paper('init', '--poster')
-        self.assertEqual(agents.read_text(), custom)
+        # Type selection may refresh managed policy, while custom text survives.
+        drafting = (r'<!-- paper-scripts:begin managed-drafting -->.*?'
+                    r'<!-- paper-scripts:end managed-drafting -->')
+        self.assertEqual(re.sub(drafting, '', agents.read_text(), flags=re.S),
+                         re.sub(drafting, '', custom, flags=re.S))
+        self.assertIn('My custom rule.', agents.read_text())
 
     def test_poster_selection_persists_and_vendored_runtime_recovers_agents(self):
         self.paper('init', '--poster')

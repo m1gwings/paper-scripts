@@ -40,12 +40,12 @@ regret notation, and algorithm names are intentionally absent.
 
 | Operation | Command |
 | --- | --- |
-| Addition | \AgentIns{new} |
-| Inline deletion | \AgentDel{old} |
-| Replacement | \AgentDel{old}\AgentIns{new} |
-| Stacked mathematical replacement | \AgentReplaceMath{old}{new}, inside math mode |
-| Explanatory review box | \Agent{comment} |
-| Outer note, inline in presentations | \AgentOut{comment} |
+| Addition | \AgentsIns{new} |
+| Inline deletion | \AgentsDel{old} |
+| Replacement | \AgentsDel{old}\AgentsIns{new} |
+| Stacked mathematical replacement | \AgentsReplaceMath{old}{new}, inside math mode |
+| Explanatory review box | \Agents{comment} |
+| Outer note, inline in presentations | \AgentsOut{comment} |
 
 The same operations are defined for CM, MM, AMM, DA, GG, and Rebuttal.
 To add an author, put this in projectmacros.tex:
@@ -71,8 +71,8 @@ original text in reverted mode, without review colors or labels.
 
 Use inline deletion for plain text, citations/references, and short math.
 For displays or whole proofs, strike safe prose spans and individual math
-expressions/alignment cells with \AgentDel (brace a leading alignment cell as
-{\AgentDel{old}} so TeX enters math mode before expanding it). Keep display
+expressions/alignment cells with \AgentsDel (brace a leading alignment cell as
+{\AgentsDel{old}} so TeX enters math mode before expanding it). Keep display
 delimiters and environment boundaries outside wrappers. Use the existing review-mode
 conditionals to suppress deleted environments in applied mode and restore them
 in reverted mode. Do not define or use a separate block-deletion mechanism;
