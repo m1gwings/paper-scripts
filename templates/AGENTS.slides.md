@@ -86,6 +86,10 @@ Minimal two-column plain-frame pattern (requires TikZ; adapt the named safe area
 - Preserve mathematical meaning, notation, macros, labels, and references; summarize content changes separately from layout changes.
 
 <!-- paper-scripts:begin managed-drafting -->
+## Mathematical notation
+
+- Keep notation expressive and dependencies explicit. Do not introduce a new symbol merely to abbreviate a short expression; reserve shorthand for expressions so long that writing them in full materially harms readability. For example, keep `\xi_{j,t}^{(p)} O_{j,t}^{(p)}` explicit rather than defining `X_t` solely to shorten it. Never suppress indices, parameters, arguments, or other dependencies (including `j` and `p` in this example) without the user's explicit authorization; any authorized shorthand must retain all dependencies unless their omission is separately authorized.
+
 ## Draft revisions and review
 
 - Unless the user explicitly asks otherwise, track manuscript edits using the collaboration API actually loaded by the project. The paper-scripts starter loads `papermacros.sty`: use `\AgentsIns{new}`, `\AgentsDel{old}`, and `\AgentsDel{old}\AgentsIns{new}` for replacements. Use `\Agents[MODEL NAME]{comment}` for an explanatory review box and `\AgentsOut[MODEL NAME]{comment}` for an outer note (inline on slides/posters).
