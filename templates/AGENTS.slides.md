@@ -92,6 +92,8 @@ Minimal two-column plain-frame pattern (requires TikZ; adapt the named safe area
 
 - Avoid notation clashes: check existing definitions before introducing a symbol, and do not use the same notation for distinct objects in the same context. When a subscript, superscript, or similar annotation contains multiple indices, parameters, or labels, separate them with commas, e.g. `X_{i,j}` and `X^{(p,q)}` rather than concatenating the entries.
 
+- In proofs and mathematical exposition, write logical connections in words rather than using logic symbols such as `\implies`, `\Longrightarrow`, `\iff`, or `\Leftrightarrow`. Use prose such as "implies" and "if and only if", or `\text{ implies }` and `\text{ if and only if }` inside displays; likewise spell out other logical shorthand in proofs.
+
 ## Draft revisions and review
 
 - Unless the user explicitly asks otherwise, track manuscript edits using the collaboration API actually loaded by the project. The paper-scripts starter loads `papermacros.sty`: use `\AgentsIns{new}`, `\AgentsDel{old}`, and `\AgentsDel{old}\AgentsIns{new}` for replacements. Use `\Agents[MODEL NAME]{comment}` for an explanatory review box and `\AgentsOut[MODEL NAME]{comment}` for an outer note (inline on slides/posters).
