@@ -42,6 +42,8 @@
 
 - Keep notation expressive and dependencies explicit. Do not introduce a new symbol merely to abbreviate a short expression; reserve shorthand for expressions so long that writing them in full materially harms readability. For example, keep `\xi_{j,t}^{(p)} O_{j,t}^{(p)}` explicit rather than defining `X_t` solely to shorten it. Never suppress indices, parameters, arguments, or other dependencies (including `j` and `p` in this example) without the user's explicit authorization; any authorized shorthand must retain all dependencies unless their omission is separately authorized.
 
+- Avoid notation clashes: check existing definitions before introducing a symbol, and do not use the same notation for distinct objects in the same context. When a subscript, superscript, or similar annotation contains multiple indices, parameters, or labels, separate them with commas, e.g. `X_{i,j}` and `X^{(p,q)}` rather than concatenating the entries.
+
 ## Draft revisions and review
 
 - Unless the user explicitly asks otherwise, track manuscript edits using the collaboration API actually loaded by the project. The paper-scripts starter loads `papermacros.sty`: use `\AgentsIns{new}`, `\AgentsDel{old}`, and `\AgentsDel{old}\AgentsIns{new}` for replacements. Use `\Agents[MODEL NAME]{comment}` for an explanatory review box and `\AgentsOut[MODEL NAME]{comment}` for an outer note (inline on slides/posters).
