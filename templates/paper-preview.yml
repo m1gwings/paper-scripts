@@ -19,6 +19,8 @@ jobs:
           persist-credentials: false
       - name: Install TeX
         run: |
+          # Avoid slow Azure mirror downloads exhausting the job timeout.
+          sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends latexmk lmodern texlive-latex-extra texlive-fonts-recommended texlive-science texlive-plain-generic
       - name: Compile without credentials or shell escape
