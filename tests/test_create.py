@@ -38,6 +38,43 @@ class ExistingCreateTest(test_workflow.WorkflowTest):
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse((self.repo / '.paper').exists())
 
+    def test_existing_checkout_accepts_supported_project_urls(self):
+        for url in ('https://www.overleaf.com/project/abc123',
+                    'https://overleaf.com/project/abc123/?view=editor#main',
+                    'https://git@git.overleaf.com/abc123',
+                    'https://git.overleaf.com/abc123/'):
+            with self.subTest(url=url):
+                head = self.git('rev-parse', 'HEAD')
+                result = subprocess.run(
+                    ['bash', str(PAPER), 'create', url, 'owner/paper', str(self.repo)],
+                    cwd=self.root, env=self.env, text=True, capture_output=True)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(self.git('rev-parse', 'HEAD'), head)
+
+    def test_partial_checkout_preserves_work_and_explains_recovery(self):
+        self.git('remote', 'remove', 'github')
+        (self.repo / 'draft.tex').write_text('uncommitted research')
+        self.git('add', 'draft.tex')
+        before = self.git('status', '--porcelain')
+        result = subprocess.run(
+            ['bash', str(PAPER), 'create', 'abc123', 'owner/paper', str(self.repo)],
+            cwd=self.root, env=self.env, text=True, capture_output=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("no 'github' remote", result.stderr)
+        self.assertIn('creation-recovery', result.stderr)
+        self.assertEqual(self.git('status', '--porcelain'), before)
+        self.assertFalse((self.repo / '.paper').exists())
+
+    def test_clone_before_remote_rename_explains_recovery(self):
+        self.git('remote', 'rename', 'overleaf', 'origin')
+        result = subprocess.run(
+            ['bash', str(PAPER), 'create', 'abc123', 'owner/paper', str(self.repo)],
+            cwd=self.root, env=self.env, text=True, capture_output=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('git remote rename origin overleaf', result.stderr)
+        self.assertEqual(self.git('remote', 'get-url', 'origin'),
+                         'https://git@git.overleaf.com/abc123')
+
     def initialize_new(self, *arguments, directory, kind):
         fresh = self.root / directory
         overleaf_head = self.git('rev-parse', 'master', cwd=self.root / 'overleaf')
@@ -49,6 +86,8 @@ class ExistingCreateTest(test_workflow.WorkflowTest):
         gh = self.root / 'tools/gh'
         gh.write_text(
             '#!/bin/sh\n'
+            'case " $* " in *" --private "*) ;; *) '
+            '[ "$1 $2" = "auth status" ] || exit 98;; esac\n'
             'case "$1 $2" in\n'
             '"auth status") exit 0;;\n'
             '"repo create")\n'
@@ -100,6 +139,30 @@ class ExistingCreateTest(test_workflow.WorkflowTest):
     def test_new_repository_commits_and_pushes_canonical_initialization(self):
         self.initialize_new('abc123', 'owner/new-paper', 'fresh',
                             directory='fresh', kind='paper')
+
+    def test_new_repository_from_url_uses_normalized_git_remote(self):
+        self.initialize_new('https://www.overleaf.com/project/abc123?view=editor#main',
+                            'owner/new-paper', 'fresh', directory='fresh', kind='paper')
+        self.assertEqual(self.git('config', '--get', 'remote.overleaf.url',
+                                  cwd=self.root / 'fresh'),
+                         'https://git@git.overleaf.com/abc123')
+
+    def test_failed_github_creation_keeps_initialized_checkout(self):
+        gh = self.root / 'tools/gh'
+        gh.write_text('#!/bin/sh\n[ "$1 $2" = "auth status" ]\n')
+        config = self.root / 'gitconfig'
+        config.write_text(f'[url "{self.root / "overleaf"}"]\n'
+                          '    insteadOf = https://git@git.overleaf.com/abc123\n')
+        result = subprocess.run(
+            ['bash', str(PAPER), 'create', 'abc123', 'owner/new', 'partial'],
+            cwd=self.root, env=dict(self.env, GIT_CONFIG_GLOBAL=str(config)),
+            text=True, capture_output=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('paper backup', result.stderr)
+        self.assertTrue((self.root / 'partial/.paper/manifest.json').exists())
+        self.assertEqual(self.git('status', '--porcelain', cwd=self.root / 'partial'), '')
+        self.assertEqual(self.git('rev-parse', 'master', cwd=self.root / 'overleaf'),
+                         self.git('rev-parse', 'overleaf/master', cwd=self.root / 'partial'))
 
     def test_default_paper_directory_and_template_unchanged(self):
         self.initialize_new('abc123', 'owner/new-paper', directory='paper', kind='paper')
@@ -175,6 +238,16 @@ class ExistingCreateTest(test_workflow.WorkflowTest):
                 result = subprocess.run(['bash', str(PAPER), 'create', *args], cwd=self.root,
                                         env=env, text=True, capture_output=True)
                 self.assertNotEqual(result.returncode, 0)
+        for url in ('https://overleaf.com.evil/project/abc123',
+                    'https://user:secret@www.overleaf.com/project/abc123',
+                    'https://git:secret@git.overleaf.com/abc123',
+                    'https://www.overleaf.com/read/share-token',
+                    'https://www.overleaf.com/project/', '../abc123', 'abc 123'):
+            with self.subTest(url=url):
+                result = subprocess.run(['bash', str(PAPER), 'create', url, 'owner/paper'],
+                                        cwd=self.root, env=env, text=True, capture_output=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertNotIn('secret', result.stderr)
         self.assertFalse(marker.exists())
         self.assertFalse((self.root / 'paper').exists())
         self.assertFalse((self.root / 'poster').exists())

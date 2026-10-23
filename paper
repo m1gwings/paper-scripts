@@ -433,6 +433,7 @@ COMMANDS
   paper create [--poster | --slides] [--force] OVERLEAF_PROJECT_ID GITHUB_REPOSITORY [LOCAL_DIRECTORY]
       Clone Overleaf, initialize the project, create a private GitHub repository,
       and configure remotes. Default directory: paper, poster, or slides.
+      Accept an Overleaf project ID or full HTTPS project URL.
       Run 'paper create --help' for the full creation guide.
 
   paper init [--poster | --slides] [--force]

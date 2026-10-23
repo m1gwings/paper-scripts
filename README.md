@@ -107,6 +107,57 @@ same flags and positional arguments. Use it outside a repository to clone
 Overleaf and create its private GitHub mirror. `paper init` remains the local,
 non-committing initializer/upgrader for an existing Git repository.
 
+The first argument also accepts a full `https://www.overleaf.com/project/ID`
+or `https://git@git.overleaf.com/ID` URL. Query strings/fragments on website
+URLs are stripped; quote the URL in your shell. Read-only sharing links and
+URLs containing credentials are not project IDs.
+
+For a brand-new project, first create a **Blank Project** in Overleaf's website
+and copy its `/project/ID` URL, then run the same `paper create` command. An
+agent may orchestrate that supported browser UI before invoking this CLI.
+`paper-scripts` itself never invokes an AI model, agent runtime, MCP, or browser
+automation. Manual browser creation is always a supported fallback.
+
+Creation clones Overleaf, installs/commits the local infrastructure, and pushes
+to a new **private** GitHub repository. It does not push the starter to Overleaf;
+that requires a separately authorized `paper publish`. Website/SSO login does
+not authenticate Overleaf Git: Git uses username `git` and an Overleaf Git token
+managed outside version control.
+
+### Creation recovery
+
+Do not delete a partial checkout or rerun into a second directory to conceal a
+failure. Inspect `git status`, remotes, and `gh repo view OWNER/REPO` first.
+
+- If the checkout has matching `overleaf` and `github` remotes, rerunning the
+  same `paper create` only runs the conservative `paper init`. It does not
+  commit or push existing work. Review generated changes and checkpoint them
+  deliberately before `paper backup` when a GitHub backup is wanted.
+- If cloning completed but remote renaming did not, verify `origin` is the
+  intended Overleaf project before `git remote rename origin overleaf`.
+- If initialization stopped, run `paper init` with the original `--poster` or
+  `--slides` selection as needed. Review and commit only intended changes;
+  preserve existing staged/uncommitted work.
+- If GitHub creation failed, verify whether `OWNER/REPO` now exists and is private.
+  If absent, after reviewing/checkpointing the local initialization, run
+  `gh repo create OWNER/REPO --private --source=. --remote=github --push`.
+  If it exists, inspect its identity and history before connecting a missing
+  `github` remote with `git remote add github https://github.com/OWNER/REPO.git`.
+  Never repoint an unrelated remote, automatically adopt an unrelated repository,
+  or combine unrelated histories. Resolve an unavailable repository's network or
+  authentication error before assuming it does not exist.
+- If only the push failed, use `paper backup` after verification. Its ordinary
+  non-force push refuses to overwrite concurrent GitHub work; on divergence,
+  inspect/reconcile through the established workflow before retrying. On a clean,
+  reconciled base, use
+  `git branch --set-upstream-to=github/BASE BASE` if tracking is missing and
+  `git config remote.pushDefault github`. `BASE` is the actual Overleaf branch,
+  not an assumed `main` or `master`. Check with `paper doctor`.
+
+None of these recovery steps publishes to Overleaf. `--force` only controls
+starter replacement with backups; it never bypasses remote-identity or workflow
+safety checks.
+
 ### Posters
 
 ```bash

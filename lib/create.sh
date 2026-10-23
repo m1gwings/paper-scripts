@@ -67,6 +67,9 @@ OPTIONS
     --force     Install the starter even for an existing manuscript; back up replacements.
     -h, --help  Show this help.
 
+OVERLEAF_PROJECT_ID also accepts a full https://www.overleaf.com/project/ID
+or https://git@git.overleaf.com/ID URL. Quote URLs containing query strings.
+
 
 EXAMPLES
 
@@ -188,7 +191,17 @@ if [[ $# -lt 2 || $# -gt 3 ]]; then
     exit 1
 fi
 
-OVERLEAF_ID="$1"
+OVERLEAF_INPUT="$1"
+# Normalize supported public project URLs, never arbitrary hosts or credentials.
+if [[ "$OVERLEAF_INPUT" =~ ^https://(www\.)?overleaf\.com/project/([[:alnum:]_-]+)/?([?#].*)?$ ]]; then
+    OVERLEAF_ID="${BASH_REMATCH[2]}"
+elif [[ "$OVERLEAF_INPUT" =~ ^https://(git@)?git\.overleaf\.com/([[:alnum:]_-]+)/?$ ]]; then
+    OVERLEAF_ID="${BASH_REMATCH[2]}"
+elif [[ "$OVERLEAF_INPUT" =~ ^[[:alnum:]_-]+$ ]]; then
+    OVERLEAF_ID="$OVERLEAF_INPUT"
+else
+    die "Expected an Overleaf project ID or HTTPS project URL (without credentials)."
+fi
 GITHUB_REPO="$2"
 LOCAL_DIR="${3:-$DEFAULT_DIR}"
 
@@ -211,10 +224,22 @@ if [[ -e "$LOCAL_DIR" ]]; then
         || die "Existing directory is not a Git repository."
     cd "$LOCAL_DIR"
     EXISTING_OVERLEAF="$(git remote get-url overleaf 2>/dev/null || true)"
+    if [[ -z "$EXISTING_OVERLEAF" ]]; then
+        die "Existing checkout has no 'overleaf' remote; setup may be incomplete.
+Inspect 'git status' and 'git remote -v'. If origin is the intended Overleaf
+project, rename it with 'git remote rename origin overleaf', then run paper init.
+See the README creation-recovery instructions; no remotes were changed."
+    fi
     [[ "$EXISTING_OVERLEAF" == "https://git@git.overleaf.com/$OVERLEAF_ID" || "$EXISTING_OVERLEAF" == "https://git.overleaf.com/$OVERLEAF_ID" ]] \
         || die "Existing Overleaf remote does not match; refusing to repoint it."
     EXISTING_GITHUB="$(git remote get-url github 2>/dev/null || true)"
-    EXPECTED_GITHUB="$(gh repo view "$GITHUB_REPO" --json nameWithOwner --jq .nameWithOwner)"
+    [[ -n "$EXISTING_GITHUB" ]] || die "Existing checkout has no 'github' remote; setup may be incomplete.
+Inspect 'git status' and use 'gh repo view OWNER/REPO' to check the intended
+repository before creating or connecting it. See the README creation-recovery
+instructions. Existing files and remotes were preserved."
+    EXPECTED_GITHUB="$(gh repo view "$GITHUB_REPO" --json nameWithOwner --jq .nameWithOwner)" \
+        || die "Cannot verify the existing GitHub repository. Check authentication,
+network access, and OWNER/REPO, then rerun the same paper create command."
     [[ "$EXISTING_GITHUB" == "https://github.com/$EXPECTED_GITHUB" || "$EXISTING_GITHUB" == "https://github.com/$EXPECTED_GITHUB.git" || "$EXISTING_GITHUB" == "git@github.com:$EXPECTED_GITHUB.git" ]] \
         || die "Existing GitHub remote does not match; refusing to repoint it."
     exec bash "$SCRIPT_DIR/paper" init "${INIT_OPTIONS[@]}"
@@ -226,7 +251,9 @@ echo
 echo "Cloning Overleaf project into '$LOCAL_DIR'..."
 echo
 
-git clone "$OVERLEAF_URL" "$LOCAL_DIR"
+git clone "$OVERLEAF_URL" "$LOCAL_DIR" \
+    || die "Overleaf clone failed. Check the project URL and Overleaf Git token
+(separate from website login). Inspect any remaining directory before retrying."
 
 cd "$LOCAL_DIR"
 
@@ -282,7 +309,12 @@ gh repo create "$GITHUB_REPO" \
     --private \
     --source=. \
     --remote=github \
-    --push
+    --push \
+    || die "GitHub creation or initial push failed; the local checkout is preserved.
+Inspect 'git status', 'git remote -v', and 'gh repo view OWNER/REPO' before retrying.
+If the matching private repository and github remote exist, review/commit any
+generated changes and run 'paper backup'. See README creation recovery.
+Nothing was published to Overleaf."
 
 echo
 echo "Configuring '$BASE_BRANCH' to track github/$BASE_BRANCH..."
