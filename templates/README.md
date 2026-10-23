@@ -8,6 +8,11 @@ build step. Commit your edits to preserve them on GitHub.
 You can change the title, editing guidance, verification rules, and other
 project-specific sections independently for each project type.
 
+User-editable project metadata belongs in the generated `.paper/config.json`.
+In particular, `project_name` is the informal display name used by local editor
+windows and prompts. Initialization infers a readable default and preserves later
+customizations; it does not change the scientific LaTeX title.
+
 Keep these four pairs of marker comments, with one begin and one end per block:
 
 - `managed-notifications`

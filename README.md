@@ -104,11 +104,12 @@ compact workflows.
 
 ### Local editor workspaces
 
-`paper open` defaults to VS Code. Select an editor explicitly, or set a personal
-default in Git configuration:
+`paper open` uses the editor selected in Git configuration. The personal terminal
+profile sets `terminal`; installations without a selection fall back to VS Code.
+Select an editor explicitly, or change the personal default:
 
 ```bash
-paper open --terminal                 # Kitty: Micro left, project shell right
+paper open --terminal                 # Kitty: Micro above, project shell below
 paper open --vscode                   # VS Code in a new window
 git config --global paper.editor terminal
 git config --global paper.editor vscode
@@ -130,11 +131,28 @@ pane, Ctrl+Shift+R to resize, and Ctrl+Shift+Enter to add a shell split in the
 current directory. These overrides apply only to project windows. PDFs stay
 external: `xdg-open /absolute/path/paper.pdf` uses your existing PDF association.
 
-Paper terminal workspaces also start a **Build** tab, which watches `main.tex`
-and its dependencies. Save a document source to rebuild automatically; compilation
+Paper terminal workspaces also start a **Build** tab, which watches the configured
+`root_tex` (`main.tex` by default) and its dependencies. Save a document source to rebuild automatically; compilation
 errors appear in that tab. It leaves the editor and project shell available.
 Ctrl+C in Build stops the watcher. Opening another workspace for the same source
 reuses the existing watcher instead of starting a duplicate.
+
+### Project display name
+
+The existing `.paper/config.json` also holds user-editable project metadata:
+
+```json
+"project_name": "CMABs with Ranking Feedback"
+```
+
+`paper init` fills a readable default for new/existing projects and preserves a
+custom name on later runs. Edit this field to change the informal name; it is
+independent of the manuscript's scientific title. Kitty uses it for the window
+title, with Paper/Poster/Slides as appropriate. The personal shell profile uses
+the same name in the prompt, including a relative path when entering subfolders.
+The editor sits above a full-width shell (74% / 26% of the available height).
+All of this works when running `paper open` yourself; no agent/session setup is
+required. Use `paper open --vscode` for a one-off VS Code window.
 
 ### PDF output
 

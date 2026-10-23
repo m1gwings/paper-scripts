@@ -35,7 +35,8 @@ from pathlib import Path
 Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
     'program': Path(sys.argv[0]).name, 'args': sys.argv[1:], 'cwd': os.getcwd(),
     'session': sys.stdin.read() if Path(sys.argv[0]).name == 'kitty' else '',
-    'NO_COLOR': os.environ.get('NO_COLOR'), 'CODEX_CI': os.environ.get('CODEX_CI')
+    'NO_COLOR': os.environ.get('NO_COLOR'), 'CODEX_CI': os.environ.get('CODEX_CI'),
+    'project_name': os.environ.get('PROJECT_WORKSPACE_NAME')
 }))
 ''')
             stub.chmod(0o755)
@@ -89,7 +90,7 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
         self.assertEqual(data['args'][data['args'].index('--directory') + 1], str(self.project))
         self.assertEqual(data['args'][data['args'].index('--session') + 1], '-')
         self.assertIn('launch --title Editor micro', data['session'])
-        self.assertIn('layout tall:bias=72', data['session'])
+        self.assertIn('layout fat:bias=74', data['session'])
         self.assertIn('launch --title Shell', data['session'])
         self.assertIsNone(data['NO_COLOR'])
         self.assertIsNone(data['CODEX_CI'])
@@ -129,6 +130,31 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
         output = self.launch('--terminal', ok=False)
         self.assertIn('Unsupported layout', output)
         self.assertIn('Kitty startup log:', output)
+
+    def test_project_metadata_controls_title_prompt_and_watch_source(self):
+        (self.project / '.paper').mkdir()
+        (self.project / '.paper/config.json').write_text(json.dumps({
+            'project_name': 'CMABs with Ranking Feedback',
+            'document_type': 'poster', 'root_tex': 'poster.tex'}))
+        self.launch('--terminal')
+        record = self.record()
+        self.assertEqual(record['project_name'], 'CMABs with Ranking Feedback')
+        self.assertIn('Kitty — CMABs with Ranking Feedback · Poster', record['args'])
+        self.assertIn('--watch poster.tex', record['session'])
+        self.assertFalse((self.project / 'INJECTED').exists())
+
+    def test_project_name_survives_reinitialization(self):
+        self.git('config', 'user.name', 'Test')
+        self.git('config', 'user.email', 'test@example.invalid')
+        for _ in range(2):
+            subprocess.run(['bash', str(SOURCE / 'paper'), 'init'], cwd=self.project,
+                           env=self.env, capture_output=True, text=True, check=True)
+            path = self.project / '.paper/config.json'
+            config = json.loads(path.read_text())
+            self.assertTrue(config['project_name'])
+            config['project_name'] = 'My informal project name'
+            path.write_text(json.dumps(config))
+        self.assertEqual(json.loads(path.read_text())['project_name'], 'My informal project name')
 
 
 if __name__ == '__main__':

@@ -7,10 +7,11 @@ import re
 import subprocess
 import sys
 import scaffold
+from project_metadata import infer_name
 
 VERSION = 4
 SOURCE = Path(__file__).resolve().parents[1]
-LIBRARIES = ['notify.py', 'cloud.py', 'ci.py', 'preview.py', 'preview_notify.py', 'infrastructure.py', 'configure_ci.py', 'create.sh', 'scaffold.py', 'project_open.py', 'build.py']
+LIBRARIES = ['notify.py', 'cloud.py', 'ci.py', 'preview.py', 'preview_notify.py', 'infrastructure.py', 'configure_ci.py', 'create.sh', 'scaffold.py', 'project_open.py', 'build.py', 'project_metadata.py']
 WORKFLOWS = ['paper-preview.yml', 'paper-publish.yml', 'paper-notify.yml']
 DOCUMENT_TYPES = ('paper', 'poster', 'slides')
 # Remove only the exact, manifest-owned model default shipped by earlier releases.
@@ -69,7 +70,8 @@ def discover():
     match = re.fullmatch(r'https://(?:git@)?git\.overleaf\.com/([a-zA-Z0-9]+?)/?', url)
     return {'version': VERSION, 'base_branch': base,
             'overleaf_project_id': match[1] if match else '',
-            'root_tex': 'main.tex', 'notify_provider': 'discord', 'pushover_device': ''}
+            'root_tex': 'main.tex', 'notify_provider': 'discord', 'pushover_device': '',
+            'project_name': infer_name(Path.cwd())}
 
 
 def config():
@@ -89,6 +91,9 @@ def config():
         raise ValueError('notify_provider must be none, discord, webhook, or pushover.')
     if not isinstance(value['pushover_device'], str):
         raise ValueError('pushover_device must be a device name or an empty string.')
+    if (not isinstance(value['project_name'], str) or not value['project_name'].strip()
+            or any(ord(c) < 32 or ord(c) == 127 for c in value['project_name'])):
+        raise ValueError('project_name must be a nonempty, single-line display name.')
     return value
 
 

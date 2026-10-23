@@ -7,9 +7,10 @@ import subprocess
 import sys
 import tempfile
 import shlex
+from project_metadata import metadata
 
 
-SESSION = """layout tall:bias=72
+SESSION = """layout fat:bias=74
 launch --title Editor micro
 focus
 launch --title Shell
@@ -17,7 +18,7 @@ launch --title Shell
 
 # Apply only to windows opened by this launcher; keep global Kitty settings intact.
 KITTY_OVERRIDES = [
-    'enabled_layouts=tall:bias=72,stack',
+    'enabled_layouts=fat:bias=74,stack',
     'window_padding_width=4 14',
     'map ctrl+alt+left neighboring_window left',
     'map ctrl+alt+right neighboring_window right',
@@ -79,19 +80,27 @@ def run(argv=None):
     if editor == 'vscode':
         return subprocess.run(['code', '--new-window', str(directory)]).returncode
 
-    label = (f'{directory.parent.name}/{directory.name}'
-             if directory.name in ('paper', 'poster', 'slides') else directory.name)
+    try:
+        info = metadata(directory)
+    except (OSError, ValueError) as error:
+        parser.error(str(error))
+    label = info['project_name']
+    component = info['document_type'] or ('paper' if paper else '')
+    if component:
+        label += ' · ' + component.capitalize()
     session = SESSION
     if paper:
         # Keep the source watcher in its own tab, leaving the project shell free.
         build_command = shlex.join(['python3', str(Path(__file__).with_name('build.py')),
-                                    'build', '--watch'])
+                                    'build', '--watch', info['root_tex']])
         session += f'new_tab Build\nlaunch --title "PDF build" {build_command}\n'
     command = ['kitty', '--directory', str(directory),
                '--title', f'Kitty — {label}', '--session', '-']
     for override in KITTY_OVERRIDES:
         command.extend(['--override', override])
     env = os.environ.copy()
+    env['PROJECT_WORKSPACE_NAME'] = info['project_name']
+    env['PROJECT_WORKSPACE_ROOT'] = str(directory)
     for name in ('NO_COLOR', 'CODEX_CI'):
         env.pop(name, None)
     # Kitty's --detach can return success before parsing a broken session.
@@ -116,6 +125,6 @@ def run(argv=None):
 if __name__ == '__main__':
     try:
         sys.exit(run())
-    except OSError as error:
+    except (OSError, ValueError) as error:
         print(f'project-open: {error}', file=sys.stderr)
         sys.exit(1)
