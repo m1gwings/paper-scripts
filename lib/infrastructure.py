@@ -10,7 +10,7 @@ import scaffold
 
 VERSION = 4
 SOURCE = Path(__file__).resolve().parents[1]
-LIBRARIES = ['notify.py', 'cloud.py', 'ci.py', 'preview.py', 'preview_notify.py', 'infrastructure.py', 'configure_ci.py', 'create.sh', 'scaffold.py']
+LIBRARIES = ['notify.py', 'cloud.py', 'ci.py', 'preview.py', 'preview_notify.py', 'infrastructure.py', 'configure_ci.py', 'create.sh', 'scaffold.py', 'project_open.py']
 WORKFLOWS = ['paper-preview.yml', 'paper-publish.yml', 'paper-notify.yml']
 DOCUMENT_TYPES = ('paper', 'poster', 'slides')
 # Remove only the exact, manifest-owned model default shipped by earlier releases.

@@ -13,6 +13,7 @@ echo
 
 chmod +x \
     "$SCRIPT_DIR/paper" \
+    "$SCRIPT_DIR/project-open" \
     "$SCRIPT_DIR/install.sh"
 
 EXPECTED_DIR="$HOME/.local/bin"
@@ -77,8 +78,16 @@ fi
 if command -v code >/dev/null 2>&1; then
     echo "  code     [OK]"
 else
-    echo "  code     [MISSING - optional, used by 'paper open']"
+    echo "  code     [MISSING - optional, used by 'paper open --vscode']"
 fi
+
+for tool in kitty micro; do
+    if command -v "$tool" >/dev/null 2>&1; then
+        printf '  %-8s [OK]\n' "$tool"
+    else
+        printf '  %-8s [MISSING - optional, used by project-open / paper open --terminal]\n' "$tool"
+    fi
+done
 
 if command -v python3 >/dev/null 2>&1; then
     echo "  python3  [OK]"

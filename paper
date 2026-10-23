@@ -531,8 +531,10 @@ COMMANDS
       Clean latexmk files.
       Defaults to main.tex.
 
-  paper open
-      Open the repository in VS Code.
+  paper open [--terminal | --vscode]
+      Open this repository in Kitty/Micro or VS Code; no remotes required.
+      Default: PAPER_EDITOR, then Git's paper.editor setting, then vscode.
+      Set the default with: git config --global paper.editor terminal
 
   paper doctor
       Check configuration and useful tools.
@@ -697,6 +699,11 @@ case "$CMD" in
 
     examples)
         examples_text
+        exit 0
+        ;;
+
+    open)
+        helper project_open --paper "$@"
         exit 0
         ;;
 
@@ -1105,11 +1112,6 @@ case "$CMD" in
             || die "Cannot find '$MAIN'. Usage: paper clean [ROOT.tex]"
 
         latexmk -C "$MAIN"
-        ;;
-
-    open)
-        need code
-        code .
         ;;
 
     doctor)

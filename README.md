@@ -96,9 +96,38 @@ paper; each paper is upgraded with `paper init`, reviewed, and committed.
 | `paper abort` | Confirm and delete the current feature locally and on GitHub. Never touch the base or Overleaf. |
 | `paper clear-feature-branches` | Confirm and delete all non-base branches locally and on GitHub. |
 | `paper task status [--all]` / `paper task delete ID ...` | Inspect or recoverably remove task records. |
+| `paper open [--terminal \| --vscode]` | Open the repository in Kitty/Micro or VS Code; no remotes required. |
 
 Run `paper help` for the complete command reference and `paper examples` for
 compact workflows.
+
+### Local editor workspaces
+
+`paper open` defaults to VS Code. Select an editor explicitly, or set a personal
+default in Git configuration:
+
+```bash
+paper open --terminal                 # Kitty: Micro left, project shell right
+paper open --vscode                   # VS Code in a new window
+git config --global paper.editor terminal
+git config --global paper.editor vscode
+```
+
+A repository-local `git config paper.editor terminal` overrides the global
+setting. `PAPER_EDITOR=terminal paper open` overrides both; explicit flags take
+precedence. No project files or remotes are changed when opening a repository.
+
+For any directory, including projects without Git, use `project-open /path/to/project`.
+It defaults to the terminal workspace and also accepts `--vscode`. Terminal mode
+requires Kitty and Micro on `PATH`; VS Code mode requires `code`. Install these
+separately. Micro's optional Filemanager2 plugin provides a project file tree;
+enable `filemanager2.openonstart` in Micro's settings to show it at launch.
+
+The project window inherits your Kitty theme. Click to focus either pane, use
+Ctrl+Alt+arrow to move between panes, Ctrl+Shift+Z to zoom/restore the active
+pane, Ctrl+Shift+R to resize, and Ctrl+Shift+Enter to add a shell split in the
+current directory. These overrides apply only to project windows. PDFs stay
+external: `xdg-open /absolute/path/paper.pdf` uses your existing PDF association.
 
 ### Creation and initialization
 
@@ -555,10 +584,11 @@ packages.
 Requirements:
 
 - Bash and Git for the local lifecycle;
-- Python 3.9+ for initialization, tasks, notifications, and cloud support;
+- Python 3.9+ for initialization, editor launchers, tasks, notifications, and cloud support;
 - GitHub CLI (`gh`) for cloud dispatch and protected setup;
 - `latexmk` plus TeX for local builds;
-- VS Code only for the optional `paper open` command.
+- VS Code for `paper open --vscode` (the default), or Kitty and Micro for
+  `paper open --terminal` / `project-open`.
 
 When updating an existing checkout, inspect its status, preserve local work, and
 fast-forward normally. Do not replace the directory or use destructive reset
@@ -575,7 +605,7 @@ configuration and delivery failures still fail; explicitly requested
 The lightweight validation suite is:
 
 ```bash
-bash -n paper lib/create.sh install.sh
+bash -n paper project-open lib/create.sh install.sh
 python3 -m unittest discover -s tests -v
 ```
 
