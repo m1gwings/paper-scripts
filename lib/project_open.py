@@ -8,6 +8,7 @@ import sys
 import tempfile
 import shlex
 from project_metadata import metadata
+from project_workspace import prepare, register
 
 
 SESSION = """layout fat:bias=74
@@ -18,6 +19,7 @@ launch --title Shell
 
 # Apply only to windows opened by this launcher; keep global Kitty settings intact.
 KITTY_OVERRIDES = [
+    'allow_remote_control=socket-only',
     'enabled_layouts=fat:bias=74,stack',
     'window_padding_width=4 14',
     'map ctrl+alt+left neighboring_window left',
@@ -88,19 +90,21 @@ def run(argv=None):
     component = info['document_type'] or ('paper' if paper else '')
     if component:
         label += ' · ' + component.capitalize()
-    session = SESSION
+    session = 'new_tab ' + ('Paper' if paper else 'Editor') + '\n' + SESSION
     if paper:
         # Keep the source watcher in its own tab, leaving the project shell free.
         build_command = shlex.join(['python3', str(Path(__file__).with_name('build.py')),
                                     'build', '--watch', info['root_tex']])
         session += f'new_tab Build\nlaunch --title "PDF build" {build_command}\n'
-    command = ['kitty', '--directory', str(directory),
+    workspace = prepare(directory, info['project_name'])
+    command = ['kitty', '--listen-on', 'unix:' + workspace['socket'], '--directory', str(directory),
                '--title', f'Kitty — {label}', '--session', '-']
     for override in KITTY_OVERRIDES:
         command.extend(['--override', override])
     env = os.environ.copy()
     env['PROJECT_WORKSPACE_NAME'] = info['project_name']
     env['PROJECT_WORKSPACE_ROOT'] = str(directory)
+    env['PROJECT_WORKSPACE_ID'] = workspace['id']
     for name in ('NO_COLOR', 'CODEX_CI'):
         env.pop(name, None)
     # Kitty's --detach can return success before parsing a broken session.
@@ -111,6 +115,7 @@ def run(argv=None):
                                      dir=state, delete=False) as log:
         process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=log, stderr=log,
                                    text=True, cwd=directory, env=env, start_new_session=True)
+        register(workspace, process.pid)
         try:
             process.communicate(session, timeout=1)
         except subprocess.TimeoutExpired:

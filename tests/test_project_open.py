@@ -23,6 +23,7 @@ class ProjectOpenTest(unittest.TestCase):
         self.log = self.root / 'launch.json'
         self.env = dict(os.environ, HOME=str(self.root),
                         XDG_STATE_HOME=str(self.root / 'state'),
+                        XDG_RUNTIME_DIR=str(self.root / 'runtime'),
                         PATH=str(self.bin) + os.pathsep + os.defpath,
                         GIT_CONFIG_GLOBAL=str(self.root / 'gitconfig'),
                         GIT_CONFIG_NOSYSTEM='1', LAUNCH_LOG=str(self.log),
@@ -92,6 +93,11 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
         self.assertIn('launch --title Editor micro', data['session'])
         self.assertIn('layout fat:bias=74', data['session'])
         self.assertIn('launch --title Shell', data['session'])
+        self.assertIn('allow_remote_control=socket-only', data['args'])
+        self.assertIn('--listen-on', data['args'])
+        records = list((self.root / 'runtime/project-workspaces').glob('*.json'))
+        self.assertEqual(len(records), 1)
+        self.assertEqual(json.loads(records[0].read_text())['root'], str(self.project.resolve()))
         self.assertIsNone(data['NO_COLOR'])
         self.assertIsNone(data['CODEX_CI'])
         self.launch('--vscode', str(self.root), generic=True)
@@ -120,6 +126,7 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
         runtime = self.project / '.paper/runtime'
         self.assertTrue((runtime / 'lib/project_open.py').is_file())
         self.assertTrue((runtime / 'lib/build.py').is_file())
+        self.assertTrue((runtime / 'lib/project_workspace.py').is_file())
         self.launch('--terminal', script=runtime / 'paper')
         self.assertEqual(self.record()['program'], 'kitty')
         self.assertIn('new_tab Build', self.record()['session'])

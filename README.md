@@ -137,6 +137,43 @@ errors appear in that tab. It leaves the editor and project shell available.
 Ctrl+C in Build stops the watcher. Opening another workspace for the same source
 reuses the existing watcher instead of starting a duplicate.
 
+### Add terminals to an existing project window
+
+Project Kitty windows expose a private local Unix socket, with control accepted
+only through that socket. This applies only to windows opened by `paper open`
+or `project-open`; other Kitty windows keep their own configuration.
+
+```bash
+project-terminal list
+project-terminal run --project /path/to/paper --title Experiments \
+  --cwd /path/to/experiment -- /path/to/experiment/.venv/bin/ews run experiment.yml --output outputs
+project-terminal run --project /path/to/paper --title 'SSH · server' -- ssh server
+project-terminal run --project /path/to/paper --title Shell
+```
+
+The default is a new tab in that existing desktop window. Use `--split` to add
+a split to its editor tab; `--tab ID` targets another listed Kitty tab. Tabs are
+named and remain manually usable. A command runs with its literal argument list
+and leaves an interactive Bash shell when it exits. For a pipeline or other shell
+syntax, explicitly pass `-- bash -lc 'YOUR COMMAND'`. Choose the appropriate
+environment/executable for the task. `--keep-focus` leaves the current view active.
+
+The helper selects by project root, independently of the command's working
+directory. If several windows match, use `--workspace ID` from `list` to choose
+explicitly. Inside a project workspace, its root is the default target. Both
+commands accept `--json` for scripts. The helper always creates a fresh terminal;
+it never injects keystrokes into a busy editor or shell.
+
+Runtime records contain only project labels/paths, IDs, PID, and the endpoint.
+They live under the user's private `$XDG_RUNTIME_DIR/project-workspaces/`, or a
+private per-user temporary directory when that variable is unavailable. They are
+not backups or project files; commands, environment variables, and credentials
+are not recorded. Closed or unavailable endpoints are omitted from `list`.
+Windows opened before this feature need a one-time reopen to gain a listener;
+Kitty cannot add one through config reload. Existing pinned paper runtimes retain
+their version until explicitly upgraded; the installed `paper`/`project-open`
+launchers provide this capability immediately.
+
 ### Project display name
 
 The existing `.paper/config.json` also holds user-editable project metadata:
