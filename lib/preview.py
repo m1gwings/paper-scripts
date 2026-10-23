@@ -12,10 +12,15 @@ def main():
         raise SystemExit('root_tex must be a relative .tex path inside the repository.')
     if not root.is_file() or not root.resolve().is_relative_to(Path.cwd().resolve()):
         raise SystemExit('Root TeX file missing or outside repository.')
+    build_out = Path('output') / root.parent
+    if any(path.is_symlink() for path in (build_out, *build_out.parents)):
+        raise SystemExit('Refusing symlinked build output directory.')
+    build_out.mkdir(parents=True, exist_ok=True)
     subprocess.run(['latexmk', '-norc', '-pdf', '-no-shell-escape', '-halt-on-error',
-                    '-interaction=nonstopmode', '-file-line-error', str(root)],
+                    '-interaction=nonstopmode', '-file-line-error',
+                    f'-outdir={build_out}', f'-auxdir={build_out}', str(root)],
                    check=True, timeout=600)
-    pdf = Path(root.stem + '.pdf')
+    pdf = build_out / (root.stem + '.pdf')
     if not pdf.is_file() or pdf.is_symlink():
         raise SystemExit('Expected PDF output is missing.')
     out = Path('.paper-preview')

@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import shlex
 
 
 SESSION = """layout tall:bias=72
@@ -17,6 +18,7 @@ launch --title Shell
 # Apply only to windows opened by this launcher; keep global Kitty settings intact.
 KITTY_OVERRIDES = [
     'enabled_layouts=tall:bias=72,stack',
+    'window_padding_width=4 14',
     'map ctrl+alt+left neighboring_window left',
     'map ctrl+alt+right neighboring_window right',
     'map ctrl+alt+up neighboring_window up',
@@ -77,8 +79,16 @@ def run(argv=None):
     if editor == 'vscode':
         return subprocess.run(['code', '--new-window', str(directory)]).returncode
 
+    label = (f'{directory.parent.name}/{directory.name}'
+             if directory.name in ('paper', 'poster', 'slides') else directory.name)
+    session = SESSION
+    if paper:
+        # Keep the source watcher in its own tab, leaving the project shell free.
+        build_command = shlex.join(['python3', str(Path(__file__).with_name('build.py')),
+                                    'build', '--watch'])
+        session += f'new_tab Build\nlaunch --title "PDF build" {build_command}\n'
     command = ['kitty', '--directory', str(directory),
-               '--title', f'Project: {directory.name}', '--session', '-']
+               '--title', f'Kitty — {label}', '--session', '-']
     for override in KITTY_OVERRIDES:
         command.extend(['--override', override])
     env = os.environ.copy()
@@ -93,7 +103,7 @@ def run(argv=None):
         process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=log, stderr=log,
                                    text=True, cwd=directory, env=env, start_new_session=True)
         try:
-            process.communicate(SESSION, timeout=1)
+            process.communicate(session, timeout=1)
         except subprocess.TimeoutExpired:
             return 0
         if process.returncode:

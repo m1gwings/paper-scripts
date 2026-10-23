@@ -32,6 +32,10 @@
 - Summarize mathematical changes separately from typographical changes.
 
 <!-- paper-scripts:begin managed-drafting -->
+## Local PDF workflow
+
+- After editing document sources, run `paper build [ROOT.tex]` before reporting completion and fix compilation errors caused by the edits. The default source is `main.tex`; the current PDF and auxiliary files belong under `output/`, outside version control. Use `paper build --watch [ROOT.tex]` for automatic rebuilds after saves and `paper view [ROOT.tex]` for an external viewer. A failed build leaves the viewer showing older output; report the failure rather than claiming that preview is current.
+
 ## Scientific writing
 
 - Define technical terms before using them unless they are widely familiar—for example, to a second-year STEM undergraduate.

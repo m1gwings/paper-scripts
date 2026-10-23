@@ -118,8 +118,11 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
                        env=self.env, capture_output=True, text=True, check=True)
         runtime = self.project / '.paper/runtime'
         self.assertTrue((runtime / 'lib/project_open.py').is_file())
+        self.assertTrue((runtime / 'lib/build.py').is_file())
         self.launch('--terminal', script=runtime / 'paper')
         self.assertEqual(self.record()['program'], 'kitty')
+        self.assertIn('new_tab Build', self.record()['session'])
+        self.assertIn(str(runtime / 'lib/build.py'), self.record()['session'])
 
     def test_terminal_startup_failure_is_reported(self):
         (self.bin / 'kitty').write_text('#!/bin/sh\necho "Unsupported layout" >&2\nexit 3\n')

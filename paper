@@ -161,6 +161,7 @@ write_gitignore() {
 # Generated root-document outputs
 main.pdf
 main.bbl
+/output/
 
 # Temporary editor files
 *~
@@ -523,12 +524,15 @@ COMMANDS
       Create the standard paper .gitignore if none exists.
       Existing .gitignore files are never overwritten.
 
-  paper build [ROOT.tex]
-      Compile with latexmk.
-      Defaults to main.tex.
+  paper build [--watch] [ROOT.tex]
+      Compile with latexmk into output/; defaults to main.tex.
+      --watch rebuilds after saved source changes. Stop with Ctrl+C.
+
+  paper view [ROOT.tex]
+      Build and open output/ROOT.pdf in Evince (or the system PDF viewer).
 
   paper clean [ROOT.tex]
-      Clean latexmk files.
+      Clean the selected document's generated files in output/.
       Defaults to main.tex.
 
   paper open [--terminal | --vscode]
@@ -704,6 +708,11 @@ case "$CMD" in
 
     open)
         helper project_open --paper "$@"
+        exit 0
+        ;;
+
+    build|clean|view)
+        helper build "$CMD" "$@"
         exit 0
         ;;
 
@@ -1086,32 +1095,6 @@ case "$CMD" in
         echo "Review it, then:"
         echo
         echo '    paper commit "Add standard paper gitignore"'
-        ;;
-
-    build)
-        need latexmk
-
-        MAIN="${1:-main.tex}"
-
-        [[ -f "$MAIN" ]] \
-            || die "Cannot find '$MAIN'. Usage: paper build [ROOT.tex]"
-
-        latexmk \
-            -pdf \
-            -interaction=nonstopmode \
-            -file-line-error \
-            "$MAIN"
-        ;;
-
-    clean)
-        need latexmk
-
-        MAIN="${1:-main.tex}"
-
-        [[ -f "$MAIN" ]] \
-            || die "Cannot find '$MAIN'. Usage: paper clean [ROOT.tex]"
-
-        latexmk -C "$MAIN"
         ;;
 
     doctor)

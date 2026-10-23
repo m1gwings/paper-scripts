@@ -93,6 +93,10 @@ bounding-box controls used in this pattern.
 - Summarize mathematical/content changes separately from layout/typographical changes.
 
 <!-- paper-scripts:begin managed-drafting -->
+## Local PDF workflow
+
+- After editing document sources, run `paper build [ROOT.tex]` before reporting completion and fix compilation errors caused by the edits. The default source is `main.tex`; the current PDF and auxiliary files belong under `output/`, outside version control. Use `paper build --watch [ROOT.tex]` for automatic rebuilds after saves and `paper view [ROOT.tex]` for an external viewer. A failed build leaves the viewer showing older output; report the failure rather than claiming that preview is current.
+
 ## Mathematical notation
 
 - Keep notation expressive and dependencies explicit. Do not introduce a new symbol merely to abbreviate a short expression; reserve shorthand for expressions so long that writing them in full materially harms readability. For example, keep `\xi_{j,t}^{(p)} O_{j,t}^{(p)}` explicit rather than defining `X_t` solely to shorten it. Never suppress indices, parameters, arguments, or other dependencies (including `j` and `p` in this example) without the user's explicit authorization; any authorized shorthand must retain all dependencies unless their omission is separately authorized.

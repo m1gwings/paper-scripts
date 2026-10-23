@@ -91,7 +91,8 @@ paper; each paper is upgraded with `paper init`, reviewed, and committed.
 | `paper notify-test` | Test the configured provider through GitHub Actions. |
 | `paper configure-ci [--environments-only]` | Create/verify protected environments and privately install the Overleaf credential. |
 | `paper configure-notifications [--provider PROVIDER] [OWNER/REPO ...]` | Configure this paper from its `github` remote, or explicitly configure multiple papers. Discord is the default. |
-| `paper build [ROOT.tex]` / `paper clean [ROOT.tex]` | Build or clean locally with `latexmk`; default `main.tex`. |
+| `paper build [--watch] [ROOT.tex]` / `paper clean [ROOT.tex]` | Build or clean in `output/`; default `main.tex`. Watch mode rebuilds after saves. |
+| `paper view [ROOT.tex]` | Build and open the current PDF in Evince, falling back to the system viewer. |
 | `paper status` / `paper doctor` | Inspect branch, remotes, divergence, configuration, and tools. |
 | `paper abort` | Confirm and delete the current feature locally and on GitHub. Never touch the base or Overleaf. |
 | `paper clear-feature-branches` | Confirm and delete all non-base branches locally and on GitHub. |
@@ -128,6 +129,26 @@ Ctrl+Alt+arrow to move between panes, Ctrl+Shift+Z to zoom/restore the active
 pane, Ctrl+Shift+R to resize, and Ctrl+Shift+Enter to add a shell split in the
 current directory. These overrides apply only to project windows. PDFs stay
 external: `xdg-open /absolute/path/paper.pdf` uses your existing PDF association.
+
+Paper terminal workspaces also start a **Build** tab, which watches `main.tex`
+and its dependencies. Save a document source to rebuild automatically; compilation
+errors appear in that tab. It leaves the editor and project shell available.
+Ctrl+C in Build stops the watcher. Opening another workspace for the same source
+reuses the existing watcher instead of starting a duplicate.
+
+### PDF output
+
+`paper build` writes `output/main.pdf` and its auxiliary files. An explicit root,
+such as `paper build variants/draft.tex`, writes `output/variants/draft.pdf`.
+`paper clean` removes only the selected document's generated output. These local
+commands require Git but no remotes. Keep `/output/` in the project's `.gitignore`;
+do not ignore all PDFs, since reference papers and source graphics may be tracked.
+
+Use `paper build --watch [ROOT.tex]` to rebuild after saved source/dependency
+changes. `paper view [ROOT.tex]` builds first, then opens Evince when installed;
+Evince automatically reloads changed PDFs. Set `PAPER_PDF_VIEWER=xdg-open` to use
+the system association instead. A build failure is visible in the build terminal;
+the viewer may retain the last successful PDF. Editor extensions are unnecessary.
 
 ### Creation and initialization
 
