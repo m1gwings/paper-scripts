@@ -39,3 +39,9 @@ with the updated paper-scripts installation, then review and commit the changes.
 
 The drafting block documents the Agent review API and safely handles legacy projects.
 LaTeX starters and the unified macro package are documented in [latex/README.md](latex/README.md).
+
+Project instructions belong to the project maintainer. Similar policies in separate
+projects are legitimate and remain self-contained. Do not impose these defaults
+on collaborator-maintained repositories without their authorization; an absent
+agent guide may be added when appropriate to the requested work. Shared blocks
+remain the explicit upgrade contract for projects already using this tooling.

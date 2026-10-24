@@ -2,7 +2,7 @@
 
 ## Project and editing
 
-- Follow `.paper/WORKFLOW.md` for repository lifecycle operations. Use `paper start`, `paper backup`, `paper sync`, and `paper publish`; publish only when explicitly authorized.
+- Follow `.paper/WORKFLOW.md` for repository lifecycle operations. Publication requires user authorization, which may already be standing; do not ask again when it covers the work.
 <!-- paper-scripts:begin managed-feature-cleanup -->
 - After a feature branch has been published, do not leave it pending: verify that every listed non-base branch has been integrated, then run `paper clear-feature-branches` to remove published feature branches locally and from GitHub.
 <!-- paper-scripts:end managed-feature-cleanup -->
@@ -88,69 +88,108 @@ Minimal two-column plain-frame pattern (requires TikZ; adapt the named safe area
 <!-- paper-scripts:begin managed-drafting -->
 ## Local PDF workflow
 
-- After editing document sources, run `paper build [ROOT.tex]` before reporting completion and fix compilation errors caused by the edits. The default source is `main.tex`; the current PDF and auxiliary files belong under `output/`, outside version control. Use `paper build --watch [ROOT.tex]` for automatic rebuilds after saves and `paper view [ROOT.tex]` for an external viewer. A failed build leaves the viewer showing older output; report the failure rather than claiming that preview is current.
+- After source edits run `paper build [ROOT.tex]` (default `main.tex`) and fix
+  introduced errors before completion. PDF/auxiliaries belong in ignored `output/`.
+  `paper build --watch [ROOT.tex]` rebuilds on saves; `paper view [ROOT.tex]` opens
+  an external viewer. Reuse watchers and avoid overlapping one-shot builds.
+  Report failures: the viewer may still show older output.
 
-## Mathematical notation
+## Scientific writing and notation
 
-- Keep notation expressive and dependencies explicit. Do not introduce a new symbol merely to abbreviate a short expression; reserve shorthand for expressions so long that writing them in full materially harms readability. For example, keep `\xi_{j,t}^{(p)} O_{j,t}^{(p)}` explicit rather than defining `X_t` solely to shorten it. Never suppress indices, parameters, arguments, or other dependencies (including `j` and `p` in this example) without the user's explicit authorization; any authorized shorthand must retain all dependencies unless their omission is separately authorized.
-
-- Avoid notation clashes: check existing definitions before introducing a symbol, and do not use the same notation for distinct objects in the same context. When a subscript, superscript, or similar annotation contains multiple indices, parameters, or labels, separate them with commas, e.g. `X_{i,j}` and `X^{(p,q)}` rather than concatenating the entries.
-
-- In proofs and mathematical exposition, write logical connections in words rather than using logic symbols such as `\implies`, `\Longrightarrow`, `\iff`, or `\Leftrightarrow`. Use prose such as "implies" and "if and only if", or `\text{ implies }` and `\text{ if and only if }` inside displays; likewise spell out other logical shorthand in proofs.
+- Define unfamiliar technical terms before use (aim at a second-year STEM reader),
+  prefer simple precise prose, and use established symbols where appropriate.
+- Preserve expressive notation and every index/parameter/argument. Introduce
+  shorthand only for materially long expressions, never merely to shorten
+  `\xi_{j,t}^{(p)} O_{j,t}^{(p)}`. Omitting dependencies requires explicit user
+  authorization separate from authorization for shorthand itself.
+- Avoid notation clashes. Separate multiple indices/labels with commas:
+  `X_{i,j}`, `X^{(p,q)}`. Spell out logical connections in proofs: "implies",
+  "if and only if", etc., rather than `\implies`, `\iff`, or similar symbols.
 
 ## Draft revisions and review
 
-- Unless the user explicitly asks otherwise, track manuscript edits using the collaboration API actually loaded by the project. The paper-scripts starter loads `papermacros.sty`: use `\AgentsIns{new}`, `\AgentsDel{old}`, and `\AgentsDel{old}\AgentsIns{new}` for replacements. Use `\Agents[MODEL NAME]{comment}` for an explanatory review box and `\AgentsOut[MODEL NAME]{comment}` for an outer note (inline on slides/posters).
-- Model attribution is required for new Agents comments: supply your actual model name in the optional argument, e.g. `\Agents[GPT-6 Astra]{Check this assumption.}`. Apply the same rule to `\AgentsOut`. The name replaces “Agent” in the rendered title; the AG cue remains. Use only identity supplied by the execution environment; never guess a model or version. If it is unavailable, use `\Agents[Model unavailable]{...}` and state that limitation in the task checkpoint. Keep existing comments unchanged. First verify that the loaded macro supports this optional argument; legacy project macros and their review policies still take precedence.
-- Use only strikethrough deletion commands: `\AgentsDel{old}` in the shared package or the loaded project's `\CodexDel{old}` and related author commands. Do not use or define a separate block-deletion mechanism. Split deleted paragraphs into safe prose spans; keep display delimiters and environment boundaries outside wrappers, striking individual math expressions or alignment cells. Preserve applied/reverted semantics with the existing review-mode conditionals when entire environments must disappear. Use `\AgentsReplaceMath{old}{new}` inside math mode for stacked replacements; its old expression is struck through. In Beamer frames, keep revisions within the frame.
-- Never wrap a whole file, preamble, package definition, environment boundary, verbatim material, or other syntactically incompatible change in an inline revision command. Keep labels unique across visible old/new material. Record structural/non-LaTeX changes precisely in the task checkpoint and change report.
-- Preserve existing author/reviewer markup; use the appropriate author commands only when attributing that person's changes. Do not nest revision wrappers or silently relabel someone else's work as agent work. The shared API uses `Ins` as the primary insertion name; do not introduce `AuthorInline` or `Codex...` aliases.
-- `\CommentsVisible` shows revisions, `\CommentsApplied` renders insertions and hides deletions, and `\CommentsReverted` hides insertions and restores deletions. Rendering a clean PDF does not accept/reject changes in source. Preserve the project's selected mode unless the task requests another; use visible mode for draft review. Permanently accepting/rejecting changes requires user authorization.
-- Existing projects may still load older `\AgentIns`, `\AgentDel`, `\CodexIns`, `\CodexDel`, or other collaboration macros. Inspect their definitions; use the loaded API until an explicit migration is requested. Never insert undefined commands or silently migrate tracking. Preserve project-specific reviewer/author colors. If no tracking API exists, report that limitation instead of silently adding one.
-- “Finalize the Agent edits”, “finalize the Codex edits”, “finalize the Claude edits”, and equivalent requests mean permanently accepting the relevant reviewed revisions in the source. The agent/model name does not change these semantics.
-- In the authorized scope, delete each `\AgentsDel{old}` command together with its entire contents; replace each `\AgentsIns{new}` with `new`, removing only the surrounding insertion command/braces. Apply the same rule to equivalent legacy `Del`/`Ins`/`Inline` commands. For `\AgentsReplaceMath{old}{new}`, discard `old` and retain `new`. Preserve nested LaTeX structure, unrelated author/reviewer markup, and comments outside the agreed scope. Merely selecting `\CommentsApplied` or recoloring revisions does not finalize their source.
-- “Finalize all edits” normally refers to all edits discussed so far in the current review context. It does not automatically authorize accepting every tracked revision throughout the manuscript. Use the conversation and task checkpoints to identify the reviewed passages; absence of evidence that a passage was reviewed is not approval. If the intended passages or review/acceptance scope are uncertain, ask the user before permanently removing or unwrapping any ambiguous markup. Manuscript-wide acceptance requires clear evidence of that broader scope.
-- After edits, compile and check the affected document. When changing shared review macros, validate visible/applied/reverted output including citations, references, math, and environment edits. Keep paper-specific notation in `projectmacros.tex`; theorem and remark numbering belongs to the project or venue setup. Never modify a venue style file to accommodate the shared package.
+- Unless asked otherwise, track all manuscript edits with the collaboration API
+  actually loaded. Inspect definitions; preserve legacy commands and project
+  colors until an authorized migration. Report a missing API instead of adding
+  undefined commands. The starter loads `papermacros.sty`:
+  `\AgentsIns{new}`, `\AgentsDel{old}`, and `\AgentsDel{old}\AgentsIns{new}`.
+  Do not introduce `AuthorInline` or `Codex...` aliases.
+- For explanatory comments use `\Agents[MODEL NAME]{comment}` or
+  `\AgentsOut[MODEL NAME]{comment}` (outer note; inline on slides/posters).
+  Verify optional-argument support first. Attribute new comments to the actual
+  environment-supplied model; if unavailable use `Model unavailable` and record
+  the limitation. Preserve existing comments and other authors' attribution.
+- Deletions must be struck through using the loaded `Del` command; no separate
+  block-deletion mechanism. In math use `\AgentsReplaceMath{old}{new}` for stacked
+  replacements. Keep display delimiters/environment boundaries outside wrappers;
+  strike safe prose spans or individual math/alignment cells. Preserve applied/
+  reverted semantics for disappearing environments; keep Beamer edits in-frame.
+- Never wrap whole files, preambles, packages, environment boundaries, verbatim,
+  or other incompatible syntax, nest wrappers, duplicate labels, or relabel others'
+  work. Record exact structural/non-LaTeX changes in checkpoint/report.
+- `\CommentsVisible` shows revisions; `\CommentsApplied` hides deletions and
+  `\CommentsReverted` restores them and hides insertions. Preserve the project's
+  selected mode; draft review uses visible mode. A clean rendering does not accept
+  revisions. Permanent acceptance/rejection requires user authorization.
+- "Finalize the Agent/Codex/Claude edits" means accept the reviewed revisions in
+  source, regardless of agent name. In the authorized scope, delete each
+  `\AgentsDel{old}` with its entire contents; unwrap `\AgentsIns{new}`, removing only the surrounding insertion command/braces.
+  For `\AgentsReplaceMath{old}{new}`, keep only `new`; apply equivalent semantics
+  to legacy `Del`/`Ins`/`Inline` commands. Preserve nested LaTeX, unrelated markup,
+  and comments outside scope; switching mode or color is not finalization.
+- "Finalize all edits" covers the current review context, not automatically the
+  whole manuscript: absence of evidence that a passage was reviewed is not approval.
+  If scope is uncertain, ask the user before permanently removing ambiguous markup.
+  Manuscript-wide acceptance needs clear evidence of that scope.
+- Keep paper notation in `projectmacros.tex`, theorem/remark numbering in the
+  project/venue setup; never alter venue styles for collaboration macros.
+  Shared macro changes require visible/applied/reverted verification including
+  citations, references, math, and environments, in addition to the normal build.
 <!-- paper-scripts:end managed-drafting -->
 
 <!-- paper-scripts:begin managed-notifications -->
 ## Codex Cloud GitHub access
 
-- This section applies only when running in Codex Cloud. Local Codex clients and other local agents should continue to use the machine's existing GitHub authentication and must not require `GH_TOKEN` solely because of this section.
-- In Codex Cloud, expect `GH_TOKEN` to be configured as a secret environment variable for authenticated access to the user's GitHub repositories. Check only whether it is set, for example with `test -n "${GH_TOKEN:-}"`; never print or otherwise reveal its value. The GitHub CLI reads `GH_TOKEN` automatically, so do not pass the token on the command line or embed it in a Git remote URL.
-- If `GH_TOKEN` is unset or empty and GitHub access is needed, stop before the authenticated operation and ask the user to configure it in the Codex Cloud environment. Remind the user that their token is available in their Google Drive; do not ask them to paste it into chat.
-- Treat `GH_TOKEN` as a credential: never echo, log, commit, store in repository files, or expose it through shell tracing or diagnostic output.
+- Local Codex clients and other local agents use existing authentication; this
+  section applies only in Codex Cloud. There, expect `GH_TOKEN` to be configured as a secret environment variable.
+  Check presence only; `gh` reads it automatically. If absent and GitHub is needed,
+  ask the user to configure it in the Cloud environment: their token is available in their Google Drive.
+  Never request it in chat or print, log, commit, or embed credentials in URLs/arguments.
 
 ## Notifications
 
-- You may proactively notify the user about a useful completed result, a material blocker, or a requested milestone. If the user says "At the end send me a notification with ...", treat that as authorization to do so.
-- Use only `paper notify --title "TITLE" --message "MESSAGE" [--url "HTTPS_URL"]`. It always dispatches the trusted GitHub Actions notification workflow; do not call Discord, Pushover, a webhook, or the internal adapter directly.
-- Discord is the default delivery provider, but the command is provider-neutral. It works locally and in cloud environments with authenticated GitHub access. The Discord webhook stays in the protected `paper-notify` GitHub environment; never inspect, request, print, add, or commit it or any other provider credential.
-- A local path is not a notification URL. For a requested PDF handoff, generate `output/pdf/NAME.pdf` when that is this repository's output convention, and do not commit it. The current supported PDF-link mechanism is the private GitHub Actions preview artifact: after the normal preview workflow has completed, it produces `paper.pdf` and its trusted notifier uses a URL of the form `https://github.com/OWNER/REPOSITORY/actions/runs/RUN_ID/artifacts/ARTIFACT_ID`. For a custom notification, pass an already available HTTPS artifact URL with `--url`; there is no `paper` command that uploads an arbitrary `output/pdf/` file or converts its local path into a link.
-
-Example, once the preview artifact URL is available:
-
-```bash
-paper notify --title "Paper update" --message "Revised PDF is ready." \
-  --url "https://github.com/OWNER/REPOSITORY/actions/runs/RUN_ID/artifacts/ARTIFACT_ID"
-```
+- Send notifications only when the user or an explicitly invoked workflow authorizes
+  them. Use `paper notify --title "TITLE" --message "MESSAGE" [--url "HTTPS_URL"]`;
+  it dispatches trusted GitHub Actions. Never call providers/webhooks directly or
+  inspect their protected credentials. Discord is the default delivery provider.
+- For PDF handoffs use the completed GitHub preview's HTTPS artifact URL; local
+  PDFs stay ignored and are not notification URLs. There is no arbitrary PDF-upload
+  command. Use the project's output convention (`output/`); report unavailable
+  preview links rather than inventing them.
 <!-- paper-scripts:end managed-notifications -->
 
 <!-- paper-scripts:begin managed-tasking -->
 ## Tasks and resumption
 
-- Before substantial execution work, create or resume `tasks/NNN_short_name/task.md` using `tasks/template.md`, and link it in `tasks/index.md`. Reuse the task for related follow-ups. Substantial work includes multi-step edits, sustained proof work, or meaningful verification.
-- Simple questions, tiny corrections, and discussion-only requests need no task record. Explicit instructions to make no changes also prohibit bookkeeping edits.
-- Keep task folders stable. Put exactly one plain status line (e.g. `Status: active`) before the first subsection. Allowed statuses: queued, active, paused, blocked, done. Keep the index consistent with the task record. A queued idea does not authorize execution.
-- When resuming, read the index and the relevant task's current checkpoint first, then inspect the working tree. Read older material only as needed; reconcile discrepancies rather than restarting completed work.
-- Update the current checkpoint after substantive results and before stopping or handing off work. Record established results, unresolved obligations, decisions, affected files, verification, and the next concrete action. Save enough to resume in a fresh session without the chat.
-- Keep records concise: replace stale checkpoint text, retain only useful decision history, and mark superseded arguments clearly. Link to proofs and logs instead of copying them. Add supporting files only when necessary.
-- Mark a proof proved only when its obligations are satisfied; distinguish proof completion from manuscript integration and verification. Mark the task done only when its scope and required checks are complete.
-- Task files preserve progress across interruptions; they do not automatically restart execution. Save milestones during work rather than relying only on an end-of-session handoff.
+- Before substantial edits, sustained proof work, or meaningful verification,
+  create/resume `tasks/NNN_short_name/task.md` from `tasks/template.md` and link it
+  in `tasks/index.md`. Reuse it for related follow-ups. Tiny corrections, questions,
+  and discussion need no record; a no-changes instruction also prohibits bookkeeping.
+- Keep folders stable and exactly one `Status: ...` line before the first subsection:
+  queued, active, paused, blocked, or done. Keep the index consistent. Queued ideas
+  and saved checkpoints do not authorize or automatically resume execution.
+- Resume from the index and relevant current checkpoint, then inspect the tree;
+  consult older material only as needed. Reconcile discrepancies rather than restart.
+- Save substantive milestones and a final checkpoint with established results,
+  decisions, unresolved obligations, affected files, verification, and next action.
+  Replace stale text; link proofs/logs instead of duplicating them. Separate proved
+  results from manuscript integration; mark done only when scope/checks are complete.
 
 ## Token use and delegation
 
-- Default to one agent. Use targeted searches and reads; avoid repeatedly loading entire notes, histories, or logs. Run checks appropriate to the change and repeat them only when new evidence warrants it.
-- Delegate bounded independent work to subagents only when the expected time or quality benefit justifies the additional token cost. Do not spawn agents for routine bookkeeping or small edits.
-- The main agent owns the task checkpoint, integration, and compilation. Give parallel editors disjoint file ownership; prefer read-only assignments for independent audits. Record each assignment's scope, dependencies, results, and remaining obligations in the task.
+- Default to one agent and targeted reads/checks. Delegate only bounded independent
+  work whose expected benefit justifies its cost, never routine bookkeeping.
+  The main agent owns checkpoints, integration, and compilation; assign disjoint
+  editor ownership (prefer read-only audits) and record scope, dependencies, results,
+  and remaining obligations in the task.
 <!-- paper-scripts:end managed-tasking -->
