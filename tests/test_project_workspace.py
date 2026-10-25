@@ -57,6 +57,28 @@ class WorkspaceTest(unittest.TestCase):
             send.assert_not_called()
         self.assertEqual(json.loads(output.getvalue())['skipped'], 'editor_needs_restart')
 
+    def test_terminal_toggle_retains_processes_and_restores_the_cached_split(self):
+        tab = self.record['tabs'][0]
+        tab.update(layout='fat', active_window=3, enabled_layouts=['fat:bias=74', 'stack'])
+        tab['panes'].append({'id': 3, 'title': 'Shell'})
+        with patch.object(WORKSPACE, 'remote') as remote:
+            self.assertFalse(WORKSPACE.toggle_terminal(self.record)['terminal_visible'])
+            self.assertEqual([c.args[1] for c in remote.call_args_list], ['focus-window', 'goto-layout'])
+            self.assertEqual(remote.call_args.args[-1], 'stack')
+        tab.update(layout='stack', active_window=2)
+        with patch.object(WORKSPACE, 'remote') as remote:
+            self.assertTrue(WORKSPACE.toggle_terminal(self.record)['terminal_visible'])
+            self.assertEqual(remote.call_args_list[0].args[-1], 'fat:bias=74')
+            self.assertEqual(remote.call_args_list[1].args[-1], 'id:3')
+        self.assertEqual([p['id'] for p in tab['panes']], [2, 3])
+
+    def test_terminal_toggle_refuses_ambiguous_editors(self):
+        self.record['tabs'].append(dict(self.record['tabs'][0], id=6))
+        with patch.object(WORKSPACE, 'remote') as remote:
+            with self.assertRaisesRegex(ValueError, 'unique Editor'):
+                WORKSPACE.toggle_terminal(self.record)
+            remote.assert_not_called()
+
     def test_private_runtime_and_live_listing_strip_environment_and_stale_entries(self):
         WORKSPACE.register(self.record, os.getpid())
         self.assertEqual(WORKSPACE.runtime_directory().stat().st_mode & 0o777, 0o700)

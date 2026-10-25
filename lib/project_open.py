@@ -30,6 +30,7 @@ KITTY_OVERRIDES = [
     'map ctrl+alt+down neighboring_window down',
     'map ctrl+shift+enter launch --cwd=current',
     'map ctrl+shift+z toggle_layout stack',
+    'window_border_width=2',
 ]
 
 
@@ -98,7 +99,8 @@ def run(argv=None):
     if editor not in ('terminal', 'vscode'):
         parser.error('Editor must be terminal or vscode (check PAPER_EDITOR and paper.editor).')
 
-    required = ('kitty', 'micro') if editor == 'terminal' else ('code',)
+    kitty = os.environ.get('PROJECT_KITTY') or ('workspace-kitty' if shutil.which('workspace-kitty') else 'kitty')
+    required = (kitty, 'micro') if editor == 'terminal' else ('code',)
     for command in required:
         if not shutil.which(command):
             parser.error(f"Required command '{command}' is not installed.")
@@ -160,11 +162,14 @@ def run(argv=None):
                                     'build', '--watch', info['root_tex']])
         session += f'new_tab Build\nlaunch --title "PDF build" {build_command}\n'
     workspace = prepare(directory, info['project_name'], args.session)
-    command = ['kitty', '--listen-on', 'unix:' + workspace['socket'], '--directory', str(directory),
+    command = [kitty, '--listen-on', 'unix:' + workspace['socket'], '--directory', str(directory),
                '--class', 'workspace-editor', '--name', 'workspace-editor',
                '--title', f'Editor — {label}', '--session', '-']
     for override in KITTY_OVERRIDES:
         command.extend(['--override', override])
+    toggle = shlex.join([sys.executable, str(Path(__file__).with_name('project_workspace.py')), 'toggle',
+                        '--workspace', workspace['id']])
+    command.extend(['--override', 'map ctrl+grave launch --type=background ' + toggle])
     env = os.environ.copy()
     env['PROJECT_WORKSPACE_NAME'] = info['project_name']
     env['PROJECT_WORKSPACE_ROOT'] = str(directory)

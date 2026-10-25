@@ -139,6 +139,15 @@ reuses the existing watcher instead of starting a duplicate. Reopening an existi
 Editor also restores a missing watcher (for example, after opening the folder
 standalone with `workspace-edit`).
 
+Ctrl+` (backtick) toggles the bottom terminal from either pane, preserving its
+shell/jobs and the resized split. The same interface is available as
+`project-terminal toggle [--show | --hide] [--workspace ID]`; Micro also provides
+Ctrl+E then `terminal`. Drag the horizontal pane divider to adjust its height
+with a recent Kitty (native support); Ctrl+Shift+R remains the keyboard fallback.
+The optional pinned `workspace-kitty` supplied by the personal profile is used for
+Editor windows when installed. `PROJECT_KITTY=/path/to/kitty` overrides that choice;
+otherwise the regular `kitty` is used. Other Kitty applications are unaffected.
+
 ### Independent Editor and Reader
 
 `workspace-edit DIRECTORY` opens a normal project workspace; pass file paths to

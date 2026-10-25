@@ -70,6 +70,9 @@ def live_workspaces():
             for window in windows:
                 for tab in window.get('tabs', []):
                     tabs.append({'id': tab['id'], 'title': tab['title'],
+                                 'layout': tab.get('layout', 'fat'),
+                                 'enabled_layouts': tab.get('enabled_layouts', ['fat:bias=74', 'stack']),
+                                 'active_window': next((p['id'] for p in tab.get('windows', []) if p.get('is_active')), None),
                                  'panes': [{'id': pane['id'], 'title': pane['title']}
                                            for pane in tab.get('windows', [])]})
             if tabs:
@@ -129,11 +132,44 @@ def launch(record, *, title, cwd=None, command=(), split=False, tab=None, keep_f
             'window_id': int(pane), 'split': split}
 
 
+def toggle_terminal(record, mode='toggle', tab_id=None):
+    """Hide/reveal terminal panes without closing them or touching their input."""
+    tabs = [t for t in record['tabs'] if tab_id is None or t['id'] == tab_id]
+    editors = [(t, p) for t in tabs for p in t['panes'] if p['title'] == 'Editor']
+    if len(editors) != 1:
+        raise ValueError('Select the unique Editor tab with --tab; no panes were changed.')
+    tab, editor = editors[0]
+    terminals = [p for p in tab['panes'] if p['id'] != editor['id']]
+    visible = bool(terminals) and (tab.get('layout') != 'stack' or tab.get('active_window', editor['id']) != editor['id'])
+    show = not visible if mode == 'toggle' else mode == 'show'
+    if show:
+        layout = next((value for value in tab.get('enabled_layouts', ['fat:bias=74']) if value.split(':')[0] != 'stack'), None)
+        if layout is None:
+            raise ValueError('This tab has no split layout enabled.')
+        if not terminals:
+            created = launch(record, title='Shell', split=True, tab=tab['id'])
+            terminals = [{'id': created['window_id'], 'title': 'Shell'}]
+        remote(record, 'goto-layout', '--match', f'id:{tab["id"]}', layout)
+        remote(record, 'focus-window', '--match', f'id:{terminals[0]["id"]}')
+    else:
+        remote(record, 'focus-window', '--match', f'id:{editor["id"]}')
+        remote(record, 'goto-layout', '--match', f'id:{tab["id"]}', 'stack')
+    return {'workspace': record['id'], 'tab': tab['id'], 'terminal_visible': show}
+
+
 def run(argv=None):
     parser = argparse.ArgumentParser(description='Add interactive terminals to an existing project Kitty window.')
     commands = parser.add_subparsers(dest='action', required=True)
     listing = commands.add_parser('list', help='list live project workspaces and their tabs/panes')
     listing.add_argument('--json', action='store_true')
+    toggle = commands.add_parser('toggle', help='show/hide the editor terminal, preserving its process and height')
+    toggle.add_argument('--project')
+    toggle.add_argument('--workspace')
+    toggle.add_argument('--tab', type=int)
+    modes = toggle.add_mutually_exclusive_group()
+    modes.add_argument('--show', action='store_const', const='show', dest='mode')
+    modes.add_argument('--hide', action='store_const', const='hide', dest='mode')
+    toggle.add_argument('--json', action='store_true')
     add = commands.add_parser('run', help='open a task tab (or split), optionally running a command')
     add.add_argument('--project', help='project root of the target editor window')
     add.add_argument('--workspace', help='explicit workspace ID when several windows match')
@@ -159,6 +195,10 @@ def run(argv=None):
                         f'{pane["title"]} #{pane["id"]}' for pane in tab['panes']) + ')')
         return 0
     record = choose(records, args.project, args.workspace)
+    if args.action == 'toggle':
+        result = toggle_terminal(record, args.mode or 'toggle', args.tab)
+        print(json.dumps(result) if args.json else ('Terminal shown.' if result['terminal_visible'] else 'Terminal hidden.'))
+        return 0
     command = args.command[1:] if args.command[:1] == ['--'] else args.command
     result = launch(record, title=args.title, cwd=args.cwd, command=command,
                     split=args.split, tab=args.tab, keep_focus=args.keep_focus)
