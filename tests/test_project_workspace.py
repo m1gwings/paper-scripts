@@ -1,9 +1,12 @@
 """Workspace selection, private runtime state, and literal command launch contracts."""
 import importlib.util
+import contextlib
+import io
 import json
 import os
 from pathlib import Path
 import socket
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -12,6 +15,9 @@ SOURCE = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('project_workspace', SOURCE / 'lib/project_workspace.py')
 WORKSPACE = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(WORKSPACE)
+spec = importlib.util.spec_from_file_location('workspace_editor_cli', SOURCE / 'lib/workspace_edit.py')
+EDITOR = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(EDITOR)
 
 
 class WorkspaceTest(unittest.TestCase):
@@ -26,6 +32,30 @@ class WorkspaceTest(unittest.TestCase):
         self.project.mkdir()
         self.record = WORKSPACE.prepare(self.project, 'Friendly project name')
         self.record['tabs'] = [{'id': 5, 'title': 'Paper', 'panes': [{'id': 2, 'title': 'Editor'}]}]
+
+    def test_editor_reveal_uses_its_existing_terminal_tab_without_desktop_focus(self):
+        editor = dict(project=str(self.project), session=self.record['id'], kitty_window='2', protocol=2)
+        with patch.dict(sys.modules, {'project_workspace': WORKSPACE}), \
+             patch.object(EDITOR, 'live', return_value=[editor]), \
+             patch.object(EDITOR, 'send', return_value={'ok': True}) as send, \
+             patch.object(WORKSPACE, 'live_workspaces', return_value=[self.record]), \
+             patch.object(WORKSPACE, 'remote', return_value='') as remote, \
+             contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(EDITOR.run(['view', str(self.project / 'proof.tex'), '--project', str(self.project),
+                                         '--line', '42', '--highlight', '--reveal']), 0)
+            remote.assert_called_once_with(self.record, 'focus-tab', '--match', 'id:5')
+            self.assertTrue(send.call_args.kwargs['highlight'])
+            self.assertEqual(send.call_args.args[2], 42)
+
+    def test_old_editor_cannot_silently_ignore_source_link_guards(self):
+        editor = dict(project=str(self.project), session=self.record['id'], protocol=1)
+        output = io.StringIO()
+        with patch.object(EDITOR, 'live', return_value=[editor]), patch.object(EDITOR, 'send') as send, \
+             contextlib.redirect_stdout(output):
+            self.assertEqual(EDITOR.run([str(self.project / 'proof.tex'), '--project', str(self.project),
+                '--if-open', '--if-clean', '--highlight', '--json']), 0)
+            send.assert_not_called()
+        self.assertEqual(json.loads(output.getvalue())['skipped'], 'editor_needs_restart')
 
     def test_private_runtime_and_live_listing_strip_environment_and_stale_entries(self):
         WORKSPACE.register(self.record, os.getpid())

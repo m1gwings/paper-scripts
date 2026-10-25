@@ -145,6 +145,20 @@ standalone with `workspace-edit`).
 open those files, or `--line N --column N FILE` to navigate to a source location.
 An unambiguous existing editor is reused and preserves unsaved buffers. Use
 `workspace-edit list --json`, `--session ID`, or `--new` to select another window.
+`workspace-edit view FILE --line 42 --end-line 48 --top-line 36 --highlight`
+reveals a range without changing source text or creating a destructive selection.
+`--focus` also focuses the managed Kitty pane; `--reveal` switches its terminal tab
+without taking desktop focus. Omit line coordinates to retain the file's cursor.
+
+Use `workspace-edit status FILE --json` for fresh open-buffer state: `modified`,
+`disk_changed`, read-only status, cursor/scroll position and a content `version`.
+The personal Micro profile automatically reloads clean files after external edits,
+including inactive tabs. Unsaved buffers remain intact. `workspace-edit reload FILE`
+refuses to discard them; an explicitly authorized discard additionally requires
+`--discard --expected-version HASH` from a fresh status response. A changed hash
+rejects the discard. `--if-open` and `--if-clean` allow guarded source-link actions.
+The extended controls require protocol 2; older running editors stay untouched
+until reopened. Only explicit file/view/status/reload messages are accepted.
 `project-open` and `paper open` also accept `--file`, `--line`, `--session`, and
 `--new`. `paper open --no-reader` leaves the reader launch disabled.
 
