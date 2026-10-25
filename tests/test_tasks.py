@@ -34,11 +34,11 @@ class PaperTasksTest(unittest.TestCase):
     def test_init_preserves_files_and_recovers_missing_files(self):
         self.run_paper('init')
         agents = self.root / 'AGENTS.md'
-        self.assertIn('Do not replace custom macros', agents.read_text())
+        self.assertIn('Preserve existing notation, macros, labels, and references', agents.read_text())
         self.assertIn('conference, journal, or presentation style files', agents.read_text())
         self.assertIn('## Notifications', agents.read_text())
         self.assertIn('paper notify --title', agents.read_text())
-        self.assertIn('output/pdf/', agents.read_text())
+        self.assertIn('ignored `output/`', agents.read_text())
         self.assertIn('paper-scripts:begin managed-tasking', agents.read_text())
         self.assertIn('tasks/NNN_short_name/task.md', agents.read_text())
         agents.write_text('Personal instructions\n')

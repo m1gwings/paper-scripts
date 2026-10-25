@@ -9,6 +9,7 @@ import sys
 import tempfile
 import time
 import uuid
+import re
 
 
 def runtime_directory():
@@ -22,9 +23,11 @@ def runtime_directory():
     return root
 
 
-def prepare(directory, name):
+def prepare(directory, name, identifier=None):
     root = runtime_directory()
-    identifier = uuid.uuid4().hex[:16]
+    identifier = identifier or uuid.uuid4().hex[:16]
+    if not re.fullmatch(r'[A-Za-z0-9_-]{1,40}', identifier):
+        raise ValueError('Workspace ID must contain 1–40 letters, numbers, underscores or hyphens.')
     address = root / (identifier + '.sock')
     if len(os.fsencode(address)) > 100:
         raise ValueError('XDG_RUNTIME_DIR is too long for a Unix socket path.')

@@ -15,6 +15,7 @@ chmod +x \
     "$SCRIPT_DIR/paper" \
     "$SCRIPT_DIR/project-open" \
     "$SCRIPT_DIR/project-terminal" \
+    "$SCRIPT_DIR/workspace-edit" \
     "$SCRIPT_DIR/install.sh"
 
 EXPECTED_DIR="$HOME/.local/bin"

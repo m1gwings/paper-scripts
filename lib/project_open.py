@@ -7,8 +7,10 @@ import subprocess
 import sys
 import tempfile
 import shlex
+import fcntl
 from project_metadata import metadata
 from project_workspace import prepare, register
+from viewer import open_pdf
 
 
 SESSION = """layout fat:bias=74
@@ -31,6 +33,22 @@ KITTY_OVERRIDES = [
 ]
 
 
+def ensure_watcher(directory, source, identifier):
+    """Restore Build when paper open reuses an editor opened standalone."""
+    lock_path = directory / 'output' / source.parent / f'.{source.stem}.watch.lock'
+    if lock_path.exists():
+        with lock_path.open('a') as lock:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                return
+            fcntl.flock(lock, fcntl.LOCK_UN)
+    subprocess.run(['project-terminal', 'run', '--workspace', identifier, '--title', 'Build',
+                    '--cwd', str(directory), '--keep-focus', '--', sys.executable,
+                    str(Path(__file__).with_name('build.py')), 'build', '--watch', str(source)],
+                   check=True, capture_output=True, text=True, timeout=10)
+
+
 def run(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     paper = bool(argv and argv[0] == '--paper')
@@ -45,6 +63,12 @@ def run(argv=None):
     editors = parser.add_mutually_exclusive_group()
     editors.add_argument('--terminal', action='store_const', const='terminal', dest='editor')
     editors.add_argument('--vscode', action='store_const', const='vscode', dest='editor')
+    parser.add_argument('--file', action='append', default=[], help='open a file in the editor (repeatable)')
+    parser.add_argument('--line', type=int, default=1)
+    parser.add_argument('--column', type=int, default=1)
+    parser.add_argument('--session', help='explicit paired editor/reader workspace ID')
+    parser.add_argument('--new', action='store_true', help='open an additional independent workspace')
+    parser.add_argument('--no-reader', action='store_true', help='open only the editor/build workspace')
     if not paper:
         parser.add_argument('directory', nargs='?', default='.', help='project directory (default: current)')
     args = parser.parse_args(argv)
@@ -90,15 +114,55 @@ def run(argv=None):
     component = info['document_type'] or ('paper' if paper else '')
     if component:
         label += ' · ' + component.capitalize()
+    source = Path(info['root_tex'])
+    if source.is_absolute() or '..' in source.parts or source.suffix != '.tex':
+        parser.error('root_tex must be a relative .tex path inside the project.')
+    pdf = directory / 'output' / source.with_suffix('.pdf')
+    def reader_for(identifier, arrange=True):
+        if paper and not args.no_reader and ((directory / source).is_file() or pdf.is_file()):
+            try:
+                result = open_pdf(pdf, directory, identifier, background=True)
+                if (arrange and result and shutil.which('workspace-layout') and
+                        os.environ.get('WORKSPACE_AUTO_LAYOUT', '1') != '0'):
+                    layout = subprocess.run(['workspace-layout', '--apply', '--editor-title', f'Editor — {label}',
+                                             '--reader-title', result['windowTitle'], '--editor-session', identifier], capture_output=True,
+                                            text=True, timeout=20)
+                    if layout.returncode:
+                        print('Desktop layout: ' + (layout.stderr.strip() or 'placement was not verified'), file=sys.stderr)
+            except (OSError, ValueError, subprocess.SubprocessError) as error:
+                print(f'Editor remains available; PDF reader: {error}', file=sys.stderr)
+    if not args.new:
+        from workspace_edit import live, send
+        matches = [r for r in live() if r['project'] == str(directory) and
+                   (not args.session or args.session == r['session'])]
+        if len(matches) > 1:
+            parser.error('Multiple editors match; select --session or use --new.')
+        if matches:
+            for file in args.file:
+                send(matches[0], file, max(1, args.line), max(1, args.column))
+            if paper and (directory / source).is_file():
+                try:
+                    ensure_watcher(directory, source, matches[0]['session'])
+                except (OSError, subprocess.SubprocessError) as error:
+                    print(f'Editor reused; could not verify/start the build watcher: {error}', file=sys.stderr)
+            reader_for(matches[0]['session'], arrange=False)
+            print(f'Reused editor workspace {matches[0]["session"]}.')
+            return 0
     session = 'new_tab ' + ('Paper' if paper else 'Editor') + '\n' + SESSION
+    if args.file:
+        files = [str(Path(file).expanduser().resolve()) for file in args.file]
+        location = f'+{max(1, args.line)}:{max(1, args.column)}'
+        session = session.replace('launch --title Editor micro',
+                                  'launch --title Editor ' + shlex.join(['micro', location, *files]))
     if paper:
         # Keep the source watcher in its own tab, leaving the project shell free.
         build_command = shlex.join(['python3', str(Path(__file__).with_name('build.py')),
                                     'build', '--watch', info['root_tex']])
         session += f'new_tab Build\nlaunch --title "PDF build" {build_command}\n'
-    workspace = prepare(directory, info['project_name'])
+    workspace = prepare(directory, info['project_name'], args.session)
     command = ['kitty', '--listen-on', 'unix:' + workspace['socket'], '--directory', str(directory),
-               '--title', f'Kitty — {label}', '--session', '-']
+               '--class', 'workspace-editor', '--name', 'workspace-editor',
+               '--title', f'Editor — {label}', '--session', '-']
     for override in KITTY_OVERRIDES:
         command.extend(['--override', override])
     env = os.environ.copy()
@@ -119,11 +183,14 @@ def run(argv=None):
         try:
             process.communicate(session, timeout=1)
         except subprocess.TimeoutExpired:
+            reader_for(workspace['id'])
             return 0
         if process.returncode:
             log.seek(0)
             print(log.read(), file=sys.stderr, end='')
             print(f'Kitty startup log: {log.name}', file=sys.stderr)
+        else:
+            reader_for(workspace['id'])
         return process.returncode
 
 

@@ -6,6 +6,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+from viewer import open_pdf
 
 
 def run(argv=None):
@@ -63,12 +64,7 @@ def run(argv=None):
         parser.error(f'Build produced no PDF at {pdf}.')
     print(f'PDF: {pdf.resolve()}', flush=True)
     if args.action == 'view':
-        viewer = os.environ.get('PAPER_PDF_VIEWER') or ('evince' if shutil.which('evince') else 'xdg-open')
-        if not shutil.which(viewer):
-            parser.error(f"PDF viewer '{viewer}' is not installed.")
-        subprocess.Popen([viewer, str(pdf.resolve())], stdin=subprocess.DEVNULL,
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                         start_new_session=True)
+        open_pdf(pdf, root, os.environ.get('PROJECT_WORKSPACE_ID'))
     return 0
 
 

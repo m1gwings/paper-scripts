@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import fcntl
 
 
 SOURCE = Path(__file__).resolve().parents[1]
@@ -146,7 +147,7 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
         self.launch('--terminal')
         record = self.record()
         self.assertEqual(record['project_name'], 'CMABs with Ranking Feedback')
-        self.assertIn('Kitty — CMABs with Ranking Feedback · Poster', record['args'])
+        self.assertIn('Editor — CMABs with Ranking Feedback · Poster', record['args'])
         self.assertIn('--watch poster.tex', record['session'])
         self.assertFalse((self.project / 'INJECTED').exists())
 
@@ -162,6 +163,49 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
             config['project_name'] = 'My informal project name'
             path.write_text(json.dumps(config))
         self.assertEqual(json.loads(path.read_text())['project_name'], 'My informal project name')
+
+    def test_native_reader_receives_session_output_and_optional_layout(self):
+        viewer_log, layout_log = self.root / 'reader.json', self.root / 'layout.json'
+        for name, log, response in [('workspace-read', viewer_log, {'ok': True, 'windowTitle': 'Preview · Reader'}),
+                                    ('workspace-layout', layout_log, {'monitor_assignments_verified': True})]:
+            stub = self.bin / name
+            stub.write_text(f'#!{sys.executable}\nimport json,sys\nfrom pathlib import Path\n'
+                            f'Path({str(log)!r}).write_text(json.dumps(sys.argv[1:]))\n'
+                            f'print({json.dumps(response)!r})\n')
+            stub.chmod(0o755)
+        (self.project / 'main.tex').write_text('A source fixture.\n')
+        self.launch('--terminal')
+        viewer = json.loads(viewer_log.read_text())
+        self.assertIn('--background', viewer)
+        self.assertEqual(viewer[-1], str(self.project / 'output/main.pdf'))
+        self.assertEqual(viewer[viewer.index('--project') + 1], str(self.project))
+        records = list((self.root / 'runtime/project-workspaces').glob('*.json'))
+        self.assertEqual(viewer[viewer.index('--session') + 1], json.loads(records[0].read_text())['id'])
+        self.assertIn('--apply', json.loads(layout_log.read_text()))
+        self.assertFalse((self.project / 'INJECTED').exists())
+
+    def test_reused_standalone_editor_restores_only_a_missing_build_watcher(self):
+        endpoint = self.root / f'runtime/workspace-editors/{os.getpid()}-fixture'
+        endpoint.mkdir(parents=True)
+        (endpoint / 'record.json').write_text(json.dumps({'pid': os.getpid(), 'project': str(self.project),
+            'session': 'paired', 'endpoint': str(endpoint), 'protocol': 1}))
+        log = self.root / 'build.json'
+        stub = self.bin / 'project-terminal'
+        stub.write_text(f'#!{sys.executable}\nimport json,sys\nfrom pathlib import Path\n'
+                        f'Path({str(log)!r}).write_text(json.dumps(sys.argv[1:]))\n')
+        stub.chmod(0o755)
+        (self.project / 'main.tex').write_text('Source fixture.\n')
+        self.assertIn('Reused editor', self.launch('--terminal', '--no-reader'))
+        command = json.loads(log.read_text())
+        self.assertEqual(command[command.index('--workspace') + 1], 'paired')
+        self.assertEqual(command[-3:], ['build', '--watch', 'main.tex'])
+        self.assertFalse(self.log.exists())  # No duplicate desktop editor.
+        log.unlink()
+        (self.project / 'output').mkdir()
+        with (self.project / 'output/.main.watch.lock').open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            self.launch('--terminal', '--no-reader')
+            self.assertFalse(log.exists())  # Existing watcher remains the only one.
 
 
 if __name__ == '__main__':

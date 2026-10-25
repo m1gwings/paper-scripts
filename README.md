@@ -92,7 +92,7 @@ paper; each paper is upgraded with `paper init`, reviewed, and committed.
 | `paper configure-ci [--environments-only]` | Create/verify protected environments and privately install the Overleaf credential. |
 | `paper configure-notifications [--provider PROVIDER] [OWNER/REPO ...]` | Configure this paper from its `github` remote, or explicitly configure multiple papers. Discord is the default. |
 | `paper build [--watch] [ROOT.tex]` / `paper clean [ROOT.tex]` | Build or clean in `output/`; default `main.tex`. Watch mode rebuilds after saves. |
-| `paper view [ROOT.tex]` | Build and open the current PDF in Evince, falling back to the system viewer. |
+| `paper view [ROOT.tex]` | Build and open the current PDF in Reader, Evince, or the system viewer. |
 | `paper status` / `paper doctor` | Inspect branch, remotes, divergence, configuration, and tools. |
 | `paper abort` | Confirm and delete the current feature locally and on GitHub. Never touch the base or Overleaf. |
 | `paper clear-feature-branches` | Confirm and delete all non-base branches locally and on GitHub. |
@@ -109,7 +109,7 @@ profile sets `terminal`; installations without a selection fall back to VS Code.
 Select an editor explicitly, or change the personal default:
 
 ```bash
-paper open --terminal                 # Kitty: Micro above, project shell below
+paper open --terminal                 # Editor + build watcher + external Reader
 paper open --vscode                   # VS Code in a new window
 git config --global paper.editor terminal
 git config --global paper.editor vscode
@@ -129,13 +129,38 @@ The project window inherits your Kitty theme. Click to focus either pane, use
 Ctrl+Alt+arrow to move between panes, Ctrl+Shift+Z to zoom/restore the active
 pane, Ctrl+Shift+R to resize, and Ctrl+Shift+Enter to add a shell split in the
 current directory. These overrides apply only to project windows. PDFs stay
-external: `xdg-open /absolute/path/paper.pdf` uses your existing PDF association.
+external: Reader is preferred when installed, with Evince/system-viewer fallback.
 
 Paper terminal workspaces also start a **Build** tab, which watches the configured
 `root_tex` (`main.tex` by default) and its dependencies. Save a document source to rebuild automatically; compilation
 errors appear in that tab. It leaves the editor and project shell available.
 Ctrl+C in Build stops the watcher. Opening another workspace for the same source
-reuses the existing watcher instead of starting a duplicate.
+reuses the existing watcher instead of starting a duplicate. Reopening an existing
+Editor also restores a missing watcher (for example, after opening the folder
+standalone with `workspace-edit`).
+
+### Independent Editor and Reader
+
+`workspace-edit DIRECTORY` opens a normal project workspace; pass file paths to
+open those files, or `--line N --column N FILE` to navigate to a source location.
+An unambiguous existing editor is reused and preserves unsaved buffers. Use
+`workspace-edit list --json`, `--session ID`, or `--new` to select another window.
+`project-open` and `paper open` also accept `--file`, `--line`, `--session`, and
+`--new`. `paper open --no-reader` leaves the reader launch disabled.
+
+The optional standalone Reader lives in
+[workspace-reader](https://github.com/m1gwings/workspace-reader). Both apps have
+separate launchers/icons supplied by the personal profile. Reader and Editor
+share a project/session identity but can close independently. Personal Micro
+integration supplies F7 Preview/forward SyncTeX, F8 manuscript PDF, and PDF
+Ctrl+click for inverse SyncTeX; its implementation stays outside Paper Scripts.
+
+When `workspace-layout` is installed, a new paper workspace can request ordinary
+COSMIC tiling: Editor on the laptop (dock visible), Reader left/Codex right on the
+external display. The adapter verifies monitor membership and reports when exact
+tile geometry is unavailable. Set `WORKSPACE_AUTO_LAYOUT=0` to skip placement.
+Reusing a workspace preserves its current placement. Neither adapter is required
+for the launchers or the legacy viewer fallback.
 
 ### Add terminals to an existing project window
 
@@ -200,9 +225,10 @@ commands require Git but no remotes. Keep `/output/` in the project's `.gitignor
 do not ignore all PDFs, since reference papers and source graphics may be tracked.
 
 Use `paper build --watch [ROOT.tex]` to rebuild after saved source/dependency
-changes. `paper view [ROOT.tex]` builds first, then opens Evince when installed;
-Evince automatically reloads changed PDFs. Set `PAPER_PDF_VIEWER=xdg-open` to use
-the system association instead. A build failure is visible in the build terminal;
+changes. `paper view [ROOT.tex]` builds first, then opens `workspace-read` when
+installed, falling back to Evince and the system viewer. Reader reloads changed
+PDFs and keeps the last valid version during a rebuild. Set
+`PAPER_PDF_VIEWER=evince` or `PAPER_PDF_VIEWER=xdg-open` to override the choice. A build failure is visible in the build terminal;
 the viewer may retain the last successful PDF. Editor extensions are unnecessary.
 
 ### Creation and initialization
