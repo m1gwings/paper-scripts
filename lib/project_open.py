@@ -9,7 +9,6 @@ import tempfile
 import shlex
 import fcntl
 from project_metadata import metadata
-from project_recent import remember
 from project_workspace import prepare, register
 from viewer import open_pdf
 
@@ -107,10 +106,7 @@ def run(argv=None):
             parser.error(f"Required command '{command}' is not installed.")
 
     if editor == 'vscode':
-        result = subprocess.run(['code', '--new-window', str(directory)]).returncode
-        if result == 0:
-            remember(directory)
-        return result
+        return subprocess.run(['code', '--new-window', str(directory)]).returncode
 
     try:
         info = metadata(directory)
@@ -153,7 +149,6 @@ def run(argv=None):
                     print(f'Editor reused; could not verify/start the build watcher: {error}', file=sys.stderr)
             reader_for(matches[0]['session'], arrange=False)
             print(f'Reused editor workspace {matches[0]["session"]}.')
-            remember(directory)
             return 0
     session = 'new_tab ' + ('Paper' if paper else 'Editor') + '\n' + SESSION
     if args.file:
@@ -194,7 +189,6 @@ def run(argv=None):
             process.communicate(session, timeout=1)
         except subprocess.TimeoutExpired:
             reader_for(workspace['id'])
-            remember(directory)
             return 0
         if process.returncode:
             log.seek(0)
@@ -202,7 +196,6 @@ def run(argv=None):
             print(f'Kitty startup log: {log.name}', file=sys.stderr)
         else:
             reader_for(workspace['id'])
-            remember(directory)
         return process.returncode
 
 

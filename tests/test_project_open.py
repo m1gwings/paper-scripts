@@ -138,26 +138,6 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
         output = self.launch('--terminal', ok=False)
         self.assertIn('Unsupported layout', output)
         self.assertIn('Kitty startup log:', output)
-        self.assertFalse((self.root / 'state/project-open/recent-projects.md').exists())
-
-    def test_recent_projects_are_local_bounded_deduplicated_and_pruned(self):
-        cache = self.root / 'state/project-open/recent-projects.md'
-        for number in range(6):
-            project = self.root / f'recent-{number}'
-            project.mkdir()
-            self.launch('--vscode', str(project), generic=True)
-        lines = cache.read_text().splitlines()
-        self.assertEqual(len(lines), 6)
-        self.assertIn('recent-5', lines[1])
-        self.assertNotIn('recent-0', cache.read_text())
-        self.launch('--vscode', str(self.root / 'recent-3'), generic=True)
-        self.assertIn('recent-3', cache.read_text().splitlines()[1])
-        self.assertEqual(cache.read_text().count(str(self.root / 'recent-3')), 1)
-        (self.root / 'recent-4').rmdir()
-        self.launch('--vscode')
-        self.assertNotIn('recent-4', cache.read_text())
-        self.assertEqual(self.git('status', '--porcelain'), '')
-        self.assertEqual(cache.stat().st_mode & 0o777, 0o600)
 
     def test_project_metadata_controls_title_prompt_and_watch_source(self):
         (self.project / '.paper').mkdir()
