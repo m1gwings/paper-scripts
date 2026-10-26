@@ -2,11 +2,77 @@
 import argparse
 import fcntl
 import os
+import re
+import time
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 from viewer import open_pdf
+
+
+def file_stamp(path):
+    try:
+        info = path.stat()
+        return info.st_mtime_ns, info.st_size, info.st_ino
+    except FileNotFoundError:
+        return None
+
+
+def dependencies(source, out):
+    """Use TeX's recorder and latexmk's database (which also includes BibTeX)."""
+    paths = {source.resolve(), Path('.latexmkrc').resolve(), Path('latexmkrc').resolve()}
+    recorder = out / (source.stem + '.fls')
+    if recorder.exists():
+        paths.update(Path(line[6:]).resolve() for line in recorder.read_text(errors='replace').splitlines()
+                     if line.startswith('INPUT '))
+    database = out / (source.stem + '.fdb_latexmk')
+    if database.exists():
+        for line in database.read_text(errors='replace').splitlines():
+            match = re.match(r'  "((?:[^"\\]|\\.)*)" \d', line)
+            if match:
+                name = re.sub(r'\\(["\\])', r'\1', match[1])
+                paths.add(Path(name).resolve())
+    # Generated inputs change during compilation; they must not trigger a loop.
+    output = Path('output').resolve()
+    paths = {p for p in paths if not p.is_relative_to(output)}
+    # A newly created missing input must also wake a failed build.
+    paths.update(p.parent for p in list(paths) if p.is_relative_to(Path.cwd()))
+    return paths
+
+
+def compile_locked(command, out):
+    # All roots sharing an auxiliary directory may write the same include files.
+    # Keep the descriptor in latexmk too, so an interrupted wrapper cannot release
+    # the lock while its child is still writing output.
+    with (out / '.build.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        return subprocess.run(command, pass_fds=(lock.fileno(),)).returncode
+
+
+def watch(command, source, out):
+    with (out / f'.{source.stem}.watch.lock').open('a') as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print(f'A continuous builder is already watching {source}.', flush=True)
+            return 0
+        print(f'Watching {source}; PDF: {out / (source.stem + ".pdf")}. Stop with Ctrl+C.', flush=True)
+        previous = None
+        while True:
+            tracked = dependencies(source, out)
+            tracked.add((out / (source.stem + '.pdf')).resolve())
+            current = {p: file_stamp(p) for p in tracked}
+            if current != previous:
+                before = current
+                compile_locked(command, out)
+                # Incorporate newly discovered dependencies, retaining pre-build
+                # stamps of known inputs so saves during compilation are retried.
+                tracked = dependencies(source, out)
+                previous = {p: before.get(p, file_stamp(p)) for p in tracked}
+                pdf = (out / (source.stem + '.pdf')).resolve()
+                previous[pdf] = file_stamp(pdf)
+            time.sleep(.5)
 
 
 def run(argv=None):
@@ -41,23 +107,10 @@ def run(argv=None):
                '-halt-on-error', '-synctex=1', f'-outdir={out}', f'-auxdir={out}']
     if args.action == 'clean':
         command.append('-C')
-    if args.watch:
-        command.extend(['-pvc', '-view=none'])
     command.append(str(source))
-    lock = None
     if args.watch:
-        lock = (out / f'.{source.stem}.watch.lock').open('a')
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            print(f'A continuous builder is already watching {source}.')
-            return 0
-        print(f'Watching {source}; PDF: {pdf}. Stop with Ctrl+C.', flush=True)
-    try:
-        status = subprocess.run(command).returncode
-    finally:
-        if lock:
-            lock.close()
+        return watch(command, source, out)
+    status = compile_locked(command, out)
     if status or args.action == 'clean':
         return status
     if not pdf.is_file():

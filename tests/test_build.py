@@ -85,6 +85,95 @@ class BuildTest(unittest.TestCase):
             self.paper('build', ok=False)
             self.assertEqual(list(Path(outside).iterdir()), [])
 
+    def test_watcher_manual_builds_and_clean_never_overlap(self):
+        fake_bin = self.root / 'bin'
+        fake_bin.mkdir()
+        compiler = fake_bin / 'latexmk'
+        compiler.write_text('''#!/usr/bin/python3
+import os,sys,time
+from pathlib import Path
+out=Path('output'); out.mkdir(exist_ok=True)
+try: (out/'busy').mkdir()
+except FileExistsError:
+    (out/'overlap').touch(); sys.exit(99)
+try:
+    with (out/'calls').open('a') as f: f.write('clean\\n' if '-C' in sys.argv else 'build\\n')
+    time.sleep(.4)
+    if '-C' in sys.argv: (out/'main.pdf').unlink(missing_ok=True)
+    else:
+        (out/'main.pdf').write_text(Path('body.tex').read_text())
+        (out/'main.fls').write_text('INPUT main.tex\\nINPUT body.tex\\n')
+finally: (out/'busy').rmdir()
+''')
+        compiler.chmod(0o755)
+        self.env['PATH'] = str(fake_bin) + os.pathsep + self.env['PATH']
+        with (self.root / 'watch.log').open('w') as log:
+            watcher = subprocess.Popen(['bash', str(SCRIPT), 'build', '--watch'], cwd=self.root,
+                                       env=self.env, stdout=log, stderr=log, start_new_session=True)
+            clients = []
+            try:
+                deadline = time.monotonic() + 10
+                while not (self.root / 'output/busy').exists():
+                    self.assertIsNone(watcher.poll())
+                    self.assertLess(time.monotonic(), deadline)
+                    time.sleep(.02)
+                for action in ('build', 'clean', 'build'):
+                    clients.append(subprocess.Popen(['bash', str(SCRIPT), action], cwd=self.root,
+                                   env=self.env, stdout=log, stderr=log))
+                for client in clients:
+                    self.assertEqual(client.wait(timeout=15), 0, (self.root / 'watch.log').read_text())
+                (self.root / 'body.tex').write_text('Saved after concurrent builds.\n')
+                deadline = time.monotonic() + 10
+                while True:
+                    pdf = self.root / 'output/main.pdf'
+                    if pdf.exists() and 'Saved after concurrent' in pdf.read_text(): break
+                    self.assertIsNone(watcher.poll())
+                    self.assertLess(time.monotonic(), deadline)
+                    time.sleep(.05)
+                self.assertFalse((self.root / 'output/overlap').exists())
+                # Watching must settle instead of repeatedly rebuilding its own output.
+                time.sleep(1)
+                calls = (self.root / 'output/calls').read_text()
+                time.sleep(1)
+                self.assertEqual(calls, (self.root / 'output/calls').read_text())
+            finally:
+                os.killpg(watcher.pid, signal.SIGINT)
+                watcher.wait(timeout=5)
+                for client in clients:
+                    if client.poll() is None: client.terminate(); client.wait()
+
+    def test_watcher_tracks_bibliography_and_recovers_after_a_failed_save(self):
+        (self.root / 'body.tex').write_text('First version.\\nocite{entry}\\bibliographystyle{plain}\\bibliography{refs}\n')
+        bibliography = self.root / 'refs.bib'
+        bibliography.write_text('@book{entry,author={Alice Author},title={Initial title},year={2020}}\n')
+        with (self.root / 'watch.log').open('w') as log:
+            watcher = subprocess.Popen(['bash', str(SCRIPT), 'build', '--watch'], cwd=self.root,
+                                       env=self.env, stdout=log, stderr=log, start_new_session=True)
+            def wait_for(text):
+                deadline = time.monotonic() + 15
+                while time.monotonic() < deadline:
+                    self.assertIsNone(watcher.poll(), (self.root / 'watch.log').read_text())
+                    pdf = self.root / 'output/main.pdf'
+                    if pdf.exists():
+                        result = subprocess.run(['pdftotext', str(pdf), '-'], capture_output=True, text=True)
+                        if text in result.stdout: return
+                    time.sleep(.1)
+                self.fail((self.root / 'watch.log').read_text())
+            try:
+                wait_for('Initial title')
+                bibliography.write_text('@book{entry,author={Alice Author},title={Revised title},year={2020}}\n')
+                wait_for('Revised title')
+                (self.root / 'body.tex').write_text('\\UndefinedControlSequence\n')
+                deadline = time.monotonic() + 10
+                while 'Undefined control sequence' not in (self.root / 'watch.log').read_text():
+                    self.assertLess(time.monotonic(), deadline)
+                    time.sleep(.1)
+                (self.root / 'body.tex').write_text('Recovered after a failed save.\n')
+                wait_for('Recovered after a failed save')
+            finally:
+                os.killpg(watcher.pid, signal.SIGINT)
+                watcher.wait(timeout=5)
+
 
 if __name__ == '__main__':
     unittest.main()

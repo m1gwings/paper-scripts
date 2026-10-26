@@ -252,7 +252,11 @@ commands require Git but no remotes. Keep `/output/` in the project's `.gitignor
 do not ignore all PDFs, since reference papers and source graphics may be tracked.
 
 Use `paper build --watch [ROOT.tex]` to rebuild after saved source/dependency
-changes. `paper view [ROOT.tex]` builds first, then opens `workspace-read` when
+changes. Watchers, manual builds, previews, and clean commands serialize complete
+latexmk runs using a shared lock in their output directory. Watch mode runs
+one-shot latexmk builds when recorded TeX/BibTeX inputs change; it releases the
+build lock between runs, so manual commands never compete with an active build.
+`paper view [ROOT.tex]` builds first, then opens `workspace-read` when
 installed, falling back to Evince and the system viewer. Reader reloads changed
 PDFs and keeps the last valid version during a rebuild. Set
 `PAPER_PDF_VIEWER=evince` or `PAPER_PDF_VIEWER=xdg-open` to override the choice. A build failure is visible in the build terminal;
