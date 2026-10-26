@@ -68,14 +68,20 @@ class WorkflowTest(unittest.TestCase):
     def test_publish_reconciles_and_keeps_feature(self):
         self.paper('start', 'experiment')
         self.commit(self.repo, 'feature.tex', 'feature\n')
+        feature_backup = self.git('rev-parse', 'HEAD')
+        self.paper('backup')
         self.remote_commit('github', 'cloud.tex', 'cloud\n')
         self.remote_commit('overleaf', 'coauthor.tex', 'coauthor\n')
         self.paper('publish')
         self.assertEqual(self.git('branch', '--show-current'), 'master')
         final = self.git('rev-parse', 'master')
         for remote in ['github', 'overleaf']:
-            self.assertEqual(self.git('rev-parse', 'master', cwd=self.root / remote), final)
+            self.assertEqual(self.git('rev-parse', 'master^{tree}', cwd=self.root / remote),
+                             self.git('rev-parse', 'master^{tree}'))
         self.assertEqual(self.git('rev-parse', 'experiment'), final)
+        self.git('merge-base', '--is-ancestor', feature_backup, final)
+        self.assertEqual(self.git('rev-list', '--merges', 'master',
+                                  cwd=self.root / 'overleaf'), '')
         for file in ['feature.tex', 'cloud.tex', 'coauthor.tex']:
             self.assertTrue((self.repo / file).exists())
 
@@ -87,7 +93,7 @@ class WorkflowTest(unittest.TestCase):
         self.remote_commit('overleaf', 'main.tex', 'remote\n')
         self.paper('start', 'experiment', ok=False)
         self.git('show-ref', '--verify', 'refs/heads/experiment', ok=False)
-        self.assertTrue((self.repo / '.git' / 'rebase-merge').exists())
+        self.assertTrue((self.repo / '.git' / 'MERGE_HEAD').exists())
 
     def test_sync_requires_base_and_fetches_cloud_work(self):
         self.remote_commit('github', 'cloud.tex', 'cloud\n')
@@ -120,6 +126,36 @@ class WorkflowTest(unittest.TestCase):
         self.paper('publish')
         self.assertEqual(self.git('branch', '--show-current'), 'collaboration')
 
+    def test_publish_equal_content_with_recreated_history_is_idempotent(self):
+        self.commit(self.repo, 'main.tex', 'intermediate\n')
+        github_tip = self.commit(self.repo, 'main.tex', 'accepted final\n')
+        self.git('push', 'github', 'master')
+        overleaf_tip = self.commit(self.other, 'main.tex', 'accepted final\n')
+        self.git('push', 'origin', 'master', cwd=self.other)
+        for remote in ['github', 'overleaf']:
+            self.git('config', 'receive.denyNonFastforwards', 'true',
+                     cwd=self.root / remote)
+        self.paper('publish')
+        self.assertEqual(self.git('rev-parse', 'HEAD'), github_tip)
+        self.assertEqual(self.git('rev-parse', 'master', cwd=self.root / 'overleaf'),
+                         overleaf_tip)
+        self.assertFalse((self.repo / '.git' / 'rebase-merge').exists())
+        self.paper('start', 'next-edit')
+        self.commit(self.repo, 'new.tex', 'new work\n')
+        self.paper('publish')
+        for remote, old in [('github', github_tip), ('overleaf', overleaf_tip)]:
+            tip = self.git('rev-parse', 'master', cwd=self.root / remote)
+            self.git('merge-base', '--is-ancestor', old, tip)
+            self.assertEqual(self.git('rev-parse', 'master^{tree}',
+                                      cwd=self.root / remote),
+                             self.git('rev-parse', 'HEAD^{tree}'))
+        published = self.git('rev-parse', 'master', cwd=self.root / 'overleaf')
+        self.assertEqual(self.git('rev-list', '--merges', 'master',
+                                  cwd=self.root / 'overleaf'), '')
+        self.paper('publish')
+        self.assertEqual(self.git('rev-parse', 'master', cwd=self.root / 'overleaf'),
+                         published)
+
     def test_clear_feature_branches_replaces_clear_experiments(self):
         self.paper('start', 'published-feature')
         self.git('switch', 'master')
@@ -150,7 +186,7 @@ class LeaseTest(WorkflowTest):
         self.git('push', 'origin', 'HEAD:refs/heads/concurrent', cwd=writer)
         self.commit(self.repo, 'local.tex', 'local\n')
         self.remote_commit('overleaf', 'coauthor.tex', 'coauthor\n')
-        hook = self.repo / '.git/hooks/post-rewrite'
+        hook = self.repo / '.git/hooks/post-merge'
         import shlex
         hook.write_text('#!/bin/sh\n' +
                         'git --git-dir=' + shlex.quote(str(self.root / 'github')) +

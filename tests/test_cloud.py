@@ -106,7 +106,8 @@ class CIWorkerTest(test_workflow.WorkflowTest):
         self.remote_commit('overleaf', 'collab.tex', 'collab\n')
         oid = self.worker()
         self.assertEqual(self.git('rev-parse', 'master', cwd=self.root / 'github'), oid)
-        self.assertEqual(self.git('rev-parse', 'master', cwd=self.root / 'overleaf'), oid)
+        self.assertEqual(self.git('rev-parse', 'master^{tree}', cwd=self.root / 'overleaf'),
+                         self.git('rev-parse', 'master^{tree}', cwd=self.root / 'github'))
 
     def test_ci_sync_mirrors_overleaf_without_publishing(self):
         oid = self.remote_commit('overleaf', 'collab.tex', 'collab\n')

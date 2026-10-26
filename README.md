@@ -532,26 +532,29 @@ is preserved. `AGENTS.md` remains the repository's workflow instructions.
 `start`, `sync`, and publication share the same reconciliation rules:
 
 1. Fetch GitHub and Overleaf before changing the base.
-2. Record the exact GitHub base SHA as a write lease.
-3. Rebase the local base onto the fetched GitHub base.
-4. Rebase that result onto the fetched Overleaf base.
-5. Stop on conflicts; never silently pick a side.
+2. Merge fresh GitHub history into the local base without rewriting commits.
+3. If Overleaf has identical file contents, skip replaying its different history.
+   Otherwise merge its changes and stop for manual resolution on conflicts.
 
-Feature publication then reconciles the remote feature, rebases it onto the
-fresh base, backs it up, fast-forwards the base, backs up the base, and pushes
-to Overleaf. Base publication performs the corresponding base operations.
+Feature publication merges the remote feature and the fresh base into the local
+feature, backs it up, and fast-forwards the base. All pushes are ordinary
+fast-forward updates: a concurrent writer causes a rejection, never an overwrite.
+When the final GitHub history cannot be pushed linearly to Overleaf, publication
+creates a new commit on Overleaf's fetched tip with exactly the verified base
+file tree. GitHub keeps the full history; both remotes contain identical files.
+Their commit IDs may legitimately differ. Repeating publication with equal
+contents creates no extra Overleaf commit.
 
 Safety properties:
 
-- Overleaf is never force-pushed.
-- Required GitHub history rewrites use an explicit lease captured before
-  reconciliation; concurrent updates are rejected.
+- Neither GitHub nor Overleaf is force-pushed.
+- Overleaf receives a linear history, including when GitHub has merge commits.
 - Dirty worktrees, detached heads, and active Git operations stop lifecycle
   commands.
 - A changed review SHA, build failure, conflict, timeout, or rejected push is
   never reported as successful publication.
 - GitHub and Overleaf writes are not atomic. If a later write fails, inspect the
-  error and rerun the normal command; do not bypass the lease.
+  error and rerun the normal command; never force-push.
 - Generated PDFs, tokens, webhook URLs, and other credentials are never
   committed.
 

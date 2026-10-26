@@ -63,8 +63,8 @@ def worker(config, operation, branch, sha, root, env, github_url=None, overleaf_
             raise RuntimeError('Requested branch changed since review. Publication refused; review and request again.')
         if branch != base:
             git('switch', '-c', branch, sha)
-        # The shell helper repeats the SHA check after its own fetch, and uses
-        # exact leases for changes made during the remaining publication window.
+        # The shell helper repeats the SHA check after its own fetch. Ordinary
+        # pushes reject changes made during the publication window.
         env['PAPER_EXPECTED_BRANCH'] = branch
         env['PAPER_EXPECTED_SHA'] = sha
         checked(['bash', str(HERE.parent / 'paper'), 'publish'], repo, env)
@@ -72,9 +72,7 @@ def worker(config, operation, branch, sha, root, env, github_url=None, overleaf_
         checked(['bash', str(HERE.parent / 'paper'), 'sync'], repo, env)
         if env.get('PAPER_TRUSTED_SHA'):
             git('diff', '--exit-code', '--quiet', env['PAPER_TRUSTED_SHA'], base, '--', '.paper', '.github')
-        expected = git('rev-parse', f'refs/remotes/github/{base}', capture=True)
-        git('push', f'--force-with-lease=refs/heads/{base}:{expected}',
-            'github', f'{base}:refs/heads/{base}')
+        git('push', 'github', f'{base}:refs/heads/{base}')
     return git('rev-parse', base, capture=True)
 
 
