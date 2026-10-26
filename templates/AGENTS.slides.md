@@ -103,8 +103,9 @@ Minimal two-column plain-frame pattern (requires TikZ; adapt the named safe area
   `\xi_{j,t}^{(p)} O_{j,t}^{(p)}`. Omitting dependencies requires explicit user
   authorization separate from authorization for shorthand itself.
 - Avoid notation clashes. Separate multiple indices/labels with commas:
-  `X_{i,j}`, `X^{(p,q)}`. Spell out logical connections in proofs: "implies",
-  "if and only if", etc., rather than `\implies`, `\iff`, or similar symbols.
+  `X_{i,j}`, `X^{(p,q)}`. Prefer "implies" and "iff" in proofs rather than
+  `\implies`, `\iff`, or similar symbols. In displays, use `\text{ iff }`
+  on the same line as the preceding equation when it fits.
 
 ## Draft revisions and review
 
