@@ -546,6 +546,12 @@ COMMANDS
       While on the base branch, reconcile GitHub and Overleaf.
       Cloud mode asks CI to refresh the mirror first.
 
+  paper align-history [--from github|overleaf] [--dry-run]
+      Local-only: reconcile files and make both remotes share a commit.
+      Default preserves both histories. --from retains the selected history,
+      archiving originals before any explicit leased replacement.
+      --dry-run fetches and previews without changing branches or remotes.
+
   paper commit "message"
       git add -A + local commit.
       Pushes nowhere.
@@ -775,6 +781,13 @@ case "$CMD" in
         exit 0
         ;;
 
+    align-history)
+        if [[ $# -eq 1 && ( "$1" == --help || "$1" == -h ) ]]; then
+            helper align_history --base unused --help
+            exit 0
+        fi
+        ;;
+
     open)
         helper project_open --paper "$@"
         exit 0
@@ -887,6 +900,13 @@ else
 fi
 
 case "$CMD" in
+
+    align-history)
+        [[ "$EXECUTION" == local ]] || die "align-history is local-only and needs both remotes."
+        no_git_operation
+        clean
+        helper align_history --base "$BASE" "$@"
+        ;;
 
     status)
         echo "Repository: $(pwd)"

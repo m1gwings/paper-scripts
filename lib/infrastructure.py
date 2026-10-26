@@ -11,7 +11,7 @@ from project_metadata import infer_name
 
 VERSION = 4
 SOURCE = Path(__file__).resolve().parents[1]
-LIBRARIES = ['notify.py', 'cloud.py', 'ci.py', 'preview.py', 'preview_notify.py', 'infrastructure.py', 'configure_ci.py', 'create.sh', 'scaffold.py', 'project_open.py', 'build.py', 'project_metadata.py', 'project_workspace.py', 'workspace_edit.py', 'viewer.py']
+LIBRARIES = ['notify.py', 'cloud.py', 'ci.py', 'preview.py', 'preview_notify.py', 'infrastructure.py', 'configure_ci.py', 'create.sh', 'scaffold.py', 'project_open.py', 'build.py', 'project_metadata.py', 'project_workspace.py', 'workspace_edit.py', 'viewer.py', 'align_history.py']
 WORKFLOWS = ['paper-preview.yml', 'paper-publish.yml', 'paper-notify.yml']
 DOCUMENT_TYPES = ('paper', 'poster', 'slides')
 # Remove only the exact, manifest-owned model default shipped by earlier releases.
@@ -113,7 +113,38 @@ def generated():
     for path in sorted((SOURCE / 'templates/latex').rglob('*')):
         if path.is_file():
             files['.paper/runtime/templates/latex/' + path.relative_to(SOURCE / 'templates/latex').as_posix()] = path.read_bytes()
-    files['.paper/WORKFLOW.md'] = b'''# Paper lifecycle\n\nUse paper start NAME before isolated work, paper commit for local checkpoints,\npaper backup for GitHub backup, and paper publish only with user publication\nauthorization (including existing standing authorization). Use paper sync from the base branch when returning to a machine.\nAfter publishing feature work, verify that the remaining non-base branches are\nintegrated, then remove them with paper clear-feature-branches. Use paper commands\nfor lifecycle operations; raw Git is reserved for resolving conflicts or repairing\nthe implementation. Never commit credentials.\n\nLocal PDF workflow: paper build [ROOT.tex] writes output/ROOT.pdf (main.tex by\ndefault); paper build --watch rebuilds after source saves, and paper view\nbuilds and opens the current PDF externally. Rebuild after document-source\nedits before reporting completion. Keep output/ ignored.\n\nUse paper notify for notifications. It dispatches the trusted GitHub Actions\nworkflow; local and cloud agents never receive provider credentials.\n\nCloud clients need GitHub access (Contents write and Actions read/write),\nPython 3, Git, and gh. Set PAPER_EXECUTION=cloud or git config paper.execution cloud.\nNever provide an Overleaf or notification token to the cloud client. See the setup guide.\n'''
+    files['.paper/WORKFLOW.md'] = b'''# Paper lifecycle
+
+Use paper start NAME before isolated work, paper commit for local checkpoints,
+paper backup for GitHub backup, and paper publish only with user publication
+authorization (including existing standing authorization). Use paper sync from the base branch when returning to a machine.
+After publishing feature work, verify that the remaining non-base branches are
+integrated, then remove them with paper clear-feature-branches. Use paper commands
+for lifecycle operations; raw Git is reserved for resolving conflicts or repairing
+the implementation. Never commit credentials.
+
+Normal publication preserves both histories with ordinary pushes. If required,
+Overleaf receives a snapshot of the verified files, so equal files may have
+different commit IDs; repeated publication of equal files is a no-op there.
+
+Use paper align-history [--from github|overleaf] [--dry-run] from the clean base
+for explicit commit-history alignment. Default preserves both histories. An explicit
+--from selects ancestry only, after file reconciliation, and archives the originals
+locally and on GitHub before any exact-lease replacement. Destinations may reject
+replacement; there is no snapshot fallback. This command is local-only.
+
+Local PDF workflow: paper build [ROOT.tex] writes output/ROOT.pdf (main.tex by
+default); paper build --watch rebuilds after source saves, and paper view
+builds and opens the current PDF externally. Rebuild after document-source
+edits before reporting completion. Keep output/ ignored.
+
+Use paper notify for notifications. It dispatches the trusted GitHub Actions
+workflow; local and cloud agents never receive provider credentials.
+
+Cloud clients need GitHub access (Contents write and Actions read/write),
+Python 3, Git, and gh. Set PAPER_EXECUTION=cloud or git config paper.execution cloud.
+Never provide an Overleaf or notification token to the cloud client. See the setup guide.
+'''
     return files
 
 
