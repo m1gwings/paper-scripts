@@ -543,7 +543,10 @@ When the final GitHub history cannot be pushed linearly to Overleaf, publication
 creates a new commit on Overleaf's fetched tip with exactly the verified base
 file tree. GitHub keeps the full history; both remotes contain identical files.
 Their commit IDs may legitimately differ. Repeating publication with equal
-contents creates no extra Overleaf commit.
+contents creates no extra Overleaf commit. Local `refs/paper-sync/` records the
+last equal file trees; exported `Paper-source` trailers recover that base in a
+fresh clone. Later coauthor changes are merged against this content base, so
+already-published edits are not replayed from an older history ancestor.
 
 Safety properties:
 

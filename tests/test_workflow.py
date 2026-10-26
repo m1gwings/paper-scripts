@@ -142,6 +142,7 @@ class WorkflowTest(unittest.TestCase):
         self.assertFalse((self.repo / '.git' / 'rebase-merge').exists())
         self.paper('start', 'next-edit')
         self.commit(self.repo, 'new.tex', 'new work\n')
+        self.commit(self.repo, 'main.tex', 'updated accepted final\n')
         self.paper('publish')
         for remote, old in [('github', github_tip), ('overleaf', overleaf_tip)]:
             tip = self.git('rev-parse', 'master', cwd=self.root / remote)
@@ -155,6 +156,16 @@ class WorkflowTest(unittest.TestCase):
         self.paper('publish')
         self.assertEqual(self.git('rev-parse', 'master', cwd=self.root / 'overleaf'),
                          published)
+        self.remote_commit('overleaf', 'coauthor.tex', 'keep remote work\n')
+        self.commit(self.repo, 'main.tex', 'next local revision\n')
+        # Simulate a fresh clone: recover the content base from the export trailer.
+        self.git('update-ref', '-d', 'refs/paper-sync/master/source')
+        self.git('update-ref', '-d', 'refs/paper-sync/master/overleaf')
+        self.paper('publish')
+        self.assertEqual((self.repo / 'coauthor.tex').read_text(), 'keep remote work\n')
+        self.assertEqual((self.repo / 'main.tex').read_text(), 'next local revision\n')
+        self.assertEqual(self.git('rev-parse', 'master^{tree}', cwd=self.root / 'overleaf'),
+                         self.git('rev-parse', 'HEAD^{tree}'))
 
     def test_clear_feature_branches_replaces_clear_experiments(self):
         self.paper('start', 'published-feature')

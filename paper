@@ -76,6 +76,30 @@ require_base() {
         || die "Overleaf base branch is '$BASE', but no local '$BASE' exists."
 }
 
+# Keep a content synchronization base independently of the two commit histories.
+# Export commit trailers let a fresh clone recover the same base.
+record_sync_base() {
+    local source="$1" overleaf="$2"
+    printf 'start\nupdate refs/paper-sync/%s/source %s\nupdate refs/paper-sync/%s/overleaf %s\nprepare\ncommit\n' \
+        "$BASE" "$source" "$BASE" "$overleaf" | git update-ref --stdin >/dev/null
+}
+
+known_sync_base() {
+    local remote="$1" exported
+    SYNC_SOURCE="$(git rev-parse --verify "refs/paper-sync/$BASE/source" 2>/dev/null || true)"
+    SYNC_OVERLEAF="$(git rev-parse --verify "refs/paper-sync/$BASE/overleaf" 2>/dev/null || true)"
+    if [[ -z "$SYNC_SOURCE" || -z "$SYNC_OVERLEAF" ]]; then
+        exported="$(git log -1 --format='%H%n%B' --grep='^Paper-source: ' "$remote")"
+        SYNC_OVERLEAF="${exported%%$'\n'*}"
+        SYNC_SOURCE="$(printf '%s\n' "$exported" | sed -n 's/^Paper-source: //p' | head -n1)"
+    fi
+    [[ -n "$SYNC_SOURCE" && -n "$SYNC_OVERLEAF" ]] \
+        && git cat-file -e "$SYNC_SOURCE^{commit}" 2>/dev/null \
+        && git merge-base --is-ancestor "$SYNC_SOURCE" "$BASE" \
+        && git merge-base --is-ancestor "$SYNC_OVERLEAF" "$remote" \
+        && git diff --quiet "$SYNC_SOURCE" "$SYNC_OVERLEAF" --
+}
+
 # Fetch both authorities before changing any local branch. Preserve published
 # history; normal pushes reject concurrent remote updates.
 sync_collaborative_base() {
@@ -104,10 +128,21 @@ sync_collaborative_base() {
     if [[ -n "$GITHUB_BASE_OID" ]]; then
         git merge --no-edit "$GITHUB_BASE_OID"
     fi
-    # Overleaf may have squashed/recreated commits already represented locally.
-    # Equal trees need no replay; otherwise merge its work without rewriting it.
-    if ! git diff --quiet "$BASE" "refs/remotes/overleaf/$BASE" --; then
-        git merge --no-edit "refs/remotes/overleaf/$BASE"
+    local remote imported
+    remote="$(git rev-parse "refs/remotes/overleaf/$BASE")"
+    if git diff --quiet "$BASE" "$remote" --; then
+        record_sync_base "$(git rev-parse "$BASE")" "$remote"
+    elif known_sync_base "$remote"; then
+        if [[ "$remote" != "$SYNC_OVERLEAF" ]]; then
+            # Compare new work against the last equal file trees, not an old
+            # history ancestor preceding edits already published on both sides.
+            imported="$(printf 'Import Overleaf changes since last synchronization\n' |
+                git commit-tree "$(git rev-parse "$remote^{tree}")" \
+                    -p "$SYNC_SOURCE" -p "$remote")"
+            git merge --no-edit "$imported"
+        fi
+    else
+        git merge --no-edit "$remote"
     fi
 }
 
@@ -129,6 +164,7 @@ publish_overleaf() {
     remote="$(git rev-parse "refs/remotes/overleaf/$BASE")"
     tree="$(git rev-parse "$BASE^{tree}")"
     if [[ "$tree" == "$(git rev-parse "$remote^{tree}")" ]]; then
+        record_sync_base "$(git rev-parse "$BASE")" "$remote"
         echo "Overleaf content is already up to date."
         return
     fi
@@ -138,10 +174,11 @@ publish_overleaf() {
     else
         # Keep Overleaf linear while retaining the full history on GitHub.
         # This commit's tree is exactly the verified manuscript, not a reset.
-        candidate="$(printf 'Publish %s content to Overleaf\n' "$BASE" |
-            git commit-tree "$tree" -p "$remote")"
+        candidate="$(printf 'Publish %s content to Overleaf\n\nPaper-source: %s\n' \
+            "$BASE" "$(git rev-parse "$BASE")" | git commit-tree "$tree" -p "$remote")"
     fi
     git push overleaf "$candidate:refs/heads/$BASE"
+    record_sync_base "$(git rev-parse "$BASE")" "$(git rev-parse "$candidate")"
 }
 
 show_divergence() {
