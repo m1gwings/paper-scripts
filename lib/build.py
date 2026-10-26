@@ -66,10 +66,11 @@ def watch(command, source, out):
             if current != previous:
                 before = current
                 compile_locked(command, out)
-                # Incorporate newly discovered dependencies, retaining pre-build
-                # stamps of known inputs so saves during compilation are retried.
+                # Retain pre-build stamps so saves during compilation are retried.
+                # Newly discovered inputs need a verification pass too: taking
+                # their post-build stamp could lose a save during the first build.
                 tracked = dependencies(source, out)
-                previous = {p: before.get(p, file_stamp(p)) for p in tracked}
+                previous = {p: before.get(p) for p in tracked}
                 pdf = (out / (source.stem + '.pdf')).resolve()
                 previous[pdf] = file_stamp(pdf)
             time.sleep(.5)

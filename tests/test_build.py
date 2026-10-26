@@ -115,7 +115,7 @@ finally: (out/'busy').rmdir()
                 deadline = time.monotonic() + 10
                 while not (self.root / 'output/busy').exists():
                     self.assertIsNone(watcher.poll())
-                    self.assertLess(time.monotonic(), deadline)
+                    self.assertLess(time.monotonic(), deadline, (self.root / 'watch.log').read_text())
                     time.sleep(.02)
                 for action in ('build', 'clean', 'build'):
                     clients.append(subprocess.Popen(['bash', str(SCRIPT), action], cwd=self.root,
@@ -166,10 +166,47 @@ finally: (out/'busy').rmdir()
                 (self.root / 'body.tex').write_text('\\UndefinedControlSequence\n')
                 deadline = time.monotonic() + 10
                 while 'Undefined control sequence' not in (self.root / 'watch.log').read_text():
-                    self.assertLess(time.monotonic(), deadline)
+                    self.assertLess(time.monotonic(), deadline, (self.root / 'watch.log').read_text())
                     time.sleep(.1)
                 (self.root / 'body.tex').write_text('Recovered after a failed save.\n')
                 wait_for('Recovered after a failed save')
+            finally:
+                os.killpg(watcher.pid, signal.SIGINT)
+                watcher.wait(timeout=5)
+
+    def test_first_build_keeps_a_dependency_saved_while_it_is_being_discovered(self):
+        fake_bin = self.root / 'bin'; fake_bin.mkdir()
+        dependency = self.root / 'part.fragment'
+        dependency.write_text('Before the save')
+        compiler = fake_bin / 'latexmk'
+        compiler.write_text('''#!/usr/bin/python3
+from pathlib import Path
+import time
+out=Path('output'); out.mkdir(exist_ok=True)
+text=Path('part.fragment').read_text()
+(out/'started').touch()
+while not (out/'continue').exists(): time.sleep(.02)
+(out/'main.pdf').write_text(text)
+(out/'main.fls').write_text('INPUT main.tex\\nINPUT part.fragment\\n')
+''')
+        compiler.chmod(0o755)
+        env = dict(self.env, PATH=str(fake_bin) + os.pathsep + self.env['PATH'])
+        with (self.root / 'watch.log').open('w') as log:
+            watcher = subprocess.Popen(['bash', str(SCRIPT), 'build', '--watch'], cwd=self.root,
+                                       env=env, stdout=log, stderr=log, start_new_session=True)
+            try:
+                deadline = time.monotonic() + 10
+                while not (self.root / 'output/started').exists():
+                    self.assertLess(time.monotonic(), deadline)
+                    time.sleep(.02)
+                dependency.write_text('Saved during the first build')
+                (self.root / 'output/continue').touch()
+                while True:
+                    pdf = self.root / 'output/main.pdf'
+                    if pdf.exists() and pdf.read_text() == 'Saved during the first build': break
+                    self.assertIsNone(watcher.poll())
+                    self.assertLess(time.monotonic(), deadline, (self.root / 'watch.log').read_text())
+                    time.sleep(.05)
             finally:
                 os.killpg(watcher.pid, signal.SIGINT)
                 watcher.wait(timeout=5)
