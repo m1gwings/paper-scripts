@@ -72,7 +72,7 @@ def send(record, path, line=0, column=1, *, action="open", end_line=0, top_line=
     endpoint = Path(record['endpoint'])
     name = secrets.token_hex(12)
     pending = endpoint / (name + '.pending')
-    if action not in ('open', 'view', 'status', 'reload'):
+    if action not in ('open', 'view', 'status', 'reload', 'reload-ui'):
         raise ValueError('Unsupported editor action.')
     fields = [action, path, line, column, end_line, top_line, int(highlight), int(if_open),
               int(if_clean), int(discard), expected_version]
@@ -124,10 +124,12 @@ def run(argv=None):
     if args.expected_version and (len(args.expected_version) != 64 or any(c not in 'abcdef0123456789' for c in args.expected_version)):
         parser.error('--expected-version must be the SHA256 returned by status.')
     action = 'open'
-    if args.paths and args.paths[0] in ('view', 'status', 'reload'):
+    if args.paths and args.paths[0] in ('view', 'status', 'reload', 'reload-ui'):
         action = args.paths.pop(0)
     if (args.discard or args.expected_version) and action != 'reload':
         parser.error('--discard/--expected-version apply only to reload.')
+    if action == 'reload-ui' and args.paths:
+        parser.error('reload-ui takes no document path.')
     if action in ('reload', 'view') and len(args.paths) != 1:
         parser.error(f'{action} requires exactly one file.')
     records = live()
@@ -157,7 +159,7 @@ def run(argv=None):
                 return 0
             raise ValueError('Reopen Editor to enable the updated view/status controls; its current buffers are untouched.')
         result = {'ok': True}
-        for path in files or ([None] if action == 'status' else []):
+        for path in files or ([None] if action in ('status', 'reload-ui') else []):
             result = send(matches[0], path, max(0, args.line), max(1, args.column),
                           action=action, end_line=args.end_line, top_line=args.top_line,
                           highlight=args.highlight, if_open=args.if_open, if_clean=args.if_clean,
@@ -174,13 +176,13 @@ def run(argv=None):
                     if len(tabs) == 1: remote(selected[0], 'focus-tab', '--match', 'id:' + str(tabs[0]['id']))
             else:
                 result['focus_unavailable'] = True
-        if args.json or action in ('status', 'reload'):
+        if args.json or action in ('status', 'reload', 'reload-ui'):
             print(json.dumps(dict(matches[0], **result)))
         return 0
     if args.if_open:
         if args.json: print(json.dumps({'ok': True, 'skipped': 'not_open'}))
         return 0
-    if action in ('status', 'reload', 'view'):
+    if action in ('status', 'reload', 'reload-ui', 'view'):
         raise ValueError('No live editor matches. Use workspace-edit list and select --project/--session.')
     from project_open import run as launch
     session = session or secrets.token_hex(8)

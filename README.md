@@ -167,7 +167,11 @@ refuses to discard them; an explicitly authorized discard additionally requires
 `--discard --expected-version HASH` from a fresh status response. A changed hash
 rejects the discard. `--if-open` and `--if-clean` allow guarded source-link actions.
 The extended controls require protocol 2; older running editors stay untouched
-until reopened. Only explicit file/view/status/reload messages are accepted.
+until reopened. `workspace-edit reload-ui --project ROOT --session ID` queues
+an in-place plugin/theme/syntax reload on the native editor event loop; document
+buffers and undo history remain in memory. The personal profile also reloads
+automatically when its installer publishes a complete runtime generation.
+Only explicit file/view/status/reload/reload-ui messages are accepted.
 `project-open` and `paper open` also accept `--file`, `--line`, `--session`, and
 `--new`. `paper open --no-reader` leaves the reader launch disabled.
 

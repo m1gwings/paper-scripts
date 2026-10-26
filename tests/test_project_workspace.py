@@ -57,6 +57,16 @@ class WorkspaceTest(unittest.TestCase):
             send.assert_not_called()
         self.assertEqual(json.loads(output.getvalue())['skipped'], 'editor_needs_restart')
 
+    def test_ui_reload_targets_runtime_without_document_reload(self):
+        editor = dict(project=str(self.project), session=self.record['id'], protocol=2)
+        with patch.object(EDITOR, 'live', return_value=[editor]), \
+             patch.object(EDITOR, 'send', return_value={'ok': True, 'queued': True}) as send, \
+             contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(EDITOR.run(['reload-ui', '--project', str(self.project), '--json']), 0)
+        self.assertIsNone(send.call_args.args[1])
+        self.assertEqual(send.call_args.kwargs['action'], 'reload-ui')
+        self.assertFalse(send.call_args.kwargs['discard'])
+
     def test_terminal_toggle_retains_processes_and_restores_the_cached_split(self):
         tab = self.record['tabs'][0]
         tab.update(layout='fat', active_window=3, enabled_layouts=['fat:bias=74', 'stack'])
