@@ -11,7 +11,7 @@ from project_metadata import infer_name
 
 VERSION = 4
 SOURCE = Path(__file__).resolve().parents[1]
-LIBRARIES = ['notify.py', 'cloud.py', 'ci.py', 'preview.py', 'preview_notify.py', 'infrastructure.py', 'configure_ci.py', 'create.sh', 'scaffold.py', 'project_open.py', 'build.py', 'project_metadata.py', 'project_workspace.py', 'workspace_edit.py', 'viewer.py']
+LIBRARIES = ['notify.py', 'cloud.py', 'ci.py', 'preview.py', 'preview_notify.py', 'infrastructure.py', 'configure_ci.py', 'create.sh', 'scaffold.py', 'project_open.py', 'build.py', 'project_metadata.py', 'project_recent.py', 'project_workspace.py', 'workspace_edit.py', 'viewer.py']
 WORKFLOWS = ['paper-preview.yml', 'paper-publish.yml', 'paper-notify.yml']
 DOCUMENT_TYPES = ('paper', 'poster', 'slides')
 # Remove only the exact, manifest-owned model default shipped by earlier releases.

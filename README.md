@@ -120,6 +120,11 @@ setting. `PAPER_EDITOR=terminal paper open` overrides both; explicit flags take
 precedence. No project files or remotes are changed when opening a repository.
 
 For any directory, including projects without Git, use `project-open /path/to/project`.
+Successful opens keep a local, untracked five-project shortlist in
+`$XDG_STATE_HOME/project-open/recent-projects.md` (default
+`~/.local/state/project-open/recent-projects.md`). Most recent comes first;
+reopening deduplicates entries and removes missing directories. The cache is
+disposable and never blocks launching a project.
 It defaults to the terminal workspace and also accepts `--vscode`. Terminal mode
 requires Kitty and Micro on `PATH`; VS Code mode requires `code`. Install these
 separately. Micro's optional Filemanager2 plugin provides a project file tree;
