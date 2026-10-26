@@ -189,8 +189,15 @@ show_divergence() {
             git rev-list --left-right --count "$BASE...$r/$BASE"
         )
 
-        printf "%-20s local ahead: %-3s remote ahead: %-3s\n" \
-            "$r/$BASE" "$ahead" "$behind"
+        local content="differ" history="aligned"
+        if git diff --quiet "$BASE" "$r/$BASE" --; then
+            content="aligned"
+        fi
+        if (( ahead != 0 || behind != 0 )); then
+            history="local-only $ahead, remote-only $behind"
+        fi
+        printf "%-20s committed files: %s; history: %s\n" \
+            "$r/$BASE" "$content" "$history"
     else
         printf "%-20s not fetched / not found\n" "$r/$BASE"
     fi
@@ -898,7 +905,7 @@ case "$CMD" in
         git remote -v
 
         echo
-        echo "Cached divergence (only as fresh as your last fetch/pull):"
+        echo "Cached committed-file and history comparison (last fetch/pull):"
         show_divergence overleaf
         show_divergence github
         ;;

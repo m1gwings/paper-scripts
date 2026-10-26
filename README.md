@@ -542,7 +542,7 @@ fast-forward updates: a concurrent writer causes a rejection, never an overwrite
 When the final GitHub history cannot be pushed linearly to Overleaf, publication
 creates a new commit on Overleaf's fetched tip with exactly the verified base
 file tree. GitHub keeps the full history; both remotes contain identical files.
-Their commit IDs may legitimately differ. Repeating publication with equal
+Their commit IDs may legitimately differ. `paper status` reports committed-file alignment separately from commit-history differences; uncommitted edits are listed by Git status. Repeating publication with equal
 contents creates no extra Overleaf commit. Local `refs/paper-sync/` records the
 last equal file trees; exported `Paper-source` trailers recover that base in a
 fresh clone. Later coauthor changes are merged against this content base, so

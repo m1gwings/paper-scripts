@@ -135,6 +135,9 @@ class WorkflowTest(unittest.TestCase):
         for remote in ['github', 'overleaf']:
             self.git('config', 'receive.denyNonFastforwards', 'true',
                      cwd=self.root / remote)
+        self.git('fetch', 'overleaf')
+        status = self.paper('status')
+        self.assertIn('committed files: aligned; history: local-only 2, remote-only 1', status)
         self.paper('publish')
         self.assertEqual(self.git('rev-parse', 'HEAD'), github_tip)
         self.assertEqual(self.git('rev-parse', 'master', cwd=self.root / 'overleaf'),
@@ -166,6 +169,16 @@ class WorkflowTest(unittest.TestCase):
         self.assertEqual((self.repo / 'main.tex').read_text(), 'next local revision\n')
         self.assertEqual(self.git('rev-parse', 'master^{tree}', cwd=self.root / 'overleaf'),
                          self.git('rev-parse', 'HEAD^{tree}'))
+
+    def test_status_labels_content_differences_and_uncommitted_work(self):
+        (self.repo / 'main.tex').write_text('unsaved to git\n')
+        status = self.paper('status')
+        self.assertIn(' M main.tex', status)
+        self.assertEqual(status.count('committed files: aligned; history: aligned'), 2)
+        self.git('add', 'main.tex')
+        self.git('commit', '-qm', 'Local committed edit')
+        status = self.paper('status')
+        self.assertEqual(status.count('committed files: differ; history: local-only 1, remote-only 0'), 2)
 
     def test_clear_feature_branches_replaces_clear_experiments(self):
         self.paper('start', 'published-feature')
