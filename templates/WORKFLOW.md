@@ -30,6 +30,10 @@ may still show an older PDF. Documentation-only changes need no manuscript build
 
 ## Notifications and cloud execution
 
+Cloud clients need GitHub access (Contents write and Actions read/write),
+Python 3, Git, and gh. Set PAPER_EXECUTION=cloud or git config paper.execution cloud.
+Never provide an Overleaf or notification token to the cloud client. See the setup guide.
+
 ### GitHub access
 
 - Local Codex clients and other local agents use existing authentication; this
