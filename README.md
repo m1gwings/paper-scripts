@@ -361,6 +361,17 @@ template, including when switching types. Customized `AGENTS.md` content is
 preserved; only the usual managed workflow sections are refreshed. Adapt any
 custom editing guidance explicitly using the selected template.
 
+### Instruction ownership
+
+`AGENTS.md` contains project-specific editing, scientific, and revision policy.
+The generated `.paper/WORKFLOW.md` owns build/publication, notifications/cloud,
+and task-checkpoint procedures. Its source is `templates/WORKFLOW.md`, also
+vendored so pinned runtimes remain self-contained. Marker-managed sections in
+`AGENTS.md` route to the relevant workflow section instead of repeating it.
+Personal launcher, desktop, and cross-project preferences belong in the user's
+global configuration, not in paper defaults. Upgrades preserve custom text
+outside managed sections; review project-specific additions before migration.
+
 ### Editing the default AGENTS.md instructions
 
 Edit these ordinary Markdown files in your paper-scripts checkout (normally

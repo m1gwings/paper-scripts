@@ -2,9 +2,9 @@
 
 ## Project and editing
 
-- Follow `.paper/WORKFLOW.md` for repository lifecycle operations. Publication requires user authorization, which may already be standing; do not ask again when it covers the work.
 <!-- paper-scripts:begin managed-feature-cleanup -->
-- After a feature branch has been published, do not leave it pending: verify that every listed non-base branch has been integrated, then run `paper clear-feature-branches` to remove published feature branches locally and from GitHub.
+- Before repository lifecycle operations, follow `.paper/WORKFLOW.md` for
+  publication authorization, reconciliation, and merged-branch cleanup.
 <!-- paper-scripts:end managed-feature-cleanup -->
 - Inspect the existing layout, notation, macros, and build instructions before editing.
 - Keep research knowledge (derivations, conjectures, examples, reusable proof audits) in `notes/`. Keep task management, checkpoints, and revision-specific verification in `tasks/`; link between them instead of duplicating content.
@@ -31,11 +31,9 @@
 <!-- paper-scripts:begin managed-drafting -->
 ## Local PDF workflow
 
-- After source edits run `paper build [ROOT.tex]` (default `main.tex`) and fix
-  introduced errors before completion. PDF/auxiliaries belong in ignored `output/`.
-  `paper build --watch [ROOT.tex]` rebuilds on saves; `paper view [ROOT.tex]` opens
-  an external viewer. Reuse watchers and avoid overlapping one-shot builds.
-  Report failures: the viewer may still show older output.
+- After source edits, follow `.paper/WORKFLOW.md#local-pdf-workflow` for the
+  required build, ignored output directory, and reuse of the existing watcher.
+  Report compilation failures; a viewer may still show an older PDF.
 
 ## Scientific writing and notation
 
@@ -93,48 +91,21 @@
 <!-- paper-scripts:end managed-drafting -->
 
 <!-- paper-scripts:begin managed-notifications -->
-## Codex Cloud GitHub access
+## Notifications and cloud execution
 
-- Local Codex clients and other local agents use existing authentication; this
-  section applies only in Codex Cloud. There, expect `GH_TOKEN` to be configured as a secret environment variable.
-  Check presence only; `gh` reads it automatically. If absent and GitHub is needed,
-  ask the user to configure it in the Cloud environment: their token is available in their Google Drive.
-  Never request it in chat or print, log, commit, or embed credentials in URLs/arguments.
-
-## Notifications
-
-- Send notifications only when the user or an explicitly invoked workflow authorizes
-  them. Use `paper notify --title "TITLE" --message "MESSAGE" [--url "HTTPS_URL"]`;
-  it dispatches trusted GitHub Actions. Never call providers/webhooks directly or
-  inspect their protected credentials. Discord is the default delivery provider.
-- For PDF handoffs use the completed GitHub preview's HTTPS artifact URL; local
-  PDFs stay ignored and are not notification URLs. There is no arbitrary PDF-upload
-  command. Use the project's output convention (`output/`); report unavailable
-  preview links rather than inventing them.
+- Before sending notifications or operating in Codex Cloud, read
+  `.paper/WORKFLOW.md#notifications-and-cloud-execution`.
 <!-- paper-scripts:end managed-notifications -->
 
 <!-- paper-scripts:begin managed-tasking -->
 ## Tasks and resumption
 
-- Before substantial edits, sustained proof work, or meaningful verification,
-  create/resume `tasks/NNN_short_name/task.md` from `tasks/template.md` and link it
-  in `tasks/index.md`. Reuse it for related follow-ups. Tiny corrections, questions,
-  and discussion need no record; a no-changes instruction also prohibits bookkeeping.
-- Keep folders stable and exactly one `Status: ...` line before the first subsection:
-  queued, active, paused, blocked, or done. Keep the index consistent. Queued ideas
-  and saved checkpoints do not authorize or automatically resume execution.
-- Resume from the index and relevant current checkpoint, then inspect the tree;
-  consult older material only as needed. Reconcile discrepancies rather than restart.
-- Save substantive milestones and a final checkpoint with established results,
-  decisions, unresolved obligations, affected files, verification, and next action.
-  Replace stale text; link proofs/logs instead of duplicating them. Separate proved
-  results from manuscript integration; mark done only when scope/checks are complete.
+- Substantial work requires a task checkpoint in `tasks/NNN_short_name/task.md`
+  and `tasks/index.md`; follow `.paper/WORKFLOW.md#tasks-and-resumption`.
+  Tiny corrections and discussion need no checkpoint; no-changes excludes bookkeeping.
 
 ## Token use and delegation
 
-- Default to one agent and targeted reads/checks. Delegate only bounded independent
-  work whose expected benefit justifies its cost, never routine bookkeeping.
-  The main agent owns checkpoints, integration, and compilation; assign disjoint
-  editor ownership (prefer read-only audits) and record scope, dependencies, results,
-  and remaining obligations in the task.
+- Default to one agent and targeted reads/checks. Follow the task/delegation
+  procedure in `.paper/WORKFLOW.md#token-use-and-delegation`.
 <!-- paper-scripts:end managed-tasking -->
