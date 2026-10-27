@@ -81,7 +81,7 @@ def run(argv=None):
     parser.add_argument('action', choices=('build', 'clean', 'view'))
     parser.add_argument('--watch', action='store_true', help='rebuild after source saves until Ctrl+C')
     parser.add_argument('source', nargs='?', default='main.tex')
-    args = parser.parse_args(argv)
+    args = parser.parse_intermixed_args(argv)
     if args.watch and args.action != 'build':
         parser.error('--watch is only available for build')
     result = subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, text=True)

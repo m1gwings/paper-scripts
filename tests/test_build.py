@@ -48,9 +48,9 @@ class BuildTest(unittest.TestCase):
         self.assertTrue((self.root / 'output/variants/draft.pdf').exists())
         self.assertTrue((self.root / 'main.tex').exists())
 
-    def test_saved_dependency_rebuilds_without_an_editor_extension(self):
+    def test_explicit_watch_root_rebuilds_saved_dependencies(self):
         with (self.root / 'watch.log').open('w') as log:
-            watcher = subprocess.Popen(['bash', str(SCRIPT), 'build', '--watch'], cwd=self.root,
+            watcher = subprocess.Popen(['bash', str(SCRIPT), 'build', '--watch', 'main.tex'], cwd=self.root,
                                        env=self.env, stdout=log, stderr=log, start_new_session=True)
             def wait_for_text(text):
                 deadline = time.monotonic() + 20
@@ -66,12 +66,14 @@ class BuildTest(unittest.TestCase):
                 self.fail('Watcher did not update PDF: ' + (self.root / 'watch.log').read_text())
             try:
                 wait_for_text('First version')
-                duplicate = self.paper('build', '--watch')
-                self.assertIn('already watching', duplicate)
+                for args in [('--watch', 'main.tex'), ('main.tex', '--watch')]:
+                    duplicate = self.paper('build', *args)
+                    self.assertIn('already watching', duplicate)
                 (self.root / 'body.tex').write_text('Second version.\n')
                 wait_for_text('Second version')
             finally:
-                os.killpg(watcher.pid, signal.SIGINT)
+                if watcher.poll() is None:
+                    os.killpg(watcher.pid, signal.SIGINT)
                 try:
                     watcher.wait(timeout=5)
                 except subprocess.TimeoutExpired:
