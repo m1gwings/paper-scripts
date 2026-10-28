@@ -589,7 +589,10 @@ An empty list explicitly restores the legacy full-tree contract. Older pinned
 runtimes must be upgraded before using this setting.
 
 The first publication removes excluded files from Overleaf's current tree while
-preserving them on GitHub and in existing history. Later metadata-only commits
+preserving them on GitHub and in existing history. Overleaf's Git bridge can
+retain empty folders after file deletion; remove those once through its file-tree
+UI during migration. Future filtered publications never create these folders.
+Later metadata-only commits
 do not create Overleaf commits. Coauthor additions, edits, renames and deletions
 are imported only for manuscript paths; excluded files remain GitHub-owned.
 Fresh clones recover the manuscript merge base from export commit trailers.
