@@ -16,7 +16,7 @@
 - Preserve pre-existing user edits. Make the smallest change sufficient for correctness; avoid unrelated stylistic changes.
 - Preserve the proof strategy unless asked to redesign it. Do not silently strengthen assumptions or claims.
 - Check index ranges, stopping times, conditioning, constants, and parameter regimes explicitly. Distinguish conjectural, conditional, and proved claims.
-- Show the first derivation and the steps that explain the probabilistic or structural argument. When computations are analogous to an earlier calculation, state the needed result and cite the precise equation, proof step, or lemma instead of repeating the derivation (for example, "By computations analogous to ..."). Specify any changed assumptions, indices, or parameters needed to justify the analogy; retain genuinely new reasoning.
+- Show the first derivation and the steps that explain the probabilistic or structural argument. Reuse established results rather than repeat routine calculations, following the statement-citation rule below. Specify any changed assumptions, indices, or parameters, and retain genuinely new reasoning.
 
 ## LaTeX and verification
 
@@ -42,7 +42,7 @@
 
 ## Scientific writing and notation
 
-- Prefer invoking a lemma statement directly when the needed bound follows immediately from it, stating the applicable assumptions and any rearrangement. Reference an intermediate equation in another proof when it supplies substantive reasoning not already available from a lemma statement.
+- When using another lemma, theorem, proposition, or corollary, cite its statement, never an equation inside its proof. If the statement has one equation, cite only the result. If it has several, cite the result together with the relevant equation number. State the applicable assumptions and any rearrangement. If a needed intermediate claim appears only in another proof, derive it locally or promote it to a stated result. References within the current proof, including signposts to its own statement, remain appropriate.
 - Avoid semicolons in prose unless they clearly express the connection better than a full stop or conjunction.
 - Define unfamiliar technical terms before use (aim at a second-year STEM reader),
   prefer simple precise prose, and use established symbols where appropriate.
@@ -92,7 +92,7 @@
   If scope is uncertain, ask the user before permanently removing ambiguous markup.
   Manuscript-wide acceptance needs clear evidence of that scope.
 - Keep paper notation in `projectmacros.tex`, theorem/remark numbering in the
-  project/venue setup; never alter venue styles for collaboration macros.
+  project/venue setup.
   Shared macro changes require visible/applied/reverted verification including
   citations, references, math, and environments, in addition to the normal build.
 <!-- paper-scripts:end managed-drafting -->
