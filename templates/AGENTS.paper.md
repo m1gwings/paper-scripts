@@ -5,6 +5,11 @@
 <!-- paper-scripts:begin managed-feature-cleanup -->
 - Before repository lifecycle operations, follow `.paper/WORKFLOW.md` for
   publication authorization, reconciliation, and merged-branch cleanup.
+- During an ongoing sequence of small document edits, apply and verify each change
+  promptly, but batch commits and remote synchronization every few edits, when we
+  stop working, or when Cristiano asks for a checkpoint/publication. Do not treat
+  each brief response in that sequence as a requirement to commit and publish.
+  This exception applies only to document editing, not tool or infrastructure changes.
 <!-- paper-scripts:end managed-feature-cleanup -->
 - Inspect the existing layout, notation, macros, and build instructions before editing.
 - Keep research knowledge (derivations, conjectures, examples, reusable proof audits) in `notes/`. Keep task management, checkpoints, and revision-specific verification in `tasks/`; link between them instead of duplicating content.
