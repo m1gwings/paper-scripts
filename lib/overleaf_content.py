@@ -65,7 +65,7 @@ def imported_tree(source, remote, policy):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('operation', choices=['tree', 'equal', 'import-tree', 'enabled', 'validate'])
+    parser.add_argument('operation', choices=['tree', 'equal', 'import-tree', 'enabled', 'validate', 'status'])
     parser.add_argument('refs', nargs='*')
     args = parser.parse_args()
     policy = exclusions()
@@ -75,6 +75,15 @@ def main():
         return 0 if policy else 1
     if args.operation == 'tree':
         print(project(args.refs[0], policy))
+    elif args.operation == 'status':
+        # Sidebar polling is read-only: compare tree entries, without creating
+        # temporary indexes or writing projected Git objects.
+        local, remote = ({e.split(b'\t', 1)[1]: e.split(b'\t', 1)[0]
+                          for e in entries(ref) if not excluded(e, policy)}
+                         for ref in args.refs)
+        names = sorted(p for p in local.keys() | remote.keys() if local.get(p) != remote.get(p))
+        print(json.dumps({'same_content': not names,
+                          'paths': [os.fsdecode(p) for p in names]}))
     elif args.operation == 'equal':
         return 0 if project(args.refs[0], policy) == project(args.refs[1], policy) else 1
     else:

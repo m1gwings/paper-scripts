@@ -84,7 +84,6 @@ paper; each paper is upgraded with `paper init`, reviewed, and committed.
 | `paper commit "MESSAGE"` | Stage the paper repository and create a local checkpoint. Push nowhere. |
 | `paper backup` | Push the current committed branch to GitHub. Never touch Overleaf. |
 | `paper sync` | Reconcile GitHub and Overleaf into the local base. Run from a clean base branch. |
-| `paper align-history [--from github\|overleaf] [--dry-run]` | Reconcile files and align the local base and both remote commit IDs. Local-only; default preserves both histories. |
 | `paper publish` | Reconcile fresh state, integrate committed work, back it up, and publish to Overleaf. Requires explicit authorization. |
 | `paper init [--poster \| --slides] [--force]` | Initialize or upgrade conservatively; scaffold blank sources. Explicit --force reinstalls starter paths with backups. |
 | `paper create [--poster \| --slides] [--force] OVERLEAF_ID OWNER/REPO [DIRECTORY]` | Create a new private GitHub/Overleaf paper, poster, or slides repository and then run `paper init`. |
@@ -94,7 +93,7 @@ paper; each paper is upgraded with `paper init`, reviewed, and committed.
 | `paper configure-notifications [--provider PROVIDER] [OWNER/REPO ...]` | Configure this paper from its `github` remote, or explicitly configure multiple papers. Discord is the default. |
 | `paper build [--watch] [ROOT.tex]` / `paper clean [ROOT.tex]` | Build or clean in `output/`; default `main.tex`. Watch mode rebuilds after saves. |
 | `paper view [ROOT.tex]` | Build and open the current PDF in Reader, Evince, or the system viewer. |
-| `paper status` / `paper doctor` | Inspect branch, remotes, divergence, configuration, and tools. |
+| `paper status [--verbose]` / `paper doctor` | Inspect manuscript synchronization, GitHub backup, configuration, and tools. Verbose status adds raw history counts. |
 | `paper abort` | Confirm and delete the current feature locally and on GitHub. Never touch the base or Overleaf. |
 | `paper clear-feature-branches` | Confirm and delete all non-base branches locally and on GitHub. |
 | `paper task status [--all]` / `paper task delete ID ...` | Inspect or recoverably remove task records. |
@@ -573,7 +572,7 @@ Safety properties:
 - Generated PDFs, tokens, webhook URLs, and other credentials are never
   committed.
 
-### Explicit history alignment
+### Clean Overleaf exports
 
 New projects and `paper init` upgrades use filtered Overleaf exports by default.
 Settings in `.paper/config.json` contain:
@@ -598,55 +597,15 @@ are imported only for manuscript paths; excluded files remain GitHub-owned.
 Fresh clones recover the manuscript merge base from export commit trailers.
 Local and trusted CI publication use the same pinned projection code.
 
-Filtered projects deliberately have different full trees and histories;
-`paper align-history` refuses them, including `--from` and `--dry-run`. Use
-`paper sync` and `paper publish` instead. The following alignment procedure is
-only for projects with an empty exclusion list (or legacy unconfigured projects).
+GitHub and Overleaf intentionally keep different trees and histories. Normal
+`paper status` shows manuscript synchronization for Overleaf and backup/history
+status for GitHub. `paper status --verbose` adds raw history counts for diagnostics.
+Micro's Git pane uses the same pinned manuscript comparison and ignores excluded
+files when marking pending publication; its Overleaf row never shows history counts.
 
-Quick `paper publish` may leave equal manuscript files with different histories. To restore
-one shared history, run from the clean base branch:
-
-```bash
-paper align-history --dry-run
-paper align-history
-```
-
-The default joins both histories without rewriting commits. Reconciliation runs
-in a disposable worktree and uses the last synchronized content base when known,
-so already exported changes are not replayed from an outdated ancestor. Content
-conflicts stop the operation and leave the user's checkout unchanged; resolve
-them with `paper sync`, commit, build as appropriate, and retry. Build manuscript
-changes before publication, as with `paper publish`.
-
-When a single existing history should be retained instead, choose it explicitly:
-
-```bash
-paper align-history --from overleaf --dry-run
-paper align-history --from overleaf
-paper align-history --from github
-```
-
-`--from` selects ancestry, never a winner for conflicting file changes. All file
-changes are reconciled first. The selected remote tip is kept, with one new
-single-parent commit if needed to carry the reconciled files. Replacing the other
-history uses an explicit `--force-with-lease` tied to the fetched commit, never an
-unconditional force push. A destination may reject this update; in particular,
-do not assume Overleaf's Git bridge accepts arbitrary history replacement.
-
-Before any branch writes, complete original local/GitHub/Overleaf histories and
-the reconciled target are archived under unique `paper-history-backup/...` tags,
-both locally and on GitHub. These survive feature-branch cleanup. GitHub's archive
-push must succeed before either remote base can change. Overleaf is updated first;
-if it rejects a merge or replacement, GitHub's base is untouched. There is no
-snapshot fallback: alignment succeeds only after fetching and verifying the same
-commit ID from both servers and updating the local base. Concurrent changes stop
-the operation; writes to the two servers cannot be atomic, so a failure may leave
-one server advanced. The archives remain available; inspect the report and rerun.
-
-This command is deliberately local-only; cloud publication cannot request a
-history replacement. Normal `publish`, `sync`, and `backup` retain their existing
-no-rewrite behavior. Other vendored runtimes need a reviewed upgrade before they
-can invoke this command.
+The historical `paper align-history` command is retired. Calls using its old
+options stop without fetching or changing anything and direct the caller to
+`paper sync` / `paper publish`. Existing history archives remain untouched.
 
 ## PDF previews and notifications
 

@@ -12,11 +12,11 @@ from overleaf_content import DEFAULT_EXCLUDES, exclusions
 
 VERSION = 5
 SOURCE = Path(__file__).resolve().parents[1]
-LIBRARIES = ['notify.py', 'cloud.py', 'ci.py', 'preview.py', 'preview_notify.py', 'infrastructure.py', 'configure_ci.py', 'create.sh', 'scaffold.py', 'project_open.py', 'build.py', 'project_metadata.py', 'project_workspace.py', 'workspace_edit.py', 'viewer.py', 'align_history.py', 'overleaf_content.py']
+LIBRARIES = ['notify.py', 'cloud.py', 'ci.py', 'preview.py', 'preview_notify.py', 'infrastructure.py', 'configure_ci.py', 'create.sh', 'scaffold.py', 'project_open.py', 'build.py', 'project_metadata.py', 'project_workspace.py', 'workspace_edit.py', 'viewer.py', 'overleaf_content.py']
 WORKFLOWS = ['paper-preview.yml', 'paper-publish.yml', 'paper-notify.yml']
 DOCUMENT_TYPES = ('paper', 'poster', 'slides')
-# Remove only the exact, manifest-owned model default shipped by earlier releases.
-RETIRED_FILES = {'.codex/config.toml': '25e69687ee62b45820a6f775de911508c84bc3266e91a630b49e734ad6f562c9'}
+# Remove only exact, manifest-owned retired files from earlier releases.
+RETIRED_FILES = {'.paper/runtime/lib/align_history.py': '2cc70757489fbedf9fc097d1d9184e0430e5727b4d2bcfd1c060593be31560f7', '.codex/config.toml': '25e69687ee62b45820a6f775de911508c84bc3266e91a630b49e734ad6f562c9'}
 AGENT_BLOCK_BEGIN = '<!-- paper-scripts:begin managed-notifications -->'
 AGENT_BLOCK_END = '<!-- paper-scripts:end managed-notifications -->'
 AGENT_CLEANUP_BEGIN = '<!-- paper-scripts:begin managed-feature-cleanup -->'

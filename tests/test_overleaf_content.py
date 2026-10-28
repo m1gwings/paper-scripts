@@ -37,9 +37,11 @@ class FilteredWorkflowTest(unittest.TestCase):
         self.commit(self.repo, 'tasks/record.md', 'updated\n')
         self.paper('publish')
         self.assertEqual(self.git('rev-parse', 'master', cwd=self.root / 'overleaf'), exported)
-        self.assertIn('overleaf/master      committed files: aligned', self.paper('status'))
-        self.assertIn('intentionally have different trees', self.paper('align-history', ok=False))
-        self.assertIn('intentionally have different trees', self.paper('align-history', '--from', 'github', ok=False))
+        self.assertIn('overleaf/master      Manuscript synchronized', self.paper('status'))
+        verbose = self.paper('status', '--verbose')
+        self.assertIn('overleaf/master      committed files: aligned; history:', verbose)
+        self.assertIn('History alignment has been retired', self.paper('align-history', ok=False))
+        self.assertIn('History alignment has been retired', self.paper('align-history', '--from', 'github', ok=False))
 
     def test_fresh_clone_parallel_edits_deletions_and_metadata(self):
         self.enable()

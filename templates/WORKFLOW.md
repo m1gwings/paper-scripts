@@ -18,9 +18,9 @@ compares manuscript content. Metadata-only publication is a no-op on Overleaf.
 Normal publication preserves both histories with ordinary pushes. Overleaf gets
 linear snapshots with portable synchronization records; its commit IDs and full
 file tree intentionally differ from GitHub. Use paper sync / paper publish for
-reconciliation. paper align-history refuses filtered projects because identical
-histories would expose excluded files. An explicit empty exclusion list retains
-the legacy full-tree synchronization and history-alignment behavior.
+reconciliation. Normal status reports manuscript synchronization for Overleaf;
+raw history counts belong to paper status --verbose diagnostics. An explicit
+empty exclusion list restores full-tree export.
 
 ## Local PDF workflow
 

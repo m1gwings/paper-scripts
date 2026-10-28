@@ -137,7 +137,10 @@ class WorkflowTest(unittest.TestCase):
                      cwd=self.root / remote)
         self.git('fetch', 'overleaf')
         status = self.paper('status')
-        self.assertIn('committed files: aligned; history: local-only 2, remote-only 1', status)
+        self.assertIn('overleaf/master      Manuscript synchronized', status)
+        self.assertNotIn('local-only 2, remote-only 1', status)
+        self.assertIn('committed files: aligned; history: local-only 2, remote-only 1',
+                      self.paper('status', '--verbose'))
         self.paper('publish')
         self.assertEqual(self.git('rev-parse', 'HEAD'), github_tip)
         self.assertEqual(self.git('rev-parse', 'master', cwd=self.root / 'overleaf'),
@@ -174,11 +177,13 @@ class WorkflowTest(unittest.TestCase):
         (self.repo / 'main.tex').write_text('unsaved to git\n')
         status = self.paper('status')
         self.assertIn(' M main.tex', status)
-        self.assertEqual(status.count('committed files: aligned; history: aligned'), 2)
+        self.assertEqual(status.count('committed files: aligned; history: aligned'), 1)
+        self.assertIn('overleaf/master      Manuscript synchronized', status)
         self.git('add', 'main.tex')
         self.git('commit', '-qm', 'Local committed edit')
         status = self.paper('status')
-        self.assertEqual(status.count('committed files: differ; history: local-only 1, remote-only 0'), 2)
+        self.assertEqual(status.count('committed files: differ; history: local-only 1, remote-only 0'), 1)
+        self.assertIn('overleaf/master      Manuscript differs', status)
 
     def test_clear_feature_branches_replaces_clear_experiments(self):
         self.paper('start', 'published-feature')

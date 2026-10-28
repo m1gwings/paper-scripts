@@ -12,27 +12,15 @@ TEMPLATES = Path(__file__).resolve().parents[1] / 'templates'
 
 
 class InfrastructureTest(test_workflow.WorkflowTest):
-    def test_vendored_history_alignment_is_self_contained(self):
+    def test_vendored_history_alignment_is_retired(self):
         self.paper('init')
-        self.git('add', '.')
-        self.git('commit', '-qm', 'Install runtime')
         result = subprocess.run(['bash', '.paper/runtime/paper', 'align-history', '--dry-run'],
                                 cwd=self.repo, env=self.env, text=True, capture_output=True)
-        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('intentionally have different trees', result.stderr)
-        config = self.repo / '.paper/config.json'
-        data = json.loads(config.read_text())
-        self.assertTrue(data['overleaf_exclude'])
-        data['overleaf_exclude'] = []
-        config.write_text(json.dumps(data))
-        self.git('add', '.')
-        self.git('commit', '-qm', 'Explicit legacy export')
-        result = subprocess.run(['bash', '.paper/runtime/paper', 'align-history', '--dry-run'],
-                                cwd=self.repo, env=self.env, text=True, capture_output=True)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn('Dry run:', result.stdout)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('History alignment has been retired', result.stderr)
         manifest = json.loads((self.repo / '.paper/manifest.json').read_text())
-        self.assertIn('.paper/runtime/lib/align_history.py', manifest['files'])
+        self.assertNotIn('.paper/runtime/lib/align_history.py', manifest['files'])
+        self.assertFalse((self.repo / '.paper/runtime/lib/align_history.py').exists())
 
     def test_finalization_policy_upgrade_preserves_custom_instructions(self):
         agents = self.repo / 'AGENTS.md'

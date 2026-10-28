@@ -196,6 +196,17 @@ publish_overleaf() {
 
 show_divergence() {
     local r="$1" ahead behind
+    if [[ "$r" == overleaf && "${2:-}" != --verbose ]]; then
+        local state="Not fetched"
+        if git show-ref --verify --quiet "refs/remotes/$r/$BASE"; then
+            state="Manuscript differs"
+            if helper overleaf_content equal "$BASE" "$r/$BASE"; then
+                state="Manuscript synchronized"
+            fi
+        fi
+        printf "%-20s %s\n" "$r/$BASE" "$state"
+        return
+    fi
 
     if git show-ref --verify --quiet "refs/remotes/$r/$BASE"; then
         read -r ahead behind < <(
@@ -526,9 +537,9 @@ COMMANDS
       Remember poster or slides mode for later upgrades with plain 'paper init'.
       Scaffold recognized blank projects; --force reinstalls starter paths with backups.
 
-  paper status
-      Show base branch, current branch, status, branches,
-      remotes, and cached divergence.
+  paper status [--verbose]
+      Show working-tree, manuscript, and GitHub backup status.
+      --verbose includes raw remote history counts for diagnostics.
 
   paper notify --title TITLE --message MESSAGE [--url HTTPS_URL]
       Ask the trusted GitHub Actions workflow to send a notification.
@@ -559,12 +570,6 @@ COMMANDS
   paper sync
       While on the base branch, reconcile GitHub and Overleaf.
       Cloud mode asks CI to refresh the mirror first.
-
-  paper align-history [--from github|overleaf] [--dry-run]
-      Local-only: reconcile files and make both remotes share a commit.
-      Default preserves both histories. --from retains the selected history,
-      archiving originals before any explicit leased replacement.
-      --dry-run fetches and previews without changing branches or remotes.
 
   paper commit "message"
       git add -A + local commit.
@@ -796,10 +801,8 @@ case "$CMD" in
         ;;
 
     align-history)
-        if [[ $# -eq 1 && ( "$1" == --help || "$1" == -h ) ]]; then
-            helper align_history --base unused --help
-            exit 0
-        fi
+        die "History alignment has been retired: GitHub and Overleaf intentionally keep different trees and histories.
+Use 'paper sync' to reconcile manuscript changes and 'paper publish' to publish them."
         ;;
 
     open)
@@ -915,14 +918,8 @@ fi
 
 case "$CMD" in
 
-    align-history)
-        [[ "$EXECUTION" == local ]] || die "align-history is local-only and needs both remotes."
-        no_git_operation
-        clean
-        helper align_history --base "$BASE" "$@"
-        ;;
-
     status)
+        [[ $# -eq 0 || ( $# -eq 1 && "$1" == --verbose ) ]] || die "Usage: paper status [--verbose]"
         echo "Repository: $(pwd)"
         echo "Base branch: $BASE"
         echo "Current branch: $(branch)"
@@ -939,8 +936,8 @@ case "$CMD" in
         git remote -v
 
         echo
-        echo "Cached committed-file and history comparison (last fetch/pull):"
-        show_divergence overleaf
+        echo "Cached synchronization status (last fetch/pull):"
+        show_divergence overleaf "${1:-}"
         show_divergence github
         ;;
 
