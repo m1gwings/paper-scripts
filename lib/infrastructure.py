@@ -8,10 +8,11 @@ import subprocess
 import sys
 import scaffold
 from project_metadata import infer_name
+from overleaf_content import DEFAULT_EXCLUDES, exclusions
 
-VERSION = 4
+VERSION = 5
 SOURCE = Path(__file__).resolve().parents[1]
-LIBRARIES = ['notify.py', 'cloud.py', 'ci.py', 'preview.py', 'preview_notify.py', 'infrastructure.py', 'configure_ci.py', 'create.sh', 'scaffold.py', 'project_open.py', 'build.py', 'project_metadata.py', 'project_workspace.py', 'workspace_edit.py', 'viewer.py', 'align_history.py']
+LIBRARIES = ['notify.py', 'cloud.py', 'ci.py', 'preview.py', 'preview_notify.py', 'infrastructure.py', 'configure_ci.py', 'create.sh', 'scaffold.py', 'project_open.py', 'build.py', 'project_metadata.py', 'project_workspace.py', 'workspace_edit.py', 'viewer.py', 'align_history.py', 'overleaf_content.py']
 WORKFLOWS = ['paper-preview.yml', 'paper-publish.yml', 'paper-notify.yml']
 DOCUMENT_TYPES = ('paper', 'poster', 'slides')
 # Remove only the exact, manifest-owned model default shipped by earlier releases.
@@ -71,7 +72,7 @@ def discover():
     return {'version': VERSION, 'base_branch': base,
             'overleaf_project_id': match[1] if match else '',
             'root_tex': 'main.tex', 'notify_provider': 'discord', 'pushover_device': '',
-            'project_name': infer_name(Path.cwd())}
+            'project_name': infer_name(Path.cwd()), 'overleaf_exclude': list(DEFAULT_EXCLUDES)}
 
 
 def config():
@@ -94,6 +95,7 @@ def config():
     if (not isinstance(value['project_name'], str) or not value['project_name'].strip()
             or any(ord(c) < 32 or ord(c) == 127 for c in value['project_name'])):
         raise ValueError('project_name must be a nonempty, single-line display name.')
+    exclusions(value)
     return value
 
 

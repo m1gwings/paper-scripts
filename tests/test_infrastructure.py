@@ -18,6 +18,17 @@ class InfrastructureTest(test_workflow.WorkflowTest):
         self.git('commit', '-qm', 'Install runtime')
         result = subprocess.run(['bash', '.paper/runtime/paper', 'align-history', '--dry-run'],
                                 cwd=self.repo, env=self.env, text=True, capture_output=True)
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn('intentionally have different trees', result.stderr)
+        config = self.repo / '.paper/config.json'
+        data = json.loads(config.read_text())
+        self.assertTrue(data['overleaf_exclude'])
+        data['overleaf_exclude'] = []
+        config.write_text(json.dumps(data))
+        self.git('add', '.')
+        self.git('commit', '-qm', 'Explicit legacy export')
+        result = subprocess.run(['bash', '.paper/runtime/paper', 'align-history', '--dry-run'],
+                                cwd=self.repo, env=self.env, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn('Dry run:', result.stdout)
         manifest = json.loads((self.repo / '.paper/manifest.json').read_text())
@@ -233,7 +244,7 @@ class InfrastructureTest(test_workflow.WorkflowTest):
         value = json.loads(config.read_text())
         self.assertEqual(value['base_branch'], 'master')
         self.assertEqual(value['notify_provider'], 'discord')
-        self.assertEqual(value['version'], 4)
+        self.assertEqual(value['version'], 5)
         self.assertNotIn('document_type', value)
         self.assertEqual((self.repo / 'AGENTS.md').read_text(),
                          (TEMPLATES / 'AGENTS.paper.md').read_text())

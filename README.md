@@ -553,10 +553,10 @@ feature, backs it up, and fast-forwards the base. All pushes are ordinary
 fast-forward updates: a concurrent writer causes a rejection, never an overwrite.
 When the final GitHub history cannot be pushed linearly to Overleaf, publication
 creates a new commit on Overleaf's fetched tip with exactly the verified base
-file tree. GitHub keeps the full history; both remotes contain identical files.
+file tree. GitHub keeps the full history and metadata; Overleaf contains only the configured manuscript export.
 Their commit IDs may legitimately differ. `paper status` reports committed-file alignment separately from commit-history differences; uncommitted edits are listed by Git status. Repeating publication with equal
 contents creates no extra Overleaf commit. Local `refs/paper-sync/` records the
-last equal file trees; exported `Paper-source` trailers recover that base in a
+last synchronized manuscript trees; exported `Paper-source` trailers recover that base in a
 fresh clone. Later coauthor changes are merged against this content base, so
 already-published edits are not replayed from an older history ancestor.
 
@@ -575,7 +575,32 @@ Safety properties:
 
 ### Explicit history alignment
 
-Quick `paper publish` may leave equal files with different histories. To restore
+New projects and `paper init` upgrades use filtered Overleaf exports by default.
+Settings in `.paper/config.json` contain:
+
+```json
+"overleaf_exclude": [".paper/", ".github/", ".codex/", ".agents/", ".vscode/", ".gitignore", "AGENTS.md", "tasks/", "notes/"]
+```
+
+These are repository-relative file or directory paths, without glob patterns.
+Everything else is included, including custom styles, bibliography files and
+figures. Keep manuscript dependencies outside excluded paths or adjust the list.
+An empty list explicitly restores the legacy full-tree contract. Older pinned
+runtimes must be upgraded before using this setting.
+
+The first publication removes excluded files from Overleaf's current tree while
+preserving them on GitHub and in existing history. Later metadata-only commits
+do not create Overleaf commits. Coauthor additions, edits, renames and deletions
+are imported only for manuscript paths; excluded files remain GitHub-owned.
+Fresh clones recover the manuscript merge base from export commit trailers.
+Local and trusted CI publication use the same pinned projection code.
+
+Filtered projects deliberately have different full trees and histories;
+`paper align-history` refuses them, including `--from` and `--dry-run`. Use
+`paper sync` and `paper publish` instead. The following alignment procedure is
+only for projects with an empty exclusion list (or legacy unconfigured projects).
+
+Quick `paper publish` may leave equal manuscript files with different histories. To restore
 one shared history, run from the clean base branch:
 
 ```bash

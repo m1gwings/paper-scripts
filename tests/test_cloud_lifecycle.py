@@ -71,8 +71,11 @@ else:
         self.assertIn('CI publication succeeded', output)
         self.assertEqual(self.git('branch', '--show-current'), 'master')
         head = self.git('rev-parse', 'HEAD')
-        for remote in ['github', 'overleaf']:
-            self.assertEqual(self.git('rev-parse', 'master', cwd=self.root / remote), head)
+        self.assertEqual(self.git('rev-parse', 'master', cwd=self.root / 'github'), head)
+        files = self.git('ls-tree', '-r', '--name-only', 'master', cwd=self.root / 'overleaf').splitlines()
+        self.assertIn('feature.tex', files)
+        self.assertIn('coauthor.tex', files)
+        self.assertFalse(any(p.startswith(('.paper/', '.github/', 'tasks/', 'notes/')) or p == 'AGENTS.md' for p in files))
         self.assertEqual(self.git('rev-parse', 'cloud-feature'), head)
         self.paper('sync')
 

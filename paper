@@ -97,12 +97,13 @@ known_sync_base() {
         && git cat-file -e "$SYNC_SOURCE^{commit}" 2>/dev/null \
         && git merge-base --is-ancestor "$SYNC_SOURCE" "$BASE" \
         && git merge-base --is-ancestor "$SYNC_OVERLEAF" "$remote" \
-        && git diff --quiet "$SYNC_SOURCE" "$SYNC_OVERLEAF" --
+        && helper overleaf_content equal "$SYNC_SOURCE" "$SYNC_OVERLEAF"
 }
 
 # Fetch both authorities before changing any local branch. Preserve published
 # history; normal pushes reject concurrent remote updates.
 sync_collaborative_base() {
+    helper overleaf_content validate
     if [[ "$EXECUTION" == cloud ]]; then
         helper cloud sync
         no_git_operation
@@ -128,21 +129,32 @@ sync_collaborative_base() {
     if [[ -n "$GITHUB_BASE_OID" ]]; then
         git merge --no-edit "$GITHUB_BASE_OID"
     fi
+    helper overleaf_content validate
     local remote imported
     remote="$(git rev-parse "refs/remotes/overleaf/$BASE")"
-    if git diff --quiet "$BASE" "$remote" --; then
+    if helper overleaf_content equal "$BASE" "$remote"; then
         record_sync_base "$(git rev-parse "$BASE")" "$remote"
     elif known_sync_base "$remote"; then
         if [[ "$remote" != "$SYNC_OVERLEAF" ]]; then
             # Compare new work against the last equal file trees, not an old
             # history ancestor preceding edits already published on both sides.
             imported="$(printf 'Import Overleaf changes since last synchronization\n' |
-                git commit-tree "$(git rev-parse "$remote^{tree}")" \
+                git commit-tree "$(helper overleaf_content import-tree "$SYNC_SOURCE" "$remote")" \
                     -p "$SYNC_SOURCE" -p "$remote")"
             git merge --no-edit "$imported"
         fi
     else
-        git merge --no-edit "$remote"
+        if helper overleaf_content enabled; then
+            local ancestor
+            ancestor="$(git merge-base "$BASE" "$remote")" \
+                || die "No common manuscript ancestor; reconcile the histories manually."
+            imported="$(printf 'Import Overleaf manuscript changes\n' |
+                git commit-tree "$(helper overleaf_content import-tree "$ancestor" "$remote")" \
+                    -p "$ancestor" -p "$remote")"
+            git merge --no-edit "$imported"
+        else
+            git merge --no-edit "$remote"
+        fi
     fi
 }
 
@@ -162,13 +174,14 @@ push_base_backup() {
 publish_overleaf() {
     local remote tree candidate
     remote="$(git rev-parse "refs/remotes/overleaf/$BASE")"
-    tree="$(git rev-parse "$BASE^{tree}")"
+    tree="$(helper overleaf_content tree "$BASE")"
     if [[ "$tree" == "$(git rev-parse "$remote^{tree}")" ]]; then
         record_sync_base "$(git rev-parse "$BASE")" "$remote"
         echo "Overleaf content is already up to date."
         return
     fi
-    if git merge-base --is-ancestor "$remote" "$BASE" \
+    if [[ "$tree" == "$(git rev-parse "$BASE^{tree}")" ]] \
+        && git merge-base --is-ancestor "$remote" "$BASE" \
         && [[ -z "$(git rev-list --merges "$remote..$BASE")" ]]; then
         candidate="$BASE"
     else
@@ -190,7 +203,8 @@ show_divergence() {
         )
 
         local content="differ" history="aligned"
-        if git diff --quiet "$BASE" "$r/$BASE" --; then
+        if { [[ "$r" == overleaf ]] && helper overleaf_content equal "$BASE" "$r/$BASE"; } \
+            || { [[ "$r" != overleaf ]] && git diff --quiet "$BASE" "$r/$BASE" --; }; then
             content="aligned"
         fi
         if (( ahead != 0 || behind != 0 )); then

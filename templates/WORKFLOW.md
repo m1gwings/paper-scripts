@@ -8,16 +8,19 @@ integrated, then remove them with paper clear-feature-branches. Use paper comman
 for lifecycle operations; raw Git is reserved for resolving conflicts or repairing
 the implementation. Never commit credentials.
 
-Normal publication preserves both histories with ordinary pushes. If required,
-Overleaf receives a snapshot of the verified files, so equal files may have
-different commit IDs; repeated publication of equal files is a no-op there.
+Publication keeps the full repository on GitHub and exports only manuscript
+content to Overleaf. `.paper/config.json` owns `overleaf_exclude`: repository-relative
+file/directory paths (no globs). Defaults exclude `.paper/`, `.github/`, `.codex/`, `.agents/`, `.vscode/`,
+`.gitignore`, `AGENTS.md`, `tasks/`, and `notes/`. Keep manuscript dependencies outside excluded
+paths, or explicitly adjust the list. Imports preserve GitHub-only files; status
+compares manuscript content. Metadata-only publication is a no-op on Overleaf.
 
-When supported by the pinned runtime, use paper align-history
-[--from github|overleaf] [--dry-run] from the clean base
-for explicit commit-history alignment. Default preserves both histories. An explicit
---from selects ancestry only, after file reconciliation, and archives the originals
-locally and on GitHub before any exact-lease replacement. Destinations may reject
-replacement; there is no snapshot fallback. This command is local-only.
+Normal publication preserves both histories with ordinary pushes. Overleaf gets
+linear snapshots with portable synchronization records; its commit IDs and full
+file tree intentionally differ from GitHub. Use paper sync / paper publish for
+reconciliation. paper align-history refuses filtered projects because identical
+histories would expose excluded files. An explicit empty exclusion list retains
+the legacy full-tree synchronization and history-alignment behavior.
 
 ## Local PDF workflow
 

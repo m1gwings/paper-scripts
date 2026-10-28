@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import uuid
+from overleaf_content import exclusions
 
 
 class AlignmentError(RuntimeError):
@@ -112,6 +113,9 @@ def remote_tip(root, remote, base):
 
 
 def align(root, base, preferred=None, dry_run=False):
+    if exclusions():
+        raise AlignmentError('Filtered Overleaf projects intentionally have different trees and histories. '
+                             'Use paper sync / paper publish; align-history would expose GitHub-only files.')
     original = oid(root, 'HEAD')
     require_unchanged(root, base, original)
     tips = {}
@@ -204,6 +208,6 @@ def main():
 if __name__ == '__main__':
     try:
         main()
-    except (AlignmentError, OSError) as error:
+    except (AlignmentError, OSError, ValueError) as error:
         print('paper align-history: ' + str(error), file=sys.stderr)
         sys.exit(1)
