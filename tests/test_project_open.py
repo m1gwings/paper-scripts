@@ -95,6 +95,8 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
         self.assertIn('layout fat:bias=74', data['session'])
         self.assertIn('launch --title Shell', data['session'])
         self.assertIn('allow_remote_control=socket-only', data['args'])
+        for event in ('press', 'click', 'doublepress', 'triplepress'):
+            self.assertIn(f'mouse_map shift+left {event} grabbed', data['args'])
         self.assertIn('--listen-on', data['args'])
         records = list((self.root / 'runtime/project-workspaces').glob('*.json'))
         self.assertEqual(len(records), 1)

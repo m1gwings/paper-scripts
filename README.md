@@ -147,6 +147,9 @@ with a recent Kitty (native support); Ctrl+Shift+R remains the keyboard fallback
 The optional pinned `workspace-kitty` supplied by the personal profile is used for
 Editor windows when installed. `PROJECT_KITTY=/path/to/kitty` overrides that choice;
 otherwise the regular `kitty` is used. Other Kitty applications are unaffected.
+Editor workspaces pass Shift-left-click through to Micro, allowing the personal
+profile to select document text between the cursor and the click without
+including Files/Git panes. Shells retain normal mouse selection.
 
 ### Independent Editor and Reader
 

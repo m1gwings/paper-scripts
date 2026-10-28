@@ -30,6 +30,11 @@ KITTY_OVERRIDES = [
     'map ctrl+alt+down neighboring_window down',
     'map ctrl+shift+enter launch --cwd=current',
     'map ctrl+shift+z toggle_layout stack',
+    # Let Micro select document text; Kitty must not select across its panes.
+    'mouse_map shift+left press grabbed',
+    'mouse_map shift+left click grabbed',
+    'mouse_map shift+left doublepress grabbed',
+    'mouse_map shift+left triplepress grabbed',
     'window_border_width=2',
 ]
 
