@@ -42,6 +42,7 @@
 
 ## Scientific writing and notation
 
+- Prefer invoking a lemma statement directly when the needed bound follows immediately from it, stating the applicable assumptions and any rearrangement. Reference an intermediate equation in another proof when it supplies substantive reasoning not already available from a lemma statement.
 - Avoid semicolons in prose unless they clearly express the connection better than a full stop or conjunction.
 - Define unfamiliar technical terms before use (aim at a second-year STEM reader),
   prefer simple precise prose, and use established symbols where appropriate.
