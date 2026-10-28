@@ -12,7 +12,7 @@ from overleaf_content import DEFAULT_EXCLUDES, exclusions
 
 VERSION = 5
 SOURCE = Path(__file__).resolve().parents[1]
-LIBRARIES = ['notify.py', 'cloud.py', 'ci.py', 'preview.py', 'preview_notify.py', 'infrastructure.py', 'configure_ci.py', 'create.sh', 'scaffold.py', 'project_open.py', 'build.py', 'project_metadata.py', 'project_workspace.py', 'workspace_edit.py', 'viewer.py', 'overleaf_content.py']
+LIBRARIES = ['notify.py', 'cloud.py', 'ci.py', 'preview.py', 'preview_notify.py', 'infrastructure.py', 'configure_ci.py', 'create.sh', 'scaffold.py', 'project_open.py', 'build.py', 'project_metadata.py', 'project_workspace.py', 'workspace_edit.py', 'viewer.py', 'overleaf_content.py', 'desktop_launch.py', 'kitty_reveal.py', 'kitty_passive.py']
 WORKFLOWS = ['paper-preview.yml', 'paper-publish.yml', 'paper-notify.yml']
 DOCUMENT_TYPES = ('paper', 'poster', 'slides')
 # Remove only exact, manifest-owned retired files from earlier releases.

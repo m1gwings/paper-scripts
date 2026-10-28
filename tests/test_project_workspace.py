@@ -9,6 +9,7 @@ import socket
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 SOURCE = Path(__file__).resolve().parents[1]
@@ -43,7 +44,8 @@ class WorkspaceTest(unittest.TestCase):
              contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(EDITOR.run(['view', str(self.project / 'proof.tex'), '--project', str(self.project),
                                          '--line', '42', '--highlight', '--reveal']), 0)
-            remote.assert_called_once_with(self.record, 'focus-tab', '--match', 'id:5')
+            remote.assert_called_once_with(self.record, 'kitten', '--match', 'id:2',
+                                           str(SOURCE / 'lib/kitty_reveal.py'))
             self.assertTrue(send.call_args.kwargs['highlight'])
             self.assertEqual(send.call_args.args[2], 42)
 
@@ -56,6 +58,24 @@ class WorkspaceTest(unittest.TestCase):
                 '--if-open', '--if-clean', '--highlight', '--json']), 0)
             send.assert_not_called()
         self.assertEqual(json.loads(output.getvalue())['skipped'], 'editor_needs_restart')
+
+    def test_reveal_changes_only_the_target_tab_manager(self):
+        # Kitty 0.49 focus-tab activates the OS window; this helper must never
+        # invoke Boss's focus/activation methods, including for an inactive app.
+        from unittest.mock import Mock
+        handler = SimpleNamespace(result_handler=lambda **kw: lambda f: f)
+        spec = importlib.util.spec_from_file_location('kitty_reveal', SOURCE / 'lib/kitty_reveal.py')
+        reveal = importlib.util.module_from_spec(spec)
+        with patch.dict(sys.modules, {'kittens.tui.handler': handler}):
+            spec.loader.exec_module(reveal)
+        tab = object()
+        manager = SimpleNamespace(set_active_tab=Mock())
+        pane = SimpleNamespace(os_window_id=7, tabref=lambda: tab)
+        boss = SimpleNamespace(window_id_map={2: pane}, os_window_map={7: manager})
+        self.assertTrue(reveal.handle_result([], None, 2, boss))
+        manager.set_active_tab.assert_called_once_with(tab)
+        with self.assertRaisesRegex(ValueError, 'no longer available'):
+            reveal.handle_result([], None, 99, boss)
 
     def test_ui_reload_targets_runtime_without_document_reload(self):
         editor = dict(project=str(self.project), session=self.record['id'], protocol=2)
@@ -123,6 +143,7 @@ class WorkspaceTest(unittest.TestCase):
             result = WORKSPACE.launch(self.record, title='Experiments', cwd=str(experiment), command=command)
         args = remote.call_args.args
         self.assertEqual(args[0], self.record)
+        self.assertIn('--keep-focus', args)
         self.assertIn('id:5', args)
         self.assertEqual(args[args.index('--cwd') + 1], str(experiment))
         self.assertEqual(list(args[-len(command):]), command)

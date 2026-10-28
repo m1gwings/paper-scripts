@@ -102,7 +102,7 @@ def choose(records, project=None, identifier=None):
     return records[0]
 
 
-def launch(record, *, title, cwd=None, command=(), split=False, tab=None, keep_focus=False):
+def launch(record, *, title, cwd=None, command=(), split=False, tab=None, keep_focus=True):
     if not title.strip() or any(ord(c) < 32 or ord(c) == 127 for c in title):
         raise ValueError('The terminal title must be a nonempty, single-line name.')
     directory = Path(cwd or record['root']).expanduser().resolve()
@@ -177,7 +177,9 @@ def run(argv=None):
     add.add_argument('--title', default='Terminal')
     add.add_argument('--split', action='store_true', help='add a split instead of a new tab')
     add.add_argument('--tab', type=int, help='target an existing Kitty tab ID (default: editor tab)')
-    add.add_argument('--keep-focus', action='store_true')
+    focus = add.add_mutually_exclusive_group()
+    focus.add_argument('--keep-focus', action='store_true', default=True, help='preserve keyboard focus (default)')
+    focus.add_argument('--focus', action='store_false', dest='keep_focus', help='explicitly focus the new task pane')
     add.add_argument('--json', action='store_true')
     add.add_argument('command', nargs=argparse.REMAINDER, help='-- PROGRAM ARG ...; shell remains after exit')
     args = parser.parse_args(argv)

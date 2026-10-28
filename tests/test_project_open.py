@@ -87,6 +87,8 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
     def test_generic_directory_and_workspace_contract(self):
         self.launch(str(self.project), generic=True, cwd=self.root)
         data = self.record()
+        self.assertIn('--start-as', data['args'])
+        self.assertEqual(data['args'][data['args'].index('--start-as') + 1], 'minimized')
         self.assertEqual(data['program'], 'kitty')
         self.assertEqual(data['cwd'], str(self.project))
         self.assertEqual(data['args'][data['args'].index('--directory') + 1], str(self.project))

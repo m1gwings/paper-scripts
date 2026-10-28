@@ -159,7 +159,7 @@ An unambiguous existing editor is reused and preserves unsaved buffers. Use
 `workspace-edit list --json`, `--session ID`, or `--new` to select another window.
 `workspace-edit view FILE --line 42 --end-line 48 --top-line 36 --highlight`
 reveals a range without changing source text or creating a destructive selection.
-`--focus` also focuses the managed Kitty pane; `--reveal` switches its terminal tab
+`--focus` explicitly activates the managed Kitty pane; `--reveal` switches its terminal tab
 without taking desktop focus. Omit line coordinates to retain the file's cursor.
 
 Use `workspace-edit status FILE --json` for fresh open-buffer state: `modified`,
@@ -177,6 +177,13 @@ automatically when its installer publishes a complete runtime generation.
 Only explicit file/view/status/reload/reload-ui messages are accepted.
 `project-open` and `paper open` also accept `--file`, `--line`, `--session`, and
 `--new`. `paper open --no-reader` leaves the reader launch disabled.
+New Editor windows preserve desktop focus by default; `--focus` requests an
+explicit activation. On COSMIC, a Kitty pre-show callback sets the initial
+minimized hint on XWayland before mapping, then `workspace-desktop reveal`
+unminimizes without activation. This uses the system `libX11.so.6`; without
+passive reveal support the Editor stays minimized and the launcher reports it.
+`--reveal` uses a no-UI Kitty helper because native `focus-tab` also activates
+the desktop window. These helpers are included in newly vendored runtimes.
 
 The optional standalone Reader lives in
 [workspace-reader](https://github.com/m1gwings/workspace-reader). Both apps have
@@ -211,7 +218,8 @@ a split to its editor tab; `--tab ID` targets another listed Kitty tab. Tabs are
 named and remain manually usable. A command runs with its literal argument list
 and leaves an interactive Bash shell when it exits. For a pipeline or other shell
 syntax, explicitly pass `-- bash -lc 'YOUR COMMAND'`. Choose the appropriate
-environment/executable for the task. `--keep-focus` leaves the current view active.
+environment/executable for the task. Focus is preserved by default;
+`--keep-focus` remains an explicit alias and `--focus` requests a switch.
 
 The helper selects by project root, independently of the command's working
 directory. If several windows match, use `--workspace ID` from `list` to choose

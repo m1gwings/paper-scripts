@@ -172,8 +172,8 @@ def run(argv=None):
                 if args.focus:
                     remote(selected[0], 'focus-window', '--match', 'id:' + pane)
                 else:
-                    tabs = [t for t in selected[0]['tabs'] if any(str(p['id']) == pane for p in t['panes'])]
-                    if len(tabs) == 1: remote(selected[0], 'focus-tab', '--match', 'id:' + str(tabs[0]['id']))
+                    remote(selected[0], 'kitten', '--match', 'id:' + pane,
+                           str(Path(__file__).with_name('kitty_reveal.py')))
             else:
                 result['focus_unavailable'] = True
         if args.json or action in ('status', 'reload', 'reload-ui'):
@@ -189,6 +189,8 @@ def run(argv=None):
     command = ['--terminal', project]
     if args.new:
         command.append('--new')
+    if args.focus:
+        command.append('--focus')
     if session:
         command += ['--session', session]
     command += ['--line', str(max(1, args.line)), '--column', str(max(1, args.column))]

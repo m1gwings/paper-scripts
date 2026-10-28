@@ -11,6 +11,7 @@ import fcntl
 from project_metadata import metadata
 from project_workspace import prepare, register
 from viewer import open_pdf
+from desktop_launch import snapshot as desktop_snapshot, reveal as desktop_reveal
 
 
 SESSION = """layout fat:bias=74
@@ -75,6 +76,7 @@ def run(argv=None):
     parser.add_argument('--session', help='explicit paired editor/reader workspace ID')
     parser.add_argument('--new', action='store_true', help='open an additional independent workspace')
     parser.add_argument('--no-reader', action='store_true', help='open only the editor/build workspace')
+    parser.add_argument('--focus', action='store_true', help='explicitly activate the new editor window')
     if not paper:
         parser.add_argument('directory', nargs='?', default='.', help='project directory (default: current)')
     args = parser.parse_args(argv)
@@ -152,7 +154,7 @@ def run(argv=None):
                     ensure_watcher(directory, source, matches[0]['session'])
                 except (OSError, subprocess.SubprocessError) as error:
                     print(f'Editor reused; could not verify/start the build watcher: {error}', file=sys.stderr)
-            reader_for(matches[0]['session'], arrange=False)
+            reader_for(matches[0]['session'])
             print(f'Reused editor workspace {matches[0]["session"]}.')
             return 0
     session = 'new_tab ' + ('Paper' if paper else 'Editor') + '\n' + SESSION
@@ -167,15 +169,24 @@ def run(argv=None):
                                     'build', '--watch', info['root_tex']])
         session += f'new_tab Build\nlaunch --title "PDF build" {build_command}\n'
     workspace = prepare(directory, info['project_name'], args.session)
+    existing_windows = desktop_snapshot() if not args.focus else None
     command = [kitty, '--listen-on', 'unix:' + workspace['socket'], '--directory', str(directory),
                '--class', 'workspace-editor', '--name', 'workspace-editor',
                '--title', f'Editor — {label}', '--session', '-']
+    if not args.focus:
+        command += ['--start-as', 'minimized']
+        if 'COSMIC' in os.environ.get('XDG_CURRENT_DESKTOP', '').upper().split(':'):
+            helper = Path(__file__).with_name('kitty_passive.py')
+            command[1:1] = ['+runpy', f'import runpy; runpy.run_path({str(helper)!r}, run_name="__main__")']
     for override in KITTY_OVERRIDES:
         command.extend(['--override', override])
     toggle = shlex.join([sys.executable, str(Path(__file__).with_name('project_workspace.py')), 'toggle',
                         '--workspace', workspace['id']])
     command.extend(['--override', 'map ctrl+grave launch --type=background ' + toggle])
     env = os.environ.copy()
+    if not args.focus:
+        env.pop('XDG_ACTIVATION_TOKEN', None)
+        env.pop('DESKTOP_STARTUP_ID', None)
     env['PROJECT_WORKSPACE_NAME'] = info['project_name']
     env['PROJECT_WORKSPACE_ROOT'] = str(directory)
     env['PROJECT_WORKSPACE_ID'] = workspace['id']
@@ -190,9 +201,19 @@ def run(argv=None):
         process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=log, stderr=log,
                                    text=True, cwd=directory, env=env, start_new_session=True)
         register(workspace, process.pid)
+        def reveal_editor():
+            if args.focus:
+                return
+            try:
+                if desktop_reveal(existing_windows, 'workspace-editor', f'Editor — {label}'):
+                    return
+            except (OSError, ValueError, subprocess.SubprocessError) as error:
+                print(f'Editor passive reveal: {error}', file=sys.stderr)
+            print('Editor started minimized; workspace-desktop reveal is required to show it without changing keyboard focus.', file=sys.stderr)
         try:
             process.communicate(session, timeout=1)
         except subprocess.TimeoutExpired:
+            reveal_editor()
             reader_for(workspace['id'])
             return 0
         if process.returncode:
@@ -200,6 +221,7 @@ def run(argv=None):
             print(log.read(), file=sys.stderr, end='')
             print(f'Kitty startup log: {log.name}', file=sys.stderr)
         else:
+            reveal_editor()
             reader_for(workspace['id'])
         return process.returncode
 
