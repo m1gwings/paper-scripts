@@ -11,7 +11,7 @@
 - Preserve pre-existing user edits. Make the smallest change sufficient for correctness; avoid unrelated stylistic changes.
 - Preserve the proof strategy unless asked to redesign it. Do not silently strengthen assumptions or claims.
 - Check index ranges, stopping times, conditioning, constants, and parameter regimes explicitly. Distinguish conjectural, conditional, and proved claims.
-- Prefer explicit algebraic derivations and compact inequality chains. For repeated calculations, cite the analogous argument and give the needed result.
+- Show the first derivation and the steps that explain the probabilistic or structural argument. When computations are analogous to an earlier calculation, state the needed result and cite the precise equation, proof step, or lemma instead of repeating the derivation (for example, "By computations analogous to ..."). Specify any changed assumptions, indices, or parameters needed to justify the analogy; retain genuinely new reasoning.
 
 ## LaTeX and verification
 
