@@ -44,6 +44,7 @@
 
 - When using another lemma, theorem, proposition, or corollary, cite its statement, never an equation inside its proof. If the statement has one equation, cite only the result. If it has several, cite the result together with the relevant equation number. State the applicable assumptions and any rearrangement. If a needed intermediate claim appears only in another proof, derive it locally or promote it to a stated result. References within the current proof, including signposts to its own statement, remain appropriate.
 - Avoid semicolons in prose unless they clearly express the connection better than a full stop or conjunction.
+- In big-O and related asymptotic notation, omit absorbed numerical constants and write explicit logarithms as `\log`, not `\ln`, since the base changes only an absorbed constant. Retain exact constants and bases in non-asymptotic inequalities when they affect the claim.
 - Define unfamiliar technical terms before use (aim at a second-year STEM reader),
   prefer simple precise prose, and use established symbols where appropriate.
 - Preserve expressive notation and every index/parameter/argument. Introduce
