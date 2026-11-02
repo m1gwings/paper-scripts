@@ -116,6 +116,37 @@ class FilteredWorkflowTest(unittest.TestCase):
         self.paper('publish', ok=False)
         self.assertEqual(self.git('rev-parse', 'master', cwd=self.root / 'overleaf'), before)
 
+    def test_basename_cleanup_preserves_local_files_and_coauthor_imports(self):
+        self.enable()
+        for name in ('.gitkeep', 'figures/.gitkeep', 'figures/plot.tex'):
+            (self.repo / name).parent.mkdir(exist_ok=True)
+            self.commit(self.repo, name, 'keep locally\n')
+        self.git('push', 'overleaf', 'master')
+        config = json.loads((self.repo / '.paper/config.json').read_text())
+        config['overleaf_exclude_basenames'] = ['.gitkeep']
+        self.commit(self.repo, '.paper/config.json', json.dumps(config))
+        self.paper('publish')
+        self.assertEqual(self.remote_files(), ['figures/plot.tex', 'main.tex'])
+        self.assertTrue((self.repo / 'figures/.gitkeep').exists())
+        self.remote_commit('overleaf', 'main.tex', 'coauthor revision\n')
+        self.paper('publish')
+        self.assertEqual((self.repo / 'main.tex').read_text(), 'coauthor revision\n')
+        self.assertTrue((self.repo / '.gitkeep').exists())
+        # Opting back into full-tree export restores the preserved placeholders.
+        config['overleaf_exclude_basenames'] = []
+        self.commit(self.repo, '.paper/config.json', json.dumps(config))
+        self.paper('publish')
+        self.assertIn('figures/.gitkeep', self.remote_files())
+
+    def test_invalid_basename_fails_before_writes(self):
+        self.enable()
+        before = self.git('rev-parse', 'master', cwd=self.root / 'overleaf')
+        for value in (['figures/.gitkeep'], ['*.tmp'], [1], '.gitkeep'):
+            self.commit(self.repo, '.paper/config.json', json.dumps({
+                'overleaf_exclude_basenames': value}))
+            self.paper('publish', ok=False)
+            self.assertEqual(self.git('rev-parse', 'master', cwd=self.root / 'overleaf'), before)
+
     def test_same_manuscript_file_advances_after_export_and_metadata_only_commit(self):
         self.enable()
         self.commit(self.repo, 'main.tex', 'published revision\n')

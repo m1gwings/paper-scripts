@@ -11,7 +11,10 @@ the implementation. Never commit credentials.
 Publication keeps the full repository on GitHub and exports only manuscript
 content to Overleaf. `.paper/config.json` owns `overleaf_exclude`: repository-relative
 file/directory paths (no globs). Defaults exclude `.paper/`, `.github/`, `.codex/`, `.agents/`, `.vscode/`,
-`.gitignore`, `AGENTS.md`, `tasks/`, and `notes/`. Keep manuscript dependencies outside excluded
+`.gitignore`, `AGENTS.md`, `tasks/`, `notes/`, `tools/`, `references/`, and root `README.md`.
+`overleaf_exclude_basenames` excludes file names at every depth (default: `.gitkeep`).
+Existing custom path lists are preserved on upgrade; review new defaults explicitly.
+Keep manuscript dependencies outside excluded
 paths, or explicitly adjust the list. Imports preserve GitHub-only files; status
 compares manuscript content. Metadata-only publication is a no-op on Overleaf.
 
@@ -20,7 +23,10 @@ linear snapshots with portable synchronization records; its commit IDs and full
 file tree intentionally differ from GitHub. Use paper sync / paper publish for
 reconciliation. Normal status reports manuscript synchronization for Overleaf;
 raw history counts belong to paper status --verbose diagnostics. An explicit
-empty exclusion list restores full-tree export.
+empty list for both exclusion settings restores full-tree export. Build the exported
+tree when changing exclusions to catch dependencies accidentally kept only on GitHub.
+Overleaf may retain empty folders after Git deletes their last file; remove those
+once through its file-tree UI. Later exports do not recreate them.
 
 ## Local PDF workflow
 

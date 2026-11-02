@@ -529,13 +529,14 @@ COMMANDS
       Accept an Overleaf project ID or full HTTPS project URL.
       Run 'paper create --help' for the full creation guide.
 
-  paper init [--poster | --slides] [--force]
+  paper init [--poster | --slides] [--force | --workflow-only]
       Initialize paper, beamerposter poster, or Beamer slides instructions, research notes,
       and a lightweight resumable task queue in this Git repository.
       Install/upgrade versioned preview and publication infrastructure.
       Preserve custom files; require no configured remotes. No commit/push.
       Remember poster or slides mode for later upgrades with plain 'paper init'.
       Scaffold recognized blank projects; --force reinstalls starter paths with backups.
+      --workflow-only upgrades tools without installing or changing manuscript macros.
 
   paper status [--verbose]
       Show working-tree, manuscript, and GitHub backup status.
@@ -843,12 +844,13 @@ Use 'paper sync' to reconcile manuscript changes and 'paper publish' to publish 
 
     init)
         if [[ $# -eq 1 && ( "$1" == --help || "$1" == -h ) ]]; then
-            echo "Usage: paper init [--poster | --slides] [--force]"
+            echo "Usage: paper init [--poster | --slides] [--force | --workflow-only]"
             echo "Create research files and install/upgrade versioned .paper and Actions infrastructure."
             echo "--poster selects beamerposter/TikZ instructions and is remembered for later upgrades."
             echo "--slides selects Beamer slide instructions and is remembered for later upgrades."
             echo "Recognized blank projects receive a starter. Existing manuscripts are preserved."
             echo "--force reinstalls starter files, backing up replacements under .paper/scaffold-backups/."
+            echo "--workflow-only upgrades tools without installing or changing manuscript macros or starter files."
             echo "Run inside a Git repository; no remotes required. Overleaf changes require paper publish."
             exit 0
         fi
@@ -860,8 +862,8 @@ Use 'paper sync' to reconcile manuscript changes and 'paper publish' to publish 
                         || die "--poster and --slides are mutually exclusive."
                     SELECTED_TYPE="$option"
                     ;;
-                --force) ;;
-                *) die "Usage: paper init [--poster | --slides] [--force]" ;;
+                --force|--workflow-only) ;;
+                *) die "Usage: paper init [--poster | --slides] [--force | --workflow-only]" ;;
             esac
         done
         need git

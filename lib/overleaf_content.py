@@ -4,19 +4,31 @@ Exclusions are repository-relative file/directory names, not glob patterns.
 Missing settings retain the legacy full-tree contract until paper init upgrades it.
 """
 import argparse
+from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
 import subprocess
 import tempfile
 
-DEFAULT_EXCLUDES = ['.paper/', '.github/', '.codex/', '.agents/', '.vscode/', '.gitignore', 'AGENTS.md', 'tasks/', 'notes/']
+DEFAULT_EXCLUDES = ['.paper/', '.github/', '.codex/', '.agents/', '.vscode/', '.gitignore', 'AGENTS.md', 'tasks/', 'notes/', 'tools/', 'references/', 'README.md']
+DEFAULT_EXCLUDE_BASENAMES = ['.gitkeep']
+
+
+@dataclass(frozen=True)
+class Exclusions:
+    paths: tuple
+    basenames: tuple
+
+    def __bool__(self):
+        return bool(self.paths or self.basenames)
 
 
 def exclusions(value=None):
     path = Path('.paper/config.json')
     if value is None:
         value = json.loads(path.read_text()) if path.exists() else {}
+    names = value.get('overleaf_exclude_basenames', [])
     value = value.get('overleaf_exclude', [])
     if not isinstance(value, list) or any(
             not isinstance(p, str) or not p.rstrip('/') or p.startswith('/')
@@ -24,7 +36,12 @@ def exclusions(value=None):
             or any(c in ('', '.', '..', '.git') for c in p.rstrip('/').split('/'))
             for p in value):
         raise ValueError('overleaf_exclude must be a list of relative file/directory paths (no globs).')
-    return [p.rstrip('/').encode() for p in value]
+    if not isinstance(names, list) or any(
+            not isinstance(n, str) or not n or n in ('.', '..', '.git')
+            or any(c in n for c in '/*?[]\\\n\r') for n in names):
+        raise ValueError('overleaf_exclude_basenames must be a list of file names (no paths or globs).')
+    return Exclusions(tuple(p.rstrip('/').encode() for p in value),
+                      tuple(n.encode() for n in names))
 
 
 def git(*args, input=None, env=None):
@@ -38,7 +55,8 @@ def entries(ref):
 
 def excluded(entry, policy):
     name = entry.split(b'\t', 1)[1]
-    return any(name == p or name.startswith(p + b'/') for p in policy)
+    return (name.rsplit(b'/', 1)[-1] in policy.basenames
+            or any(name == p or name.startswith(p + b'/') for p in policy.paths))
 
 
 def make_tree(records):

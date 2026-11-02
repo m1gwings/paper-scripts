@@ -8,7 +8,7 @@ import subprocess
 import sys
 import scaffold
 from project_metadata import infer_name
-from overleaf_content import DEFAULT_EXCLUDES, exclusions
+from overleaf_content import DEFAULT_EXCLUDES, DEFAULT_EXCLUDE_BASENAMES, exclusions
 
 VERSION = 5
 SOURCE = Path(__file__).resolve().parents[1]
@@ -78,6 +78,10 @@ def discover():
 def config():
     value = read_json('.paper/config.json', {})
     existing = bool(value)
+    # Preserve explicit full-tree exports. Existing custom path lists stay owned
+    # by the project; new basename defaults are independently configurable.
+    value.setdefault('overleaf_exclude_basenames',
+                     [] if value.get('overleaf_exclude') == [] else list(DEFAULT_EXCLUDE_BASENAMES))
     version = value.get('version', 0 if existing else VERSION)
     if not isinstance(version, int) or version > VERSION:
         raise ValueError('This configuration needs a newer paper-scripts version.')
@@ -230,12 +234,17 @@ def merge_agent_instructions(current, template):
     return current + separator + tasking
 
 
-def plan(document_type=None, force=False, verbose=False):
+def plan(document_type=None, force=False, verbose=False, workflow_only=False):
+    if workflow_only and force:
+        raise ValueError('--workflow-only and --force are mutually exclusive.')
     old = read_json('.paper/manifest.json', {'version': VERSION, 'files': {}})
     if old.get('version', 0) > VERSION:
         raise ValueError('Installed infrastructure is newer than this paper-scripts version.')
     retired_paths(old)  # Validate retired managed paths before any writes.
     files = generated()
+    if workflow_only:
+        for name in WORKFLOWS:
+            files.pop('.github/workflows/' + name)
     agents = safe_path('AGENTS.md')
     value = config()
     if document_type is not None:
@@ -243,7 +252,10 @@ def plan(document_type=None, force=False, verbose=False):
     kind = value.get('document_type', 'paper')
     if kind not in DOCUMENT_TYPES:
         raise ValueError('document_type must be paper, poster, or slides.')
-    sources, scaffold_kind, message = scaffold.plan(SOURCE, kind, value, old, force)
+    if workflow_only:
+        sources, scaffold_kind, message = {}, None, 'Updating workflow tools only; preserving manuscript sources and macro packages.'
+    else:
+        sources, scaffold_kind, message = scaffold.plan(SOURCE, kind, value, old, force)
     files.update(sources)
     if scaffold_kind:
         value['scaffold_type'] = scaffold_kind
@@ -268,7 +280,7 @@ def plan(document_type=None, force=False, verbose=False):
     # Explicit type selection may replace only a recognized untouched default.
     if document_type is not None and matches_agent_default(current, old):
         current = template
-    files['AGENTS.md'] = merge_agent_instructions(current, template).encode()
+    files['AGENTS.md'] = (current if workflow_only else merge_agent_instructions(current, template)).encode()
     # config is user-owned: preserve custom fields and fill only missing defaults.
     files['.paper/config.json'] = (json.dumps(value, indent=2) + '\n').encode()
     for name, data in files.items():
@@ -307,8 +319,8 @@ def retired_paths(manifest):
     return paths
 
 
-def install(document_type=None, force=False):
-    files = plan(document_type, force)  # Preflight every conflict before writing any generated file.
+def install(document_type=None, force=False, workflow_only=False):
+    files = plan(document_type, force, workflow_only=workflow_only)  # Preflight before writing.
     old = read_json('.paper/manifest.json', {'files': {}})
     agents = Path('AGENTS.md')
     untouched = not agents.exists() or matches_agent_default(agents.read_text(), old)
@@ -318,6 +330,13 @@ def install(document_type=None, force=False):
         print(f'Removed retired generated file {path}')
     manifest = {'version': VERSION, 'files': {name: digest(data) for name, data in files.items()
                                             if name not in ('.paper/config.json', 'AGENTS.md') + scaffold.PROJECT_FILES}}
+    if workflow_only and scaffold.PACKAGE in old.get('files', {}):
+        manifest['files'][scaffold.PACKAGE] = old['files'][scaffold.PACKAGE]
+    if workflow_only:
+        for name in WORKFLOWS:
+            path = '.github/workflows/' + name
+            if path in old.get('files', {}):
+                manifest['files'][path] = old['files'][path]
     if untouched:
         manifest['agents_default_sha256'] = digest(files['AGENTS.md'])
     files['.paper/manifest.json'] = (json.dumps(manifest, indent=2, sort_keys=True) + '\n').encode()
@@ -352,12 +371,13 @@ def main():
     mode.add_argument('--poster', action='store_const', const='poster', dest='document_type')
     mode.add_argument('--slides', action='store_const', const='slides', dest='document_type')
     parser.add_argument('--force', action='store_true', help='Reinstall the selected starter; back up replaced files.')
+    parser.add_argument('--workflow-only', action='store_true', help='Upgrade tools without installing or updating manuscript macros or starter files.')
     args = parser.parse_args()
     try:
         if args.action == 'preflight':
-            plan(args.document_type, args.force, verbose=True)
+            plan(args.document_type, args.force, verbose=True, workflow_only=args.workflow_only)
         elif args.action == 'install':
-            install(args.document_type, args.force)
+            install(args.document_type, args.force, workflow_only=args.workflow_only)
         else:
             value = read_json('.paper/config.json', {})
             result = value.get(args.key)

@@ -85,7 +85,7 @@ paper; each paper is upgraded with `paper init`, reviewed, and committed.
 | `paper backup` | Push the current committed branch to GitHub. Never touch Overleaf. |
 | `paper sync` | Reconcile GitHub and Overleaf into the local base. Run from a clean base branch. |
 | `paper publish` | Reconcile fresh state, integrate committed work, back it up, and publish to Overleaf. Requires explicit authorization. |
-| `paper init [--poster \| --slides] [--force]` | Initialize or upgrade conservatively; scaffold blank sources. Explicit --force reinstalls starter paths with backups. |
+| `paper init [--poster \| --slides] [--force \| --workflow-only]` | Initialize or upgrade conservatively; scaffold blank sources. Explicit --force reinstalls starter paths with backups. --workflow-only preserves manuscript macros and sources. |
 | `paper create [--poster \| --slides] [--force] OVERLEAF_ID OWNER/REPO [DIRECTORY]` | Create a new private GitHub/Overleaf paper, poster, or slides repository and then run `paper init`. |
 | `paper notify --title TITLE --message MESSAGE [--url HTTPS_URL]` | Dispatch the trusted notification workflow. The URL becomes a clickable Discord embed title. |
 | `paper notify-test` | Test the configured provider through GitHub Actions. |
@@ -589,14 +589,30 @@ New projects and `paper init` upgrades use filtered Overleaf exports by default.
 Settings in `.paper/config.json` contain:
 
 ```json
-"overleaf_exclude": [".paper/", ".github/", ".codex/", ".agents/", ".vscode/", ".gitignore", "AGENTS.md", "tasks/", "notes/"]
+"overleaf_exclude": [".paper/", ".github/", ".codex/", ".agents/", ".vscode/", ".gitignore", "AGENTS.md", "tasks/", "notes/", "tools/", "references/", "README.md"],
+"overleaf_exclude_basenames": [".gitkeep"]
 ```
 
 These are repository-relative file or directory paths, without glob patterns.
 Everything else is included, including custom styles, bibliography files and
 figures. Keep manuscript dependencies outside excluded paths or adjust the list.
-An empty list explicitly restores the legacy full-tree contract. Older pinned
-runtimes must be upgraded before using this setting.
+The basename list matches exact file names at every depth, without globs.
+`references/` is reading/archive material; bibliography files such as
+`references.bib` remain included. Set both lists to empty for full-tree exports.
+Upgrades preserve existing path lists and explicit full-tree settings, so review
+and adopt additional default paths deliberately. Older pinned runtimes must be
+upgraded before using these settings.
+
+Before publishing changed exclusions, build a clean copy of the projected tree
+(not the full checkout) to verify that all manuscript dependencies are exported.
+Do not infer that an alternate root or macro package is unused from its name:
+inspect the active root and its dependencies before excluding it per project.
+Use `paper init --workflow-only` for tooling-only upgrades, especially when a
+project has customized its starter macro package. This preserves the previous
+macro ownership record and does not install another macro package into legacy papers.
+It also preserves project instructions and Actions workflow definitions, including
+project-specific TeX installation steps; runtime code, templates and workflow
+documentation are updated.
 
 The first publication removes excluded files from Overleaf's current tree while
 preserving them on GitHub and in existing history. Overleaf's Git bridge can

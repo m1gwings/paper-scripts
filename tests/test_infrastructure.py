@@ -12,6 +12,43 @@ TEMPLATES = Path(__file__).resolve().parents[1] / 'templates'
 
 
 class InfrastructureTest(test_workflow.WorkflowTest):
+    def test_workflow_only_preserves_custom_macros_and_manifest_ownership(self):
+        self.paper('init', '--force')
+        package = self.repo / 'papermacros.sty'
+        old_hash = json.loads((self.repo / '.paper/manifest.json').read_text())['files']['papermacros.sty']
+        package.write_text('% customized author macros\n')
+        workflow = self.repo / '.github/workflows/paper-preview.yml'
+        workflow.write_text(workflow.read_text() + '\n# Custom dependency installation\n')
+        custom_workflow = workflow.read_text()
+        self.paper('init', '--workflow-only')
+        self.assertEqual(package.read_text(), '% customized author macros\n')
+        self.assertEqual(workflow.read_text(), custom_workflow)
+        manifest = json.loads((self.repo / '.paper/manifest.json').read_text())
+        self.assertEqual(manifest['files']['papermacros.sty'], old_hash)
+        self.assertIn('Preserving edited/unmanaged file', self.paper('init', ok=False))
+        self.paper('init', '--workflow-only', '--force', ok=False)
+
+    def test_workflow_only_does_not_scaffold_blank_projects(self):
+        (self.repo / 'main.tex').unlink()
+        self.paper('init', '--workflow-only')
+        self.assertFalse((self.repo / 'papermacros.sty').exists())
+        self.assertFalse((self.repo / 'main.tex').exists())
+        self.assertFalse((self.repo / '.github/workflows/paper-preview.yml').exists())
+
+    def test_export_defaults_and_explicit_full_tree_upgrade(self):
+        self.paper('init')
+        path = self.repo / '.paper/config.json'
+        value = json.loads(path.read_text())
+        for name in ('tools/', 'references/', 'README.md'):
+            self.assertIn(name, value['overleaf_exclude'])
+        self.assertEqual(value.pop('overleaf_exclude_basenames'), ['.gitkeep'])
+        value['overleaf_exclude'] = []
+        path.write_text(json.dumps(value))
+        self.paper('init')
+        updated = json.loads(path.read_text())
+        self.assertEqual(updated['overleaf_exclude'], [])
+        self.assertEqual(updated['overleaf_exclude_basenames'], [])
+
     def test_vendored_history_alignment_is_retired(self):
         self.paper('init')
         result = subprocess.run(['bash', '.paper/runtime/paper', 'align-history', '--dry-run'],
