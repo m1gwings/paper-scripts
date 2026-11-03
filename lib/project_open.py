@@ -127,19 +127,12 @@ def run(argv=None):
     if source.is_absolute() or '..' in source.parts or source.suffix != '.tex':
         parser.error('root_tex must be a relative .tex path inside the project.')
     pdf = directory / 'output' / source.with_suffix('.pdf')
-    def reader_for(identifier, arrange=True):
+    def reader_for(identifier):
         if paper and not args.no_reader and ((directory / source).is_file() or pdf.is_file()):
             try:
                 # Opening a paper selects/reveals its manuscript. Reader's
                 # explicit focus flag is separate from background tab updates.
-                result = open_pdf(pdf, directory, identifier)
-                if (arrange and result and shutil.which('workspace-layout') and
-                        os.environ.get('WORKSPACE_AUTO_LAYOUT', '1') != '0'):
-                    layout = subprocess.run(['workspace-layout', '--apply', '--editor-title', f'Editor — {label}',
-                                             '--reader-title', result['windowTitle'], '--editor-session', identifier], capture_output=True,
-                                            text=True, timeout=20)
-                    if layout.returncode:
-                        print('Desktop layout: ' + (layout.stderr.strip() or 'placement was not verified'), file=sys.stderr)
+                open_pdf(pdf, directory, identifier)
             except (OSError, ValueError, subprocess.SubprocessError) as error:
                 print(f'Editor remains available; PDF reader: {error}', file=sys.stderr)
     if not args.new:

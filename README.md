@@ -194,12 +194,10 @@ share a project/session identity but can close independently. Personal Micro
 integration supplies F7 Preview/forward SyncTeX, F8 manuscript PDF, and PDF
 Ctrl+click for inverse SyncTeX; its implementation stays outside Paper Scripts.
 
-When `workspace-layout` is installed, a new paper workspace can request ordinary
-COSMIC tiling: Editor on the laptop (dock visible), Reader left/Codex right on the
-external display. The adapter verifies monitor membership and reports when exact
-tile geometry is unavailable. Set `WORKSPACE_AUTO_LAYOUT=0` to skip placement.
-Reusing a workspace preserves its current placement. Neither adapter is required
-for the launchers or the legacy viewer fallback.
+Project opening does not choose monitors or desktop tiling. Machine-specific
+placement is a separate operation, performed after opening or reusing a workspace
+by the user or agent through their local desktop adapter. The launchers preserve
+focus and reveal windows independently of that placement step.
 
 ### Add terminals to an existing project window
 

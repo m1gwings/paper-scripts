@@ -168,7 +168,7 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
             path.write_text(json.dumps(config))
         self.assertEqual(json.loads(path.read_text())['project_name'], 'My informal project name')
 
-    def test_native_reader_receives_session_output_and_optional_layout(self):
+    def test_native_reader_receives_session_output_without_desktop_placement(self):
         viewer_log, layout_log = self.root / 'reader.json', self.root / 'layout.json'
         for name, log, response in [('workspace-read', viewer_log, {'ok': True, 'windowTitle': 'Preview · Reader'}),
                                     ('workspace-layout', layout_log, {'monitor_assignments_verified': True})]:
@@ -186,7 +186,7 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
         self.assertEqual(viewer[viewer.index('--project') + 1], str(self.project))
         records = list((self.root / 'runtime/project-workspaces').glob('*.json'))
         self.assertEqual(viewer[viewer.index('--session') + 1], json.loads(records[0].read_text())['id'])
-        self.assertIn('--apply', json.loads(layout_log.read_text()))
+        self.assertFalse(layout_log.exists())
         self.assertFalse((self.project / 'INJECTED').exists())
 
         # Reusing an editor must select/reveal the manuscript too, with neither
@@ -204,6 +204,7 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
             self.assertIn('Reused editor', self.launch('--terminal'))
         self.assertFalse(self.log.exists())
         self.assertEqual(json.loads(viewer_log.read_text()), viewer)
+        self.assertFalse(layout_log.exists())
 
     def test_reused_standalone_editor_restores_only_a_missing_build_watcher(self):
         endpoint = self.root / f'runtime/workspace-editors/{os.getpid()}-fixture'
