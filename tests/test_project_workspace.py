@@ -34,9 +34,19 @@ class WorkspaceTest(unittest.TestCase):
         self.record = WORKSPACE.prepare(self.project, 'Friendly project name')
         self.record['tabs'] = [{'id': 5, 'title': 'Paper', 'panes': [{'id': 2, 'title': 'Editor'}]}]
 
+    def test_closed_session_record_can_be_reused_but_live_session_is_preserved(self):
+        path=WORKSPACE.runtime_directory()/(self.record['id']+'.json')
+        path.write_text(json.dumps(dict(self.record,pid=999999999)))
+        with patch.object(WORKSPACE.os,'kill',side_effect=ProcessLookupError):
+            WORKSPACE.register(self.record,os.getpid())
+        original=path.read_bytes()
+        with self.assertRaisesRegex(ValueError,'already running'):
+            WORKSPACE.register(self.record,os.getpid())
+        self.assertEqual(path.read_bytes(),original)
+
     def test_editor_reveal_uses_its_existing_terminal_tab_without_desktop_focus(self):
         editor = dict(project=str(self.project), session=self.record['id'], kitty_window='2', protocol=2)
-        with patch.dict(sys.modules, {'project_workspace': WORKSPACE}), \
+        with patch.dict(sys.modules, {'project_workspace': WORKSPACE, 'desktop_launch': SimpleNamespace(reveal_existing=lambda *args: True)}), \
              patch.object(EDITOR, 'live', return_value=[editor]), \
              patch.object(EDITOR, 'send', return_value={'ok': True}) as send, \
              patch.object(WORKSPACE, 'live_workspaces', return_value=[self.record]), \

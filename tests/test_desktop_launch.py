@@ -33,6 +33,19 @@ class PassiveLaunchTest(unittest.TestCase):
                 DESKTOP.reveal(set(), 'workspace-editor', 'Editor')
             call.assert_called_once_with('info')
 
+    def test_reused_window_is_unminimized_without_activation(self):
+        windows=[{'id':'target','app_id':'workspace-editor','title':'Editor — Example · Paper'}]
+        with patch.object(DESKTOP,'desktop',side_effect=[{'windows':windows},{'ok':True}]) as call:
+            self.assertTrue(DESKTOP.reveal_existing('workspace-editor','Editor — Example'))
+        self.assertEqual(call.call_args.args,('reveal','--window','target'))
+
+    def test_duplicate_reused_windows_are_not_guessed(self):
+        windows=[{'id':identity,'app_id':'workspace-editor','title':'Editor — Example'} for identity in ('one','two')]
+        with patch.object(DESKTOP,'desktop',return_value={'windows':windows}) as call:
+            with self.assertRaisesRegex(ValueError,'unique Editor'):
+                DESKTOP.reveal_existing('workspace-editor','Editor — Example')
+            call.assert_called_once_with('info')
+
     def test_initial_minimized_hint_preserves_input_and_icon_settings(self):
         hints = KITTY.WMHints(flags=1 | 4, input=1, initial_state=1, icon_pixmap=99)
         library = Mock()

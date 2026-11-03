@@ -38,3 +38,16 @@ def reveal(existing, app_id, title):
         if time.monotonic() >= deadline:
             return False
         time.sleep(.08)
+
+
+def reveal_existing(app_id, title):
+    """Reveal exactly one registered project window, never activate or guess."""
+    windows = [w for w in desktop('info')['windows'] if w.get('id')
+               and w['app_id'] == app_id
+               and (w['title'] == title or w['title'].startswith(title + ' · '))]
+    if len(windows) != 1:
+        raise ValueError('Cannot identify a unique Editor window to reveal; close duplicate project windows and retry.')
+    result = desktop('reveal', '--window', windows[0]['id'])
+    if not result.get('ok'):
+        raise ValueError('The desktop could not reveal the Editor window.')
+    return True

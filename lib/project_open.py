@@ -195,7 +195,13 @@ def run(argv=None):
                                      dir=state, delete=False) as log:
         process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=log, stderr=log,
                                    text=True, cwd=directory, env=env, start_new_session=True)
-        register(workspace, process.pid)
+        try:
+            register(workspace, process.pid)
+        except Exception:
+            process.terminate()
+            try: process.communicate(timeout=2)
+            except subprocess.TimeoutExpired: process.kill(); process.communicate()
+            raise
         def reveal_editor():
             if args.focus:
                 return

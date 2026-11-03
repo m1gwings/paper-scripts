@@ -37,7 +37,21 @@ def prepare(directory, name, identifier=None):
 
 def register(record, pid):
     record = dict(record, pid=pid)
-    with (runtime_directory() / (record['id'] + '.json')).open('x') as handle:
+    path = runtime_directory() / (record['id'] + '.json')
+    if path.exists():
+        info = path.lstat()
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid():
+            raise ValueError('Workspace record must be a regular file owned by this user.')
+        previous = json.loads(path.read_text())
+        if previous.get('id') != record['id'] or previous.get('root') != record['root']:
+            raise ValueError('Workspace session belongs to another project.')
+        try:
+            os.kill(previous['pid'], 0)
+        except ProcessLookupError:
+            path.unlink()
+        else:
+            raise ValueError('This workspace session is already running.')
+    with path.open('x') as handle:
         os.chmod(handle.name, 0o600)
         json.dump(record, handle)
 

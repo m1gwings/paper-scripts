@@ -833,3 +833,8 @@ Local builds publish atomic `output/ROOT.build.json` records with building,
 success, failed or idle state, the last successful PDF time, and the first
 compiler error location. Failed builds restore the previous valid PDF. Editor
 and Reader consume this local, ignored status; ordinary projects have no build UI.
+
+Editor source/log handoffs serialize startup per project/session. `workspace-edit
+--reveal` selects the document tab and restores its unique desktop window without
+activation. Closed session records can be reused; competing live sessions are
+preserved and reported instead of silently opening another window.

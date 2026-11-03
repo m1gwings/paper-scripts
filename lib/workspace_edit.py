@@ -4,6 +4,9 @@ Only file/view/status and guarded reload requests are supported. Micro consumes 
 no terminal input, editor commands or arbitrary code are injected.
 """
 import argparse
+import contextlib
+import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -97,7 +100,7 @@ def send(record, path, line=0, column=1, *, action="open", end_line=0, top_line=
     raise ValueError('Editor did not acknowledge the request; no keyboard input was sent.')
 
 
-def run(argv=None):
+def run(argv=None, _locked=False):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('paths', nargs='*', help='folder or files; use list to inspect live editors')
     parser.add_argument('--project', help='project root')
@@ -148,67 +151,79 @@ def run(argv=None):
         project = result.stdout.strip() if result.returncode == 0 else str(files[0].parent)
     project = str(Path(project or '.').expanduser().resolve())
     session = args.session or os.environ.get('PROJECT_WORKSPACE_ID')
-    matches = [r for r in records if r['project'] == project and (not session or r['session'] == session)]
-    if len(matches) > 1 and not args.new:
-        raise ValueError('Multiple editors match; select --session from workspace-edit list.')
-    if matches and not args.new:
-        modern = action != 'open' or args.if_open or args.if_clean or args.highlight or args.top_line or args.end_line
-        if modern and matches[0].get('protocol', 1) < 2:
-            if args.if_open:
-                if args.json: print(json.dumps({'ok': True, 'skipped': 'editor_needs_restart'}))
-                return 0
-            raise ValueError('Reopen Editor to enable the updated view/status controls; its current buffers are untouched.')
-        result = {'ok': True}
-        for path in files or ([None] if action in ('status', 'reload-ui') else []):
-            result = send(matches[0], path, max(0, args.line), max(1, args.column),
-                          action=action, end_line=args.end_line, top_line=args.top_line,
-                          highlight=args.highlight, if_open=args.if_open, if_clean=args.if_clean,
-                          discard=args.discard, expected_version=args.expected_version)
-        if (args.focus or args.reveal) and not result.get('skipped'):
-            from project_workspace import live_workspaces as workspaces, remote
-            selected = [r for r in workspaces() if r['id'] == matches[0]['session']]
-            pane = matches[0].get('kitty_window', '')
-            if len(selected) == 1 and pane.isdecimal():
-                if args.focus:
-                    remote(selected[0], 'focus-window', '--match', 'id:' + pane)
+    identity = hashlib.sha256((project + '\0' + str(session or '')).encode()).hexdigest()
+    guard = contextlib.nullcontext() if _locked else (runtime() / ('launch-' + identity + '.lock')).open('a')
+    with guard as lock:
+        if not _locked:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+        records = live()
+        matches = [r for r in records if r['project'] == project and (not session or r['session'] == session)]
+        if len(matches) > 1 and not args.new:
+            raise ValueError('Multiple editors match; select --session from workspace-edit list.')
+        if matches and not args.new:
+            modern = action != 'open' or args.if_open or args.if_clean or args.highlight or args.top_line or args.end_line
+            if modern and matches[0].get('protocol', 1) < 2:
+                if args.if_open:
+                    if args.json: print(json.dumps({'ok': True, 'skipped': 'editor_needs_restart'}))
+                    return 0
+                raise ValueError('Reopen Editor to enable the updated view/status controls; its current buffers are untouched.')
+            result = {'ok': True}
+            for path in files or ([None] if action in ('status', 'reload-ui') else []):
+                result = send(matches[0], path, max(0, args.line), max(1, args.column),
+                              action=action, end_line=args.end_line, top_line=args.top_line,
+                              highlight=args.highlight, if_open=args.if_open, if_clean=args.if_clean,
+                              discard=args.discard, expected_version=args.expected_version)
+            if (args.focus or args.reveal) and not result.get('skipped'):
+                from project_workspace import live_workspaces as workspaces, remote
+                selected = [r for r in workspaces() if r['id'] == matches[0]['session']]
+                pane = matches[0].get('kitty_window', '')
+                if len(selected) == 1 and pane.isdecimal():
+                    if args.focus:
+                        remote(selected[0], 'focus-window', '--match', 'id:' + pane)
+                    else:
+                        remote(selected[0], 'kitten', '--match', 'id:' + pane,
+                               str(Path(__file__).with_name('kitty_reveal.py')))
                 else:
-                    remote(selected[0], 'kitten', '--match', 'id:' + pane,
-                           str(Path(__file__).with_name('kitty_reveal.py')))
-            else:
-                result['focus_unavailable'] = True
-        if args.json or action in ('status', 'reload', 'reload-ui'):
-            print(json.dumps(dict(matches[0], **result)))
-        return 0
-    if args.if_open:
-        if args.json: print(json.dumps({'ok': True, 'skipped': 'not_open'}))
-        return 0
-    if action in ('status', 'reload', 'reload-ui', 'view'):
-        raise ValueError('No live editor matches. Use workspace-edit list and select --project/--session.')
-    from project_open import run as launch
-    session = session or secrets.token_hex(8)
-    command = ['--terminal', project]
-    if args.new:
-        command.append('--new')
-    if args.focus:
-        command.append('--focus')
-    if session:
-        command += ['--session', session]
-    command += ['--line', str(max(1, args.line)), '--column', str(max(1, args.column))]
-    for path in files:
-        command += ['--file', str(path)]
-    result = launch(command)
-    if result or not (args.highlight or args.top_line or args.focus or args.reveal or args.json):
-        return result
-    deadline = time.monotonic() + 5
-    while time.monotonic() < deadline:
-        if any(r['session'] == session and r['project'] == project for r in live()):
-            followup = ['--project', project, '--session', session, '--line', str(args.line),
-                        '--column', str(args.column), '--end-line', str(args.end_line), '--top-line', str(args.top_line)]
-            for flag, enabled in [('--highlight', args.highlight), ('--focus', args.focus), ('--reveal', args.reveal), ('--json', args.json)]:
-                if enabled: followup.append(flag)
-            return run([*followup, *map(str, files)])
-        time.sleep(.08)
-    raise ValueError('Editor launched; its updated control interface is not yet available.')
+                    result['focus_unavailable'] = True
+            if args.reveal and not result.get('skipped'):
+                from desktop_launch import reveal_existing
+                if result.get('focus_unavailable'):
+                    raise ValueError('Editor opened the location, but its desktop window could not be identified.')
+                reveal_existing('workspace-editor', 'Editor — ' + selected[0]['name'])
+            if args.json or action in ('status', 'reload', 'reload-ui'):
+                print(json.dumps(dict(matches[0], **result)))
+            return 0
+        if args.if_open:
+            if args.json: print(json.dumps({'ok': True, 'skipped': 'not_open'}))
+            return 0
+        if action in ('status', 'reload', 'reload-ui', 'view'):
+            raise ValueError('No live editor matches. Use workspace-edit list and select --project/--session.')
+        from project_open import run as launch
+        session = session or secrets.token_hex(8)
+        command = ['--terminal', project]
+        if args.new:
+            command.append('--new')
+        if args.focus:
+            command.append('--focus')
+        if session:
+            command += ['--session', session]
+        command += ['--line', str(max(1, args.line)), '--column', str(max(1, args.column))]
+        for path in files:
+            command += ['--file', str(path)]
+        result = launch(command)
+        if result or not (args.highlight or args.top_line or args.focus or args.reveal or args.json):
+            return result
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            if any(r['session'] == session and r['project'] == project for r in live()):
+                followup = ['--project', project, '--session', session, '--line', str(args.line),
+                            '--column', str(args.column), '--end-line', str(args.end_line), '--top-line', str(args.top_line)]
+                for flag, enabled in [('--highlight', args.highlight), ('--focus', args.focus), ('--reveal', args.reveal), ('--json', args.json)]:
+                    if enabled: followup.append(flag)
+                return run([*followup, *map(str, files)], _locked=True)
+            time.sleep(.08)
+        raise ValueError('Editor launched; its updated control interface is not yet available.')
+
 
 
 if __name__ == '__main__':
