@@ -826,3 +826,10 @@ cloud request matching, notification payloads, protected setup, and preview
 artifact generation. Hosted delivery, GitHub plan permissions, and real Overleaf
 writes remain integration checks and should use disposable or explicitly chosen
 projects.
+
+### Build status for Editor and Reader
+
+Local builds publish atomic `output/ROOT.build.json` records with building,
+success, failed or idle state, the last successful PDF time, and the first
+compiler error location. Failed builds restore the previous valid PDF. Editor
+and Reader consume this local, ignored status; ordinary projects have no build UI.

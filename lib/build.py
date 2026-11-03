@@ -1,5 +1,6 @@
 """Canonical local PDF builds and continuous preview, independent of an IDE."""
 import argparse
+import json
 import fcntl
 import os
 import re
@@ -47,7 +48,45 @@ def compile_locked(command, out):
     # the lock while its child is still writing output.
     with (out / '.build.lock').open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        return subprocess.run(command, pass_fds=(lock.fileno(),)).returncode
+        source = Path(command[-1])
+        pdf = out / (source.stem + '.pdf')
+        state_file = out / (source.stem + '.build.json')
+        clean = '-C' in command
+        old_pdf = pdf.read_bytes() if pdf.is_file() else None
+        try:
+            previous = json.loads(state_file.read_text())
+        except (OSError, ValueError):
+            previous = {}
+        last_success = previous.get('last_success', pdf.stat().st_mtime if pdf.exists() else None)
+        def report(state, **extra):
+            value = dict(state=state, source=str(source), pdf=str(pdf), updated=time.time(),
+                         last_success=last_success, **extra)
+            pending = state_file.with_suffix('.json.tmp')
+            pending.write_text(json.dumps(value))
+            pending.replace(state_file)
+        report('building')
+        try:
+            status = subprocess.run(command, pass_fds=(lock.fileno(),)).returncode
+        except BaseException:
+            report('failed', error='Compilation interrupted')
+            raise
+        if status and not clean and old_pdf is not None:
+            pending = pdf.with_suffix('.pdf.last-good')
+            pending.write_bytes(old_pdf)
+            pending.replace(pdf)
+        if clean:
+            report('idle')
+        elif status:
+            log = out / (source.stem + '.log')
+            text = log.read_text(errors='replace') if log.exists() else ''
+            match = re.search(r'^(.+?\.tex):(\d+): (.+)$', text, re.M)
+            generic = re.search(r'^! (.+)$', text, re.M)
+            report('failed', error=match[3] if match else generic[1] if generic else 'Compilation failed; open the build log.',
+                   file=match[1] if match else str(source), line=int(match[2]) if match else 1)
+        else:
+            last_success = pdf.stat().st_mtime if pdf.exists() else None
+            report('success')
+        return status
 
 
 def watch(command, source, out):

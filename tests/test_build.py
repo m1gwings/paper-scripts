@@ -1,5 +1,6 @@
 """Real build/watch checks using disposable sources, with no project remotes."""
 import os
+import json
 from pathlib import Path
 import shutil
 import signal
@@ -31,6 +32,23 @@ class BuildTest(unittest.TestCase):
 
     def pdf_text(self, relative='output/main.pdf'):
         return subprocess.check_output(['pdftotext', str(self.root / relative), '-'], text=True)
+
+    def test_failed_build_retains_pdf_and_reports_error_then_recovers(self):
+        self.paper('build')
+        pdf = self.root / 'output/main.pdf'
+        previous = pdf.read_bytes()
+        (self.root / 'body.tex').write_text(r'Broken \undefinedcommand' + '\n')
+        self.paper('build', ok=False)
+        self.assertEqual(pdf.read_bytes(), previous)
+        state = json.loads((self.root / 'output/main.build.json').read_text())
+        self.assertEqual(state['state'], 'failed')
+        self.assertIn('Undefined control', state['error'])
+        self.assertEqual(state['file'], './body.tex')
+        self.assertEqual(state['line'], 1)
+        (self.root / 'body.tex').write_text('Recovered.\n')
+        self.paper('build')
+        self.assertIn('Recovered', self.pdf_text())
+        self.assertEqual(json.loads((self.root / 'output/main.build.json').read_text())['state'], 'success')
 
     def test_output_clean_and_alternative_root(self):
         self.paper('build')
