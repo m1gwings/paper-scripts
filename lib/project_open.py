@@ -130,7 +130,9 @@ def run(argv=None):
     def reader_for(identifier, arrange=True):
         if paper and not args.no_reader and ((directory / source).is_file() or pdf.is_file()):
             try:
-                result = open_pdf(pdf, directory, identifier, background=True)
+                # Opening a paper selects/reveals its manuscript. Reader's
+                # explicit focus flag is separate from background tab updates.
+                result = open_pdf(pdf, directory, identifier)
                 if (arrange and result and shutil.which('workspace-layout') and
                         os.environ.get('WORKSPACE_AUTO_LAYOUT', '1') != '0'):
                     layout = subprocess.run(['workspace-layout', '--apply', '--editor-title', f'Editor — {label}',

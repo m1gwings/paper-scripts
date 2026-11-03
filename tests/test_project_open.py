@@ -180,13 +180,30 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
         (self.project / 'main.tex').write_text('A source fixture.\n')
         self.launch('--terminal')
         viewer = json.loads(viewer_log.read_text())
-        self.assertIn('--background', viewer)
+        self.assertNotIn('--background', viewer)
+        self.assertNotIn('--focus', viewer)
         self.assertEqual(viewer[-1], str(self.project / 'output/main.pdf'))
         self.assertEqual(viewer[viewer.index('--project') + 1], str(self.project))
         records = list((self.root / 'runtime/project-workspaces').glob('*.json'))
         self.assertEqual(viewer[viewer.index('--session') + 1], json.loads(records[0].read_text())['id'])
         self.assertIn('--apply', json.loads(layout_log.read_text()))
         self.assertFalse((self.project / 'INJECTED').exists())
+
+        # Reusing an editor must select/reveal the manuscript too, with neither
+        # a second editor nor another build watcher.
+        session = viewer[viewer.index('--session') + 1]
+        endpoint = self.root / f'runtime/workspace-editors/{os.getpid()}-fixture'
+        endpoint.mkdir(parents=True)
+        (endpoint / 'record.json').write_text(json.dumps({'pid': os.getpid(), 'project': str(self.project),
+            'session': session, 'endpoint': str(endpoint), 'protocol': 1}))
+        self.log.unlink()
+        viewer_log.unlink()
+        (self.project / 'output').mkdir()
+        with (self.project / 'output/.main.watch.lock').open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            self.assertIn('Reused editor', self.launch('--terminal'))
+        self.assertFalse(self.log.exists())
+        self.assertEqual(json.loads(viewer_log.read_text()), viewer)
 
     def test_reused_standalone_editor_restores_only_a_missing_build_watcher(self):
         endpoint = self.root / f'runtime/workspace-editors/{os.getpid()}-fixture'

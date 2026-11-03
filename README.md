@@ -118,6 +118,8 @@ git config --global paper.editor vscode
 A repository-local `git config paper.editor terminal` overrides the global
 setting. `PAPER_EDITOR=terminal paper open` overrides both; explicit flags take
 precedence. No project files or remotes are changed when opening a repository.
+Terminal paper opens select and reveal the manuscript in Reader, including when
+reusing an existing workspace, while preserving desktop keyboard focus.
 
 For any directory, including projects without Git, use `project-open /path/to/project`.
 It defaults to the terminal workspace and also accepts `--vscode`. Terminal mode
