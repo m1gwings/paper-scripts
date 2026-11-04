@@ -22,6 +22,29 @@ spec.loader.exec_module(EDITOR)
 
 
 class WorkspaceTest(unittest.TestCase):
+    def test_editor_edit_validation_accepts_adjacent_unicode_ranges_and_rejects_overlap(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'edits.json'
+            first = {'start': {'line': 1, 'column': 1}, 'end': {'line': 1, 'column': 2}, 'text': 'α\nβ'}
+            second = {'start': {'line': 1, 'column': 2}, 'end': {'line': 1, 'column': 3}, 'text': ''}
+            path.write_text(json.dumps([first, second]))
+            self.assertEqual(EDITOR.load_edits(path), [first, second])
+            path.write_text(json.dumps([first, first]))
+            with self.assertRaisesRegex(ValueError, 'overlapping'):
+                EDITOR.load_edits(path)
+
+    def test_old_editor_cannot_receive_live_buffer_mutations(self):
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'edits.json'
+            path.write_text(json.dumps([{'start': {'line': 1, 'column': 1},
+                'end': {'line': 1, 'column': 1}, 'text': 'new'}]))
+            with patch.object(EDITOR, 'live', return_value=[dict(project=str(self.project), session='old', protocol=2)]), \
+                    patch.object(EDITOR, 'send') as send:
+                with self.assertRaisesRegex(ValueError, 'Reload Editor'):
+                    EDITOR.run(['apply', str(self.project / 'file.txt'), '--project', str(self.project),
+                        '--expected-version', 'a' * 64, '--edits-file', str(path)])
+                send.assert_not_called()
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix='workspace-control-')
         self.addCleanup(self.tmp.cleanup)

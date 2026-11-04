@@ -166,6 +166,25 @@ without taking desktop focus. Omit line coordinates to retain the file's cursor.
 
 Use `workspace-edit status FILE --json` for fresh open-buffer state: `modified`,
 `disk_changed`, read-only status, cursor/scroll position and a content `version`.
+
+`workspace-edit read FILE --json` reads the live buffer, including unsaved text,
+without selecting its tab. Add `--line N --end-line M` for an inclusive line range;
+the returned SHA256 `version` always covers the complete buffer.
+`workspace-edit apply FILE --expected-version HASH --edits-file edits.json` applies
+one atomic undoable change without saving or switching tabs. `--edits-file -`
+reads JSON from stdin. The array contains ordered, non-overlapping edits with
+one-based Unicode character positions and an exclusive end:
+
+```json
+[{"start":{"line":1,"column":1},"end":{"line":1,"column":4},"text":"Replacement"}]
+```
+
+The event-loop handler validates all ranges and the complete buffer version
+before changing anything. Changed versions, disk conflicts, read-only buffers
+and expired requests are rejected. Apply requires protocol 3 and native atomic
+undo support; old sessions remain intact and need a UI refresh/reopen first.
+Coordinate ownership with other users/agents before applying live edits.
+
 The personal Micro profile automatically reloads clean files after external edits,
 including inactive tabs. Unsaved buffers remain intact. `workspace-edit reload FILE`
 refuses to discard them; an explicitly authorized discard additionally requires
@@ -176,7 +195,7 @@ until reopened. `workspace-edit reload-ui --project ROOT --session ID` queues
 an in-place plugin/theme/syntax reload on the native editor event loop; document
 buffers and undo history remain in memory. The personal profile also reloads
 automatically when its installer publishes a complete runtime generation.
-Only explicit file/view/status/reload/reload-ui messages are accepted.
+Only explicit open/view/status/read/apply/reload/reload-ui messages are accepted.
 `project-open` and `paper open` also accept `--file`, `--line`, `--session`, and
 `--new`. `paper open --no-reader` leaves the reader launch disabled.
 New Editor windows preserve desktop focus by default; `--focus` requests an
