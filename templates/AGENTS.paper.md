@@ -14,19 +14,10 @@
 - Inspect the existing layout, notation, macros, and build instructions before editing.
 - Keep research knowledge (derivations, conjectures, examples, reusable proof audits) in `notes/`. Keep task management, checkpoints, and revision-specific verification in `tasks/`; link between them instead of duplicating content.
 - Preserve pre-existing user edits. Make the smallest change sufficient for correctness; avoid unrelated stylistic changes.
-- Preserve the proof strategy unless asked to redesign it. Do not silently strengthen assumptions or claims.
-- Check index ranges, stopping times, conditioning, constants, and parameter regimes explicitly. Distinguish conjectural, conditional, and proved claims.
-- Show the first derivation and the steps that explain the probabilistic or structural argument. Reuse established results rather than repeat routine calculations, following the statement-citation rule below. Specify any changed assumptions, indices, or parameters, and retain genuinely new reasoning.
 
 ## LaTeX and verification
 
 - Preserve existing notation, macros, labels, and references; do not expand custom macros or change labels without a structural need.
-- Use semantic label prefixes and `snake_case` identifiers, such as `eq:stopped_regret` or `lem:time_stopped_kl`; do not use spaces or hyphens in labels.
-- Introduce multiline displays with appropriate punctuation (normally a colon) and end them with punctuation fitting the surrounding sentence.
-- In a `cases` block, do not punctuate the individual branches; place punctuation only after the complete `cases` expression.
-- For integration with respect to the Lebesgue measure, write `\mathrm{d}\lambda(x)` rather than `\mathrm{d}x`.
-- Prefer compact multiline derivations rather than one equality per line.
-- In set-builder notation, use `\text{ s.t. }` rather than a colon.
 - Do not modify conference, journal, or presentation style files.
 - Do not add LaTeX packages unless necessary.
 
@@ -40,23 +31,11 @@
   required build, ignored output directory, and reuse of the existing watcher.
   Report compilation failures; a viewer may still show an older PDF.
 
-## Scientific writing and notation
+## Mathematical writing
 
-- When using another lemma, theorem, proposition, or corollary, cite its statement, never an equation inside its proof. If the statement has one equation, cite only the result. If it has several, cite the result together with the relevant equation number. State the applicable assumptions and any rearrangement. If a needed intermediate claim appears only in another proof, derive it locally or promote it to a stated result. References within the current proof, including signposts to its own statement, remain appropriate.
-- Avoid semicolons in prose unless they clearly express the connection better than a full stop or conjunction.
-- Integrate local manuscript edits with the surrounding text so the argument flows naturally. Check nearby sentences and paragraphs before adding text, and avoid repetitions, especially close together. In proofs, place each explanation beside the estimate or step it explains and avoid repeating roadmap goals or lemma introductions.
-- In big-O and related asymptotic notation, omit absorbed numerical constants and write explicit logarithms as `\log`, not `\ln`, since the base changes only an absorbed constant. Retain exact constants and bases in non-asymptotic inequalities when they affect the claim.
-- Define unfamiliar technical terms before use (aim at a second-year STEM reader),
-  prefer simple precise prose, and use established symbols where appropriate.
-- Preserve expressive notation and every index/parameter/argument. Introduce
-  shorthand only for materially long expressions, never merely to shorten
-  `\xi_{j,t}^{(p)} O_{j,t}^{(p)}`. Omitting dependencies requires explicit user
-  authorization separate from authorization for shorthand itself.
-- Avoid notation clashes. Separate multiple indices/labels with commas:
-  `X_{i,j}`, `X^{(p,q)}`. Use "implies" and "if and only if" in prose,
-  including pseudocode, rather than `\implies`, `\iff`, or similar symbols.
-  Inside formulas, prefer the abbreviation `\text{ iff }`, on the same line
-  as the preceding equation when it fits.
+- For prose, notation, proofs, and citations, follow the mathematical writing guide
+  linked from the active user's global instructions. Keep project-specific
+  conventions and document workflows here.
 
 ## Draft revisions and review
 

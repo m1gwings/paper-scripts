@@ -14,9 +14,6 @@
 - Inspect the existing layout, notation, macros, and build instructions before editing.
 - Keep research knowledge (derivations, conjectures, examples, reusable proof audits) in `notes/`. Keep task management, checkpoints, and revision-specific verification in `tasks/`; link between them instead of duplicating content.
 - Preserve pre-existing user edits. Make the smallest change sufficient for correctness; avoid unrelated stylistic changes.
-- Preserve the proof strategy unless asked to redesign it. Do not silently strengthen assumptions or claims.
-- Check index ranges, stopping times, conditioning, constants, and parameter regimes explicitly. Distinguish conjectural, conditional, and proved claims.
-- Prefer explicit algebraic derivations and compact inequality chains. For repeated calculations, cite the analogous argument and give the needed result.
 
 ## Slides LaTeX and verification (Beamer + TikZ)
 
@@ -97,19 +94,11 @@ Minimal two-column plain-frame pattern (requires TikZ; adapt the named safe area
   required build, ignored output directory, and reuse of the existing watcher.
   Report compilation failures; a viewer may still show an older PDF.
 
-## Scientific writing and notation
+## Mathematical writing
 
-- Define unfamiliar technical terms before use (aim at a second-year STEM reader),
-  prefer simple precise prose, and use established symbols where appropriate.
-- Preserve expressive notation and every index/parameter/argument. Introduce
-  shorthand only for materially long expressions, never merely to shorten
-  `\xi_{j,t}^{(p)} O_{j,t}^{(p)}`. Omitting dependencies requires explicit user
-  authorization separate from authorization for shorthand itself.
-- Avoid notation clashes. Separate multiple indices/labels with commas:
-  `X_{i,j}`, `X^{(p,q)}`. Use "implies" and "if and only if" in prose,
-  including pseudocode, rather than `\implies`, `\iff`, or similar symbols.
-  Inside formulas, prefer the abbreviation `\text{ iff }`, on the same line
-  as the preceding equation when it fits.
+- For prose, notation, proofs, and citations, follow the mathematical writing guide
+  linked from the active user's global instructions. Keep project-specific
+  conventions and document workflows here.
 
 ## Draft revisions and review
 
