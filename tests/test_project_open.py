@@ -13,6 +13,40 @@ SOURCE = Path(__file__).resolve().parents[1]
 
 
 class ProjectOpenTest(unittest.TestCase):
+    def test_personal_hook_runs_once_and_can_be_skipped(self):
+        config = self.root / 'config'
+        (config / 'project-open').mkdir(parents=True)
+        self.env['XDG_CONFIG_HOME'] = str(config)
+        hook = self.root / 'hook.py'
+        hook.write_text('import json,sys\nfrom pathlib import Path\n'
+                        f'p=Path({str(self.root / "hook.json")!r})\n'
+                        'p.write_text(json.dumps(sys.argv[1:]))\n')
+        (config / 'project-open/config.json').write_text(json.dumps(
+            {'post_open': [sys.executable, str(hook)]}))
+        result = subprocess.run([str(SOURCE / 'project-open'), str(self.project)],
+                                env=self.env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        args = json.loads((self.root / 'hook.json').read_text())
+        self.assertEqual(args.count('--session'), 1)
+        self.assertIn(str(self.project), args)
+        self.assertIn('--no-reader', args)
+        (self.root / 'hook.json').unlink()
+        result = subprocess.run([str(SOURCE / 'project-open'), '--no-post-open', str(self.project)],
+                                env=self.env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.root / 'hook.json').exists())
+
+    def test_failed_personal_hook_keeps_successful_open(self):
+        config = self.root / 'config'
+        (config / 'project-open').mkdir(parents=True)
+        self.env['XDG_CONFIG_HOME'] = str(config)
+        (config / 'project-open/config.json').write_text(json.dumps(
+            {'post_open': [sys.executable, '-c', 'import sys; sys.exit(7)']}))
+        result = subprocess.run([str(SOURCE / 'project-open'), str(self.project)],
+                                env=self.env, text=True, capture_output=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('placement hook incomplete', result.stderr)
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix='paper editor ')
         self.addCleanup(self.tmp.cleanup)

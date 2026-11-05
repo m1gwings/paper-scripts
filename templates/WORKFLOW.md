@@ -4,7 +4,7 @@ Use paper start NAME before isolated work, paper commit for local checkpoints,
 paper backup for GitHub backup, and paper publish only with user publication
 authorization (including existing standing authorization). Use paper sync from the base branch when returning to a machine.
 After publishing feature work, verify that the remaining non-base branches are
-integrated, then remove them with paper clear-feature-branches. Use paper commands
+integrated, then remove them with paper clear-feature-branches --all-merged. Use paper commands
 for lifecycle operations; raw Git is reserved for resolving conflicts or repairing
 the implementation. Never commit credentials.
 

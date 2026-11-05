@@ -2,7 +2,7 @@
 set -euo pipefail
 
 PROGRAM="paper"
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
 
 helper() {
     need python3
@@ -605,13 +605,12 @@ COMMANDS
       Requires typing its exact name.
       Never touches Overleaf.
 
-  paper clear-feature-branches
-      Delete ALL non-base branches locally and from GitHub.
-      Requires typing:
-
-          DELETE FEATURE BRANCHES
-
-      Never touches Overleaf.
+  paper clear-feature-branches [NAME ... | --all-merged] [--yes] [--dry-run]
+      With no selection, list branches without deleting anything.
+      Select exact names or --all-merged; both local and GitHub tips must
+      be merged into both base branches. Checked-out branches are retained.
+      Confirmation: DELETE MERGED BRANCHES (or --yes for the selection).
+      --dry-run only inspects. Never touches Overleaf.
 
   paper gitignore
       Create the standard paper .gitignore if none exists.
@@ -1127,60 +1126,7 @@ case "$CMD" in
     clear-feature-branches)
         no_git_operation
         clean
-
-        git switch "$BASE"
-
-        mapfile -t LOCAL < <(
-            git for-each-ref \
-                --format='%(refname:short)' \
-                refs/heads/ |
-            grep -Fxv "$BASE" || true
-        )
-
-        REMOTE_HEADS="$(git ls-remote --heads github)" \
-            || die "Could not read GitHub branches."
-
-        mapfile -t REMOTE < <(
-            printf '%s\n' "$REMOTE_HEADS" |
-            awk '{sub("refs/heads/", "", $2); print $2}' |
-            grep -Fxv "$BASE" |
-            sed '/^$/d' || true
-        )
-
-        mapfile -t ALL < <(
-            printf '%s\n' "${LOCAL[@]}" "${REMOTE[@]}" |
-            sed '/^$/d' |
-            sort -u
-        )
-
-        [[ ${#ALL[@]} -gt 0 ]] || {
-            echo "No feature branches found."
-            exit 0
-        }
-
-        echo
-        echo "The following non-base branches will be permanently deleted:"
-        printf '  %s\n' "${ALL[@]}"
-        echo
-        echo "Overleaf and '$BASE' will NOT be modified."
-        echo
-
-        read -r -p "Type 'DELETE FEATURE BRANCHES' to confirm: " CONFIRM
-
-        [[ "$CONFIRM" == "DELETE FEATURE BRANCHES" ]] || {
-            echo "Cancelled."
-            exit 0
-        }
-
-        for B in "${REMOTE[@]}"; do
-            git push github --delete "$B"
-        done
-
-        for B in "${LOCAL[@]}"; do
-            git branch -D "$B"
-        done
-
-        echo "All feature branches removed."
+        helper branches --base "$BASE" "$@"
         ;;
 
     gitignore)

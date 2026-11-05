@@ -95,7 +95,7 @@ paper; each paper is upgraded with `paper init`, reviewed, and committed.
 | `paper view [ROOT.tex]` | Build and open the current PDF in Reader, Evince, or the system viewer. |
 | `paper status [--verbose]` / `paper doctor` | Inspect manuscript synchronization, GitHub backup, configuration, and tools. Verbose status adds raw history counts. |
 | `paper abort` | Confirm and delete the current feature locally and on GitHub. Never touch the base or Overleaf. |
-| `paper clear-feature-branches` | Confirm and delete all non-base branches locally and on GitHub. |
+| `paper clear-feature-branches [NAME ... \| --all-merged] [--yes] [--dry-run]` | List by default; delete only the selected branches merged into both local/GitHub bases. |
 | `paper task status [--all]` / `paper task delete ID ...` | Inspect or recoverably remove task records. |
 | `paper open [--terminal \| --vscode]` | Open the repository in Kitty/Micro or VS Code; no remotes required. |
 
@@ -530,7 +530,7 @@ synchronizes again because collaborators may have edited Overleaf while the
 feature was in progress. Successful publication returns to the base branch and
 keeps the feature branch until it is explicitly cleaned up. After verifying
 that all listed non-base branches have been integrated, run
-`paper clear-feature-branches` to remove them locally and on GitHub.
+`paper clear-feature-branches --all-merged` to review and remove integrated branches locally and on GitHub. Exact names select a narrower set; `--yes` confirms that selection. Checked-out or unmerged branches are retained.
 
 ## Codex and cloud workflow
 
@@ -798,23 +798,50 @@ scope when that protection is unavailable.
 Protect the default branch and generated infrastructure. Anyone who can modify
 trusted workflow source or environment rules administers this boundary.
 
+## Optional personal post-open hook
+
+A user-level `~/.config/project-open/config.json` (respecting `XDG_CONFIG_HOME`)
+may contain `{"post_open": ["/absolute/executable", "fixed-argument"]}`.
+No commands are read from project configuration. After a successful terminal
+open or reuse, the launcher runs the hook once, without a shell, appending
+`--project ROOT --session ID --editor-title TITLE` and `--no-reader` for an
+Editor-only opening. The hook must preserve focus, target only the requested
+session and report partial placement. `--no-post-open` skips it for one opening.
+VS Code opening does not run this paired-workspace hook. A hook failure or timeout
+is reported without closing a successfully opened Editor. Portable installs have
+no hook and no machine-specific layout policy.
+
+## Feature cleanup safety
+
+With no selection, `paper clear-feature-branches` only lists eligibility.
+Exact branch names or `--all-merged` select deletion; `--dry-run` does not fetch
+or delete. Real deletion fetches GitHub first and checks **every local and remote
+tip** against both local and GitHub base branches. Missing objects, unmerged
+work, the base itself and branches checked out in any worktree are retained.
+The selection is checked again after confirmation. Remote deletions use an
+atomic push with exact deletion leases, so a concurrent update is preserved;
+no branch history is rewritten. Local removal uses `git branch -d`, never `-D`.
+Overleaf is neither fetched nor changed by this command.
+
 ## Installation
 
-The complete tooling checkout normally lives at `~/.local/bin`:
+Keep the source checkout in a project directory and install command links:
 
 ```bash
-git clone https://github.com/m1gwings/paper-scripts.git ~/.local/bin
-~/.local/bin/install.sh
+git clone https://github.com/m1gwings/paper-scripts.git ~/Projects/paper-scripts
+bash ~/Projects/paper-scripts/install.sh
 ```
 
 Keep `paper`, `lib/`, `templates/`, and `tests/` together. Copying
-only the `paper` executable is not a complete installation. `install.sh` checks
-dependencies and can add `~/.local/bin` to `PATH`; it does not install system
-packages.
+only the `paper` executable is not a complete installation. `install.sh` installs
+`paper`, `project-open`, `project-terminal`, and `workspace-edit` links in
+`~/.local/bin` (or `--bin-dir DIRECTORY`), preserving unrelated commands. Linked
+launchers resolve their source checkout. Add the bin directory to PATH yourself
+if needed; system packages and shell settings are not changed.
 
 Requirements:
 
-- Bash and Git for the local lifecycle;
+- Bash, Git and GNU `readlink` for the local lifecycle;
 - Python 3.9+ for initialization, editor launchers, tasks, notifications, and cloud support;
 - GitHub CLI (`gh`) for cloud dispatch and protected setup;
 - `latexmk` plus TeX for local builds;

@@ -8,6 +8,7 @@ import sys
 import tempfile
 import shlex
 import fcntl
+import json
 from project_metadata import metadata
 from project_workspace import prepare, register
 from viewer import open_pdf
@@ -38,6 +39,31 @@ KITTY_OVERRIDES = [
     'mouse_map shift+left triplepress grabbed',
     'window_border_width=2',
 ]
+
+
+def post_open(directory, identifier, label, no_reader=False):
+    """Run one optional user-level hook; never load commands from a project."""
+    config = Path(os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config') / 'project-open/config.json'
+    try:
+        if not config.is_file():
+            return
+        command = json.loads(config.read_text()).get('post_open', [])
+        if not command:
+            return
+        if not isinstance(command, list) or not all(isinstance(part, str) and part for part in command):
+            raise ValueError('post_open must be a nonempty command argument array')
+        result = subprocess.run([*command, '--project', str(directory), '--session', identifier,
+                                 '--editor-title', f'Editor — {label}',
+                                 *(['--no-reader'] if no_reader else [])],
+                                capture_output=True, text=True, timeout=20)
+        if result.stdout:
+            print(result.stdout, end='')
+        if result.returncode:
+            print('Project opened; placement hook incomplete: ' + result.stderr.strip(), file=sys.stderr)
+        elif result.stderr:
+            print(result.stderr, end='', file=sys.stderr)
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        print(f'Project opened; post-open hook unavailable: {error}', file=sys.stderr)
 
 
 def ensure_watcher(directory, source, identifier):
@@ -76,6 +102,7 @@ def run(argv=None):
     parser.add_argument('--session', help='explicit paired editor/reader workspace ID')
     parser.add_argument('--new', action='store_true', help='open an additional independent workspace')
     parser.add_argument('--no-reader', action='store_true', help='open only the editor/build workspace')
+    parser.add_argument('--no-post-open', action='store_true', help='skip the optional personal placement hook')
     parser.add_argument('--focus', action='store_true', help='explicitly activate the new editor window')
     if not paper:
         parser.add_argument('directory', nargs='?', default='.', help='project directory (default: current)')
@@ -151,6 +178,7 @@ def run(argv=None):
                     print(f'Editor reused; could not verify/start the build watcher: {error}', file=sys.stderr)
             reader_for(matches[0]['session'])
             print(f'Reused editor workspace {matches[0]["session"]}.')
+            if not args.no_post_open: post_open(directory, matches[0]['session'], label, args.no_reader or not paper)
             return 0
     session = 'new_tab ' + ('Paper' if paper else 'Editor') + '\n' + SESSION
     if args.file:
@@ -216,6 +244,7 @@ def run(argv=None):
         except subprocess.TimeoutExpired:
             reveal_editor()
             reader_for(workspace['id'])
+            if not args.no_post_open: post_open(directory, workspace['id'], label, args.no_reader or not paper)
             return 0
         if process.returncode:
             log.seek(0)
@@ -224,6 +253,7 @@ def run(argv=None):
         else:
             reveal_editor()
             reader_for(workspace['id'])
+            if not args.no_post_open: post_open(directory, workspace['id'], label, args.no_reader or not paper)
         return process.returncode
 
 

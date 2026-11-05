@@ -192,14 +192,59 @@ class WorkflowTest(unittest.TestCase):
         self.git('push', '-q', 'github', 'master:refs/heads/remote-feature')
 
         self.paper('clear-experiments', ok=False)
-        output = self.paper('clear-feature-branches',
-                            input_text='DELETE FEATURE BRANCHES\n')
+        plan = self.paper('clear-feature-branches')
+        self.assertIn('No branches deleted.', plan)
+        self.assertIn('local-feature', self.git('branch', '--list'))
+        output = self.paper('clear-feature-branches', '--all-merged',
+                            input_text='DELETE MERGED BRANCHES\n')
 
-        self.assertIn('All feature branches removed.', output)
+        self.assertIn('Selected merged branches removed.', output)
         self.assertEqual(self.git('for-each-ref', '--format=%(refname:short)',
                                   'refs/heads/'), 'master')
         self.assertEqual(self.git('for-each-ref', '--format=%(refname:short)',
                                   'refs/heads/', cwd=self.root / 'github'), 'master')
+
+    def test_cleanup_retains_unmerged_local_and_remote_tips(self):
+        self.git('switch', '-c', 'unmerged')
+        self.commit(self.repo, 'keep.tex', 'unfinished\n')
+        self.git('push', '-q', 'github', 'unmerged')
+        self.git('switch', 'master')
+        output = self.paper('clear-feature-branches', 'unmerged', '--yes', ok=False)
+        self.assertIn('not merged into both', output)
+        self.git('show-ref', '--verify', 'refs/heads/unmerged')
+        self.git('show-ref', '--verify', 'refs/heads/unmerged', cwd=self.root / 'github')
+
+    def test_cleanup_refuses_remote_work_hidden_by_merged_local_name(self):
+        self.git('branch', 'split')
+        self.git('switch', '-c', 'writer')
+        self.commit(self.repo, 'remote.tex', 'remote work\n')
+        self.git('push', '-q', 'github', 'writer:refs/heads/split')
+        self.git('switch', 'master')
+        self.paper('clear-feature-branches', 'split', '--yes', ok=False)
+        self.git('show-ref', '--verify', 'refs/heads/split', cwd=self.root / 'github')
+
+    def test_cleanup_refuses_branch_in_another_worktree_and_base(self):
+        self.git('branch', 'occupied')
+        self.git('worktree', 'add', '-q', str(self.root / 'worktree'), 'occupied')
+        self.paper('clear-feature-branches', 'occupied', '--yes', ok=False)
+        self.paper('clear-feature-branches', 'master', '--yes', ok=False)
+        self.git('show-ref', '--verify', 'refs/heads/occupied')
+
+    def test_cleanup_dry_run_and_cancel_do_not_delete(self):
+        self.git('branch', 'done')
+        self.git('push', '-q', 'github', 'done')
+        self.paper('clear-feature-branches', 'done', '--yes', '--dry-run')
+        self.paper('clear-feature-branches', 'done', input_text='no\n')
+        self.git('show-ref', '--verify', 'refs/heads/done')
+        self.git('show-ref', '--verify', 'refs/heads/done', cwd=self.root / 'github')
+
+    def test_cleanup_requires_integration_on_github_too(self):
+        self.git('switch', '-c', 'local-only')
+        self.commit(self.repo, 'only.tex', 'not backed up\n')
+        self.git('switch', 'master')
+        self.git('merge', '--ff-only', 'local-only')
+        self.paper('clear-feature-branches', 'local-only', '--yes', ok=False)
+        self.git('show-ref', '--verify', 'refs/heads/local-only')
 
 
 if __name__ == '__main__':
