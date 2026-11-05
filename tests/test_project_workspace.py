@@ -120,6 +120,23 @@ class WorkspaceTest(unittest.TestCase):
         self.assertEqual(send.call_args.kwargs['action'], 'reload-ui')
         self.assertFalse(send.call_args.kwargs['discard'])
 
+    def test_save_requires_fresh_version_and_advertised_support(self):
+        editor = dict(project=str(self.project), session=self.record['id'], protocol=3)
+        file = str(self.project / 'proof.tex')
+        with patch.object(EDITOR, 'live', return_value=[editor]), patch.object(EDITOR, 'send') as send:
+            with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+                EDITOR.run(['save', file])
+            with self.assertRaisesRegex(ValueError, 'Reload Editor UI'):
+                EDITOR.run(['save', file, '--expected-version', 'a' * 64])
+            send.assert_not_called()
+            editor['save_controls'] = True
+            send.return_value = {'ok': True}
+            with contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(EDITOR.run(['save', file, '--expected-version', 'a' * 64]), 0)
+            self.assertEqual(send.call_args.kwargs['action'], 'save')
+            self.assertEqual(send.call_args.kwargs['expected_version'], 'a' * 64)
+            self.assertFalse(send.call_args.kwargs['discard'])
+
     def test_terminal_toggle_retains_processes_and_restores_the_cached_split(self):
         tab = self.record['tabs'][0]
         tab.update(layout='fat', active_window=3, enabled_layouts=['fat:bias=74', 'stack'])

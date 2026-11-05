@@ -75,11 +75,11 @@ def send(record, path, line=0, column=1, *, action="open", end_line=0, top_line=
     endpoint = Path(record['endpoint'])
     name = secrets.token_hex(12)
     pending = endpoint / (name + '.pending')
-    if action not in ('open', 'view', 'status', 'reload', 'reload-ui', 'read', 'apply'):
+    if action not in ('open', 'view', 'status', 'reload', 'reload-ui', 'read', 'apply', 'save'):
         raise ValueError('Unsupported editor action.')
     fields = [action, path, line, column, end_line, top_line, int(highlight), int(if_open),
               int(if_clean), int(discard), expected_version]
-    if action in ('read', 'apply'):
+    if action in ('read', 'apply', 'save'):
         fields += [int(time.time() * 1000) + 4500, len(edits or [])]
     payload = ('\n'.join(map(str, fields)) + '\n').encode()
     for edit in edits or []:
@@ -148,7 +148,7 @@ def run(argv=None, _locked=False):
     parser.add_argument('--focus', action='store_true', help='also reveal the managed Kitty editor pane')
     parser.add_argument('--reveal', action='store_true', help='show the editor terminal tab without raising its desktop window')
     parser.add_argument('--discard', action='store_true', help='reload: explicitly discard the inspected buffer edits')
-    parser.add_argument('--expected-version', default='', help='reload/apply: complete buffer SHA256 returned by status/read')
+    parser.add_argument('--expected-version', default='', help='reload/apply/save: complete buffer SHA256 returned by status/read')
     parser.add_argument('--edits-file', help='apply: JSON array of start/end/text edits; - reads stdin')
     parser.add_argument('--new', action='store_true', help='open an independent editor window')
     parser.add_argument('--json', action='store_true')
@@ -161,18 +161,20 @@ def run(argv=None, _locked=False):
     if args.expected_version and (len(args.expected_version) != 64 or any(c not in 'abcdef0123456789' for c in args.expected_version)):
         parser.error('--expected-version must be the SHA256 returned by status.')
     action = 'open'
-    if args.paths and args.paths[0] in ('view', 'status', 'reload', 'reload-ui', 'read', 'apply'):
+    if args.paths and args.paths[0] in ('view', 'status', 'reload', 'reload-ui', 'read', 'apply', 'save'):
         action = args.paths.pop(0)
     if args.discard and action != 'reload':
         parser.error('--discard applies only to reload.')
-    if args.expected_version and action not in ('reload', 'apply'):
-        parser.error('--expected-version applies only to reload/apply.')
+    if args.expected_version and action not in ('reload', 'apply', 'save'):
+        parser.error('--expected-version applies only to reload/apply/save.')
     if (args.edits_file is not None) != (action == 'apply') or (action == 'apply' and not args.expected_version):
         parser.error('apply requires --edits-file and --expected-version; --edits-file applies only to apply.')
+    if action == 'save' and not args.expected_version:
+        parser.error('save requires --expected-version from a fresh status/read.')
     edits = load_edits(args.edits_file) if action == 'apply' else None
     if action == 'reload-ui' and args.paths:
         parser.error('reload-ui takes no document path.')
-    if action in ('reload', 'view', 'read', 'apply') and len(args.paths) != 1:
+    if action in ('reload', 'view', 'read', 'apply', 'save') and len(args.paths) != 1:
         parser.error(f'{action} requires exactly one file.')
     records = live()
     if args.paths == ['list']:
@@ -200,8 +202,10 @@ def run(argv=None, _locked=False):
         if len(matches) > 1 and not args.new:
             raise ValueError('Multiple editors match; select --session from workspace-edit list.')
         if matches and not args.new:
-            if action in ('read', 'apply') and matches[0].get('protocol', 1) < 3:
+            if action in ('read', 'apply', 'save') and matches[0].get('protocol', 1) < 3:
                 raise ValueError('Reload Editor UI or reopen it to enable live-buffer read/apply; current buffers are untouched.')
+            if action == 'save' and not matches[0].get('save_controls'):
+                raise ValueError('Reload Editor UI to enable version-checked saves; current buffers are untouched.')
             modern = action != 'open' or args.if_open or args.if_clean or args.highlight or args.top_line or args.end_line
             if modern and matches[0].get('protocol', 1) < 2:
                 if args.if_open:
@@ -232,13 +236,13 @@ def run(argv=None, _locked=False):
                 if result.get('focus_unavailable'):
                     raise ValueError('Editor opened the location, but its desktop window could not be identified.')
                 reveal_existing('workspace-editor', 'Editor — ' + selected[0]['name'])
-            if args.json or action in ('status', 'reload', 'reload-ui', 'read', 'apply'):
+            if args.json or action in ('status', 'reload', 'reload-ui', 'read', 'apply', 'save'):
                 print(json.dumps(dict(matches[0], **result)))
             return 0
         if args.if_open:
             if args.json: print(json.dumps({'ok': True, 'skipped': 'not_open'}))
             return 0
-        if action in ('status', 'reload', 'reload-ui', 'view', 'read', 'apply'):
+        if action in ('status', 'reload', 'reload-ui', 'view', 'read', 'apply', 'save'):
             raise ValueError('No live editor matches. Use workspace-edit list and select --project/--session.')
         from project_open import run as launch
         session = session or secrets.token_hex(8)

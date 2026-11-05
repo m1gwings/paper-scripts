@@ -85,19 +85,42 @@ record_sync_base() {
 }
 
 known_sync_base() {
-    local remote="$1" exported
+    local remote="$1" exported source
     SYNC_SOURCE="$(git rev-parse --verify "refs/paper-sync/$BASE/source" 2>/dev/null || true)"
     SYNC_OVERLEAF="$(git rev-parse --verify "refs/paper-sync/$BASE/overleaf" 2>/dev/null || true)"
-    if [[ -z "$SYNC_SOURCE" || -z "$SYNC_OVERLEAF" ]]; then
-        exported="$(git log -1 --format='%H%n%B' --grep='^Paper-source: ' "$remote")"
-        SYNC_OVERLEAF="${exported%%$'\n'*}"
-        SYNC_SOURCE="$(printf '%s\n' "$exported" | sed -n 's/^Paper-source: //p' | head -n1)"
-    fi
-    [[ -n "$SYNC_SOURCE" && -n "$SYNC_OVERLEAF" ]] \
+    if ! { [[ -n "$SYNC_SOURCE" && -n "$SYNC_OVERLEAF" ]] \
         && git cat-file -e "$SYNC_SOURCE^{commit}" 2>/dev/null \
         && git merge-base --is-ancestor "$SYNC_SOURCE" "$BASE" \
         && git merge-base --is-ancestor "$SYNC_OVERLEAF" "$remote" \
-        && helper overleaf_content equal "$SYNC_SOURCE" "$SYNC_OVERLEAF"
+        && helper overleaf_content equal "$SYNC_SOURCE" "$SYNC_OVERLEAF"; }; then
+        SYNC_SOURCE=""
+        SYNC_OVERLEAF=""
+    fi
+    # Local refs can lag behind publications made from another checkout. Prefer
+    # the newest verified export, including when cached refs already exist.
+    while IFS= read -r exported; do
+        source="$(git show -s --format='%B' "$exported" | sed -n 's/^Paper-source: //p' | head -n1)"
+        if [[ "$source" =~ ^[0-9a-f]{40}$ ]] \
+            && git cat-file -e "$source^{commit}" 2>/dev/null \
+            && git merge-base --is-ancestor "$source" "$BASE" \
+            && helper overleaf_content equal "$source" "$exported"; then
+            if [[ -z "$SYNC_OVERLEAF" ]] \
+                || ! git merge-base --is-ancestor "$exported" "$SYNC_OVERLEAF"; then
+                SYNC_SOURCE="$source"
+                SYNC_OVERLEAF="$exported"
+            fi
+            break
+        fi
+    done < <(git log --first-parent --format='%H' --grep='^Paper-source: ' "$remote")
+    if [[ -n "$SYNC_SOURCE" && -n "$SYNC_OVERLEAF" ]] \
+        && git cat-file -e "$SYNC_SOURCE^{commit}" 2>/dev/null \
+        && git merge-base --is-ancestor "$SYNC_SOURCE" "$BASE" \
+        && git merge-base --is-ancestor "$SYNC_OVERLEAF" "$remote" \
+        && helper overleaf_content equal "$SYNC_SOURCE" "$SYNC_OVERLEAF"; then
+        record_sync_base "$SYNC_SOURCE" "$SYNC_OVERLEAF"
+        return 0
+    fi
+    return 1
 }
 
 # Fetch both authorities before changing any local branch. Preserve published

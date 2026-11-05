@@ -83,6 +83,55 @@ class FilteredWorkflowTest(unittest.TestCase):
         self.assertEqual(self.git('rev-parse', 'master', cwd=self.root / 'overleaf'), previous)
         self.assertTrue((self.repo / 'tasks/record.md').exists())
 
+    def publish_from_another_checkout(self):
+        self.enable()
+        self.paper('publish')
+        original = self.repo
+        writer = self.root / 'second-checkout'
+        self.git('clone', '-q', str(self.root / 'github'), str(writer))
+        self.repo = writer
+        self.git('remote', 'rename', 'origin', 'github')
+        self.git('remote', 'add', 'overleaf', str(self.root / 'overleaf'))
+        self.git('fetch', 'overleaf')
+        self.git('symbolic-ref', 'refs/remotes/overleaf/HEAD', 'refs/remotes/overleaf/master')
+        self.commit(writer, 'main.tex', 'published from another checkout\n')
+        self.paper('publish')
+        self.repo = original
+
+    def test_existing_stale_sync_refs_do_not_reimport_other_checkout_publication(self):
+        self.publish_from_another_checkout()
+        self.paper('sync')
+        self.assertEqual((self.repo / 'main.tex').read_text(), 'published from another checkout\n')
+        self.assertEqual(self.git('rev-parse', 'refs/paper-sync/master/overleaf'),
+                         self.git('rev-parse', 'overleaf/master'))
+        before = self.git('rev-parse', 'HEAD')
+        self.commit(self.repo, 'main.tex', 'new local revision\n')
+        self.paper('publish')
+        self.assertEqual((self.repo / 'main.tex').read_text(), 'new local revision\n')
+        self.assertNotIn('Import Overleaf', self.git('log', '--format=%s', before + '..HEAD'))
+        self.assertEqual(self.git('status', '--porcelain'), '')
+
+    def test_stale_sync_refs_still_import_genuine_edits_after_new_export(self):
+        self.publish_from_another_checkout()
+        self.remote_commit('overleaf', 'coauthor.tex', 'genuine remote edit\n')
+        self.paper('sync')
+        self.assertEqual((self.repo / 'main.tex').read_text(), 'published from another checkout\n')
+        self.assertEqual((self.repo / 'coauthor.tex').read_text(), 'genuine remote edit\n')
+        self.assertEqual(self.git('status', '--porcelain'), '')
+
+    def test_stale_sync_refs_do_not_hide_a_genuine_conflict(self):
+        self.publish_from_another_checkout()
+        stale = {name: self.git('rev-parse', 'refs/paper-sync/master/' + name)
+                 for name in ('source', 'overleaf')}
+        self.paper('sync')
+        for name, oid in stale.items():
+            self.git('update-ref', 'refs/paper-sync/master/' + name, oid)
+        self.commit(self.repo, 'main.tex', 'new local revision\n')
+        remote = self.remote_commit('overleaf', 'main.tex', 'new coauthor revision\n')
+        self.paper('publish', ok=False)
+        self.assertEqual(self.git('rev-parse', 'master', cwd=self.root / 'overleaf'), remote)
+        self.assertIn('<<<<<<<', (self.repo / 'main.tex').read_text())
+
     def test_first_import_ignores_remote_metadata_deletion(self):
         self.enable()
         self.git('push', 'overleaf', 'master')

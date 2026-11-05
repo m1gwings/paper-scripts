@@ -185,6 +185,13 @@ and expired requests are rejected. Apply requires protocol 3 and native atomic
 undo support; old sessions remain intact and need a UI refresh/reopen first.
 Coordinate ownership with other users/agents before applying live edits.
 
+`workspace-edit save FILE --expected-version HASH` saves the inspected live
+buffer through Editor, clearing its modified indicator and preserving undo,
+cursor, tab and focus. It rejects a changed buffer, read-only file, expired
+request or conflicting disk contents. A disk copy identical to the buffer can
+be acknowledged safely. Use this after authorized edits instead of writing a
+live buffer to disk externally. Older sessions need `reload-ui` first.
+
 The personal Micro profile automatically reloads clean files after external edits,
 including inactive tabs. Unsaved buffers remain intact. `workspace-edit reload FILE`
 refuses to discard them; an explicitly authorized discard additionally requires
@@ -585,8 +592,9 @@ creates a new commit on Overleaf's fetched tip with exactly the verified base
 file tree. GitHub keeps the full history and metadata; Overleaf contains only the configured manuscript export.
 Their commit IDs may legitimately differ. `paper status` reports committed-file alignment separately from commit-history differences; uncommitted edits are listed by Git status. Repeating publication with equal
 contents creates no extra Overleaf commit. Local `refs/paper-sync/` records the
-last synchronized manuscript trees; exported `Paper-source` trailers recover that base in a
-fresh clone. Later coauthor changes are merged against this content base, so
+last synchronized manuscript trees; verified `Paper-source` trailers recover that
+base in a fresh clone and supersede stale local markers after another checkout
+publishes. Later coauthor changes are merged against this content base, so
 already-published edits are not replayed from an older history ancestor.
 
 Safety properties:
