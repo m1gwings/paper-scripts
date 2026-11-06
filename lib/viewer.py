@@ -27,7 +27,14 @@ def open_pdf(pdf, project=None, session=None, background=False):
         subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                          stderr=subprocess.DEVNULL, start_new_session=True)
         return
-    result = subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=12)
+    # Reader may need to restore its session, load the first document, and wait
+    # for the compositor's passive reveal. Keep this outside its startup budget.
+    result = subprocess.run(command, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=30)
+    try:
+        state = json.loads(result.stdout)
+    except ValueError:
+        state = {}
     if result.returncode:
-        raise ValueError(result.stderr.strip() or 'Cannot open PDF reader.')
-    return json.loads(result.stdout) if Path(viewer).name == 'workspace-read' else None
+        error = state.get('error') if isinstance(state, dict) else None
+        raise ValueError(error or result.stderr.strip() or 'Cannot open PDF reader.')
+    return json.loads(result.stdout)
