@@ -82,6 +82,55 @@ def ensure_watcher(directory, source, identifier):
                    check=True, capture_output=True, text=True, timeout=10)
 
 
+def resolve_target(target, paper, parser):
+    """Resolve an explicit directory path, fuzzy query/alias, or default directory."""
+    if target:
+        cand = Path(target).expanduser()
+        if cand.is_dir():
+            directory = cand.resolve()
+        else:
+            wp = shutil.which('workspace-project')
+            if wp:
+                res = subprocess.run([wp, 'resolve', target, '--touch', '--json'],
+                                     capture_output=True, text=True)
+                if res.returncode == 0:
+                    try:
+                        info = json.loads(res.stdout)
+                        directory = Path(info['resolved_path'])
+                        if not directory.is_dir():
+                            parser.error(f"Matched project path does not exist: {directory}")
+                        print(f"Matched {info['name']} ({directory})")
+                    except Exception as e:
+                        parser.error(f"Error parsing workspace-project result: {e}")
+                elif res.returncode == 2:
+                    parser.error(res.stderr.strip() or f"Ambiguous query '{target}'.")
+                else:
+                    parser.error(f"Not a directory and no matching project found for '{target}'.")
+            else:
+                parser.error(f"Not a directory: {target}")
+    else:
+        if paper:
+            directory = Path.cwd()
+        else:
+            directory = Path('.').expanduser().resolve()
+
+    if paper:
+        if not shutil.which('git'):
+            parser.error("Required command 'git' is not installed.")
+        result = subprocess.run(['git', '-C', str(directory), 'rev-parse', '--show-toplevel'],
+                                text=True, capture_output=True)
+        if result.returncode:
+            parser.error(f'Not inside a Git repository: {directory}')
+        # Git adds one trailing newline. Preserve whitespace in the directory name.
+        directory = Path(result.stdout.removesuffix('\n'))
+
+    wp = shutil.which('workspace-project')
+    if wp:
+        subprocess.run([wp, 'touch', str(directory)], capture_output=True)
+
+    return directory
+
+
 def run(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     paper = bool(argv and argv[0] == '--paper')
@@ -104,30 +153,39 @@ def run(argv=None):
     parser.add_argument('--no-reader', action='store_true', help='open only the editor/build workspace')
     parser.add_argument('--no-post-open', action='store_true', help='skip the optional personal placement hook')
     parser.add_argument('--focus', action='store_true', help='explicitly activate the new editor window')
-    if not paper:
-        parser.add_argument('directory', nargs='?', default='.', help='project directory (default: current)')
+    parser.add_argument('--hot', action='store_true', help='list hot projects from registry cache')
+    parser.add_argument('--list', action='store_true', help='list all projects in registry')
+    parser.add_argument('directory', nargs='?', default=None, help='project directory, ID, or alias (default: current)')
     args = parser.parse_args(argv)
 
+    if args.hot:
+        wp = shutil.which('workspace-project')
+        if wp:
+            return subprocess.run([wp, 'hot']).returncode
+        sys.stderr.write("workspace-project tool not found.\n")
+        return 1
+
+    if args.list:
+        wp = shutil.which('workspace-project')
+        if wp:
+            return subprocess.run([wp, 'list']).returncode
+        sys.stderr.write("workspace-project tool not found.\n")
+        return 1
+
+    directory = resolve_target(args.directory, paper, parser)
+
     if paper:
-        if not shutil.which('git'):
-            parser.error("Required command 'git' is not installed.")
-        result = subprocess.run(['git', 'rev-parse', '--show-toplevel'],
-                                text=True, capture_output=True)
-        if result.returncode:
-            parser.error('Not inside a Git repository.')
-        # Git adds one trailing newline. Preserve whitespace in the directory name.
-        directory = Path(result.stdout.removesuffix('\n'))
         configured = ''
         if not args.editor and not os.environ.get('PAPER_EDITOR'):
             result = subprocess.run(['git', 'config', '--get', 'paper.editor'],
-                                    text=True, capture_output=True)
+                                    cwd=str(directory), text=True, capture_output=True)
             if result.returncode not in (0, 1):
                 parser.error(result.stderr.strip() or 'Cannot read paper.editor.')
             configured = result.stdout.strip()
         editor = args.editor or os.environ.get('PAPER_EDITOR') or configured or 'vscode'
     else:
-        directory = Path(args.directory).expanduser().resolve()
         editor = args.editor or 'terminal'
+
     if not directory.is_dir():
         parser.error(f'Not a directory: {directory}')
     if editor not in ('terminal', 'vscode'):

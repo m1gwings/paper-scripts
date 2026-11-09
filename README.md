@@ -97,7 +97,7 @@ paper; each paper is upgraded with `paper init`, reviewed, and committed.
 | `paper abort` | Confirm and delete the current feature locally and on GitHub. Never touch the base or Overleaf. |
 | `paper clear-feature-branches [NAME ... \| --all-merged] [--yes] [--dry-run]` | List by default; delete only the selected branches merged into both local/GitHub bases. |
 | `paper task status [--all]` / `paper task delete ID ...` | Inspect or recoverably remove task records. |
-| `paper open [--terminal \| --vscode]` | Open the repository in Kitty/Micro or VS Code; no remotes required. |
+| `paper open [DIRECTORY | ALIAS] [--terminal \| --vscode]` | Open a paper repository in Kitty/Micro or VS Code; supports directory paths, aliases, and `--hot`/`--list`. |
 
 Run `paper help` for the complete command reference and `paper examples` for
 compact workflows.
@@ -110,6 +110,9 @@ Select an editor explicitly, or change the personal default:
 
 ```bash
 paper open --terminal                 # Editor + build watcher + external Reader
+paper open "journal extension"        # Resolves registered project alias directly
+paper open /path/to/paper             # Opens target paper repository from anywhere
+paper open --hot                      # Lists recent hot projects from LRU cache
 paper open --vscode                   # VS Code in a new window
 git config --global paper.editor terminal
 git config --global paper.editor vscode
@@ -121,9 +124,9 @@ precedence. No project files or remotes are changed when opening a repository.
 Terminal paper opens select and reveal the manuscript in Reader, including when
 reusing an existing workspace, while preserving desktop keyboard focus.
 
-For any directory, including projects without Git, use `project-open /path/to/project`.
-It defaults to the terminal workspace and also accepts `--vscode`. Terminal mode
-requires Kitty and Micro on `PATH`; VS Code mode requires `code`. Install these
+For any directory, including projects without Git, use `project-open [DIRECTORY | ALIAS]`.
+It defaults to the terminal workspace and also accepts `--vscode`, `--hot`, and `--list`.
+Terminal mode requires Kitty and Micro on `PATH`; VS Code mode requires `code`. Install these
 separately. Micro's optional Filemanager2 plugin provides a project file tree;
 enable `filemanager2.openonstart` in Micro's settings to show it at launch.
 

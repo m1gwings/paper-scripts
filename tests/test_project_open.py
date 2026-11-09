@@ -263,6 +263,37 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
             self.launch('--terminal', '--no-reader')
             self.assertFalse(log.exists())  # Existing watcher remains the only one.
 
+    def test_paper_open_with_directory_argument_from_outside_repo(self):
+        output = self.launch(str(self.project), cwd=self.root)
+        self.assertEqual(self.record()['args'], ['--new-window', str(self.project)])
+
+    def test_paper_open_with_workspace_project_alias(self):
+        wp = self.bin / 'workspace-project'
+        wp.write_text(f'#!{sys.executable}\n' + '''import json, sys
+if sys.argv[1] == 'resolve' and sys.argv[2] == 'my-alias':
+    import os
+    print(json.dumps({'id': 'test-proj', 'name': 'Test Paper', 'resolved_path': os.environ['LAUNCH_TARGET'], 'launcher': 'paper open'}))
+    sys.exit(0)
+sys.exit(1)
+''')
+        wp.chmod(0o755)
+        env = dict(self.env, LAUNCH_TARGET=str(self.project))
+        output = self.launch('my-alias', cwd=self.root, env=env)
+        self.assertIn('Matched Test Paper', output)
+        self.assertEqual(self.record()['args'], ['--new-window', str(self.project)])
+
+    def test_paper_open_hot_delegates_to_workspace_project(self):
+        wp = self.bin / 'workspace-project'
+        wp.write_text(f'#!{sys.executable}\n' + '''import sys
+if sys.argv[1] == 'hot':
+    print("MOCK HOT PROJECTS LIST")
+    sys.exit(0)
+sys.exit(1)
+''')
+        wp.chmod(0o755)
+        output = self.launch('--hot', cwd=self.root)
+        self.assertIn('MOCK HOT PROJECTS LIST', output)
+
 
 if __name__ == '__main__':
     unittest.main()
