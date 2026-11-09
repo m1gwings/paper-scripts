@@ -53,7 +53,9 @@ class MacroCompilationTest(unittest.TestCase):
 \usepackage{hyperref}
 \makeatletter
 \@ifundefined{AgentsIns}{\errmessage{Agent API missing}}{}
-\@ifundefined{CodexIns}{}{\errmessage{Obsolete Codex API leaked}}
+\@ifundefined{CodexIns}{\errmessage{Codex API missing}}{}
+\@ifundefined{GeminiIns}{\errmessage{Gemini API missing}}{}
+\@ifundefined{ClaudeIns}{\errmessage{Claude API missing}}{}
 \@ifundefined{CMInline}{}{\errmessage{Obsolete Inline API leaked}}
 \@ifundefined{AgentDelBlock}{}{\errmessage{Obsolete deletion API leaked}}
 \@ifundefined{CMDelBlock}{}{\errmessage{Obsolete deletion API leaked}}
@@ -69,7 +71,9 @@ class MacroCompilationTest(unittest.TestCase):
 \section{Test}\label{sec:test}
 \AgentsDel{DELETEDWORD \ref{sec:test} \citep{example}}
 \AgentsIns{INSERTEDWORD}
-\par\AgentIns{COMPATADD} \AgentDel{COMPATDROP}\par
+\par\GeminiIns{GEMINIINSERTED} \GeminiDel{GEMINIDELETED}\par
+\CodexIns{CODEXINSERTED} \CodexDel{CODEXDELETED}\par
+\AgentIns{COMPATADD} \AgentDel{COMPATDROP}\par
 \CMIns{Author insertion.}\MMDel{Author deletion.}
 $\Reals,\Reals[0],\Prob(A),\vec{x},\norm*{x},\AgentsDel{x^2}\AgentsIns{y^2}$.
 \wp a statement.
@@ -103,6 +107,10 @@ $\Reals,\Reals[0],\Prob(A),\vec{x},\norm*{x},\AgentsDel{x^2}\AgentsIns{y^2}$.
                     text = self.compile(root)
                     self.assertEqual('INSERTEDWORD' in text, mode != 'reverted')
                     self.assertEqual('DELETEDWORD' in text, mode != 'applied')
+                    self.assertEqual('GEMINIINSERTED' in text, mode != 'reverted')
+                    self.assertEqual('GEMINIDELETED' in text, mode != 'applied')
+                    self.assertEqual('CODEXINSERTED' in text, mode != 'reverted')
+                    self.assertEqual('CODEXDELETED' in text, mode != 'applied')
                     self.assertEqual('COMPATADD' in text, mode != 'reverted')
                     self.assertEqual('COMPATDROP' in text, mode != 'applied')
                     self.assertEqual('PARAGRAPHOLD' in text, mode != 'applied')
@@ -188,7 +196,7 @@ class PaletteTest(unittest.TestCase):
     def test_review_colors_have_readable_contrast_on_white(self):
         colors = re.findall(r'\\DeclarePaperAuthor\{[^}]+\}\{[^}]+\}\{[^}]+\}\{([0-9A-F]{6})\}',
                             PACKAGE.read_text())
-        self.assertEqual(len(colors), 7)
+        self.assertEqual(len(colors), 10)
         def linear(channel):
             channel /= 255
             return channel / 12.92 if channel <= .04045 else ((channel + .055) / 1.055) ** 2.4

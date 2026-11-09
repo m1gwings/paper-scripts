@@ -62,9 +62,9 @@
   `\CommentsReverted` restores them and hides insertions. Preserve the project's
   selected mode; draft review uses visible mode. A clean rendering does not accept
   revisions. Permanent acceptance/rejection requires user authorization.
-- "Finalize the Agent/Codex/Claude edits" means accept the reviewed revisions in
+- "Finalize the Agent/Codex/Claude/Gemini edits" means accept the reviewed revisions in
   source, regardless of agent name. In the authorized scope, delete each
-  `\AgentsDel{old}` with its entire contents; unwrap `\AgentsIns{new}`, removing only the surrounding insertion command/braces.
+  `\AgentsDel{old}`, `\GeminiDel{old}`, or `\CodexDel{old}` with its entire contents; unwrap `\AgentsIns{new}`, `\GeminiIns{new}`, `\CodexIns{new}`, removing only the surrounding insertion command/braces.
   For `\AgentsReplaceMath{old}{new}`, keep only `new`; apply equivalent semantics
   to legacy `Del`/`Ins`/`Inline` commands. Preserve nested LaTeX, unrelated markup,
   and comments outside scope; switching mode or color is not finalization.
