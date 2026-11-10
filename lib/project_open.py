@@ -84,6 +84,7 @@ def ensure_watcher(directory, source, identifier):
 
 def resolve_target(target, paper, parser):
     """Resolve an explicit directory path, fuzzy query/alias, or default directory."""
+    touched = False
     if target:
         cand = Path(target).expanduser()
         if cand.is_dir():
@@ -100,6 +101,7 @@ def resolve_target(target, paper, parser):
                         if not directory.is_dir():
                             parser.error(f"Matched project path does not exist: {directory}")
                         print(f"Matched {info['name']} ({directory})")
+                        touched = True
                     except Exception as e:
                         parser.error(f"Error parsing workspace-project result: {e}")
                 elif res.returncode == 2:
@@ -124,9 +126,10 @@ def resolve_target(target, paper, parser):
         # Git adds one trailing newline. Preserve whitespace in the directory name.
         directory = Path(result.stdout.removesuffix('\n'))
 
-    wp = shutil.which('workspace-project')
-    if wp:
-        subprocess.run([wp, 'touch', str(directory)], capture_output=True)
+    if not touched:
+        wp = shutil.which('workspace-project')
+        if wp:
+            subprocess.run([wp, 'touch', str(directory)], capture_output=True)
 
     return directory
 
