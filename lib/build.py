@@ -12,6 +12,12 @@ import sys
 from viewer import open_pdf
 
 
+def is_valid_pdf(data):
+    if not data or len(data) < 100:
+        return False
+    return b'%PDF-' in data[:1024] and b'%%EOF' in data[-2048:]
+
+
 def file_stamp(path):
     try:
         info = path.stat()
@@ -51,13 +57,29 @@ def compile_locked(command, out):
         source = Path(command[-1])
         pdf = out / (source.stem + '.pdf')
         state_file = out / (source.stem + '.build.json')
+        last_good = pdf.with_suffix('.pdf.last-good')
         clean = '-C' in command
         old_pdf = pdf.read_bytes() if pdf.is_file() else None
+        old_mtime = pdf.stat().st_mtime_ns if pdf.is_file() else None
+        if old_pdf and not is_valid_pdf(old_pdf):
+            if last_good.is_file() and is_valid_pdf(last_good.read_bytes()):
+                old_pdf = last_good.read_bytes()
+                old_mtime = last_good.stat().st_mtime_ns
+            else:
+                old_pdf = None
+                old_mtime = None
+        elif old_pdf and is_valid_pdf(old_pdf):
+            try:
+                pending_lg = last_good.with_suffix('.tmp')
+                pending_lg.write_bytes(old_pdf)
+                pending_lg.replace(last_good)
+            except OSError:
+                pass
         try:
             previous = json.loads(state_file.read_text())
         except (OSError, ValueError):
             previous = {}
-        last_success = previous.get('last_success', pdf.stat().st_mtime if pdf.exists() else None)
+        last_success = previous.get('last_success', pdf.stat().st_mtime if pdf.exists() and is_valid_pdf(old_pdf) else None)
         def report(state, **extra):
             value = dict(state=state, source=str(source), pdf=str(pdf), updated=time.time(),
                          last_success=last_success, **extra)
@@ -71,9 +93,23 @@ def compile_locked(command, out):
             report('failed', error='Compilation interrupted')
             raise
         if status and not clean and old_pdf is not None:
-            pending = pdf.with_suffix('.pdf.last-good')
+            pending = pdf.with_suffix('.pdf.tmp')
             pending.write_bytes(old_pdf)
             pending.replace(pdf)
+            if old_mtime is not None:
+                try:
+                    os.utime(pdf, ns=(old_mtime, old_mtime))
+                except OSError:
+                    pass
+        elif not status and not clean and pdf.is_file():
+            new_data = pdf.read_bytes()
+            if is_valid_pdf(new_data):
+                try:
+                    pending_lg = last_good.with_suffix('.tmp')
+                    pending_lg.write_bytes(new_data)
+                    pending_lg.replace(last_good)
+                except OSError:
+                    pass
         if clean:
             report('idle')
         elif status:

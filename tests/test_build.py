@@ -50,6 +50,20 @@ class BuildTest(unittest.TestCase):
         self.assertIn('Recovered', self.pdf_text())
         self.assertEqual(json.loads((self.root / 'output/main.build.json').read_text())['state'], 'success')
 
+    def test_corrupt_pdf_is_not_retained_as_last_good(self):
+        pdf = self.root / 'output/main.pdf'
+        (self.root / 'output').mkdir(exist_ok=True)
+        pdf.write_bytes(b'%PDF-1.5 truncated stub without EOF')
+        (self.root / 'body.tex').write_text(r'Broken \undefinedcommand' + '\n')
+        self.paper('build', ok=False)
+        self.assertEqual(pdf.read_bytes(), b'%PDF-1.5 truncated stub without EOF')
+        (self.root / 'body.tex').write_text('Valid version.\n')
+        self.paper('build')
+        self.assertIn('Valid version', self.pdf_text())
+        last_good = (self.root / 'output/main.pdf.last-good').read_bytes()
+        self.assertIn(b'%PDF-', last_good)
+        self.assertIn(b'%%EOF', last_good[-2048:])
+
     def test_output_clean_and_alternative_root(self):
         self.paper('build')
         self.assertIn('First version', self.pdf_text())
