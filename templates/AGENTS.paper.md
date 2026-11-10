@@ -14,6 +14,7 @@
 - Inspect the existing layout, notation, macros, and build instructions before editing.
 - Keep research knowledge (derivations, conjectures, examples, reusable proof audits) in `notes/`. Keep task management, checkpoints, and revision-specific verification in `tasks/`; link between them instead of duplicating content.
 - Preserve pre-existing user edits. Make the smallest change sufficient for correctness; avoid unrelated stylistic changes.
+- Track all manuscript modifications across all files (main text, appendices, algorithms, tables, checklists) using `\AgentsIns{new}`, `\AgentsDel{old}`, and `\AgentsReplaceMath{old}{new}` by default (see *Draft revisions and review* below).
 
 ## LaTeX and verification
 
