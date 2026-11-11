@@ -164,7 +164,9 @@ An unambiguous existing editor is reused and preserves unsaved buffers. Use
 `workspace-edit list --json`, `--session ID`, or `--new` to select another window.
 `workspace-edit view FILE --line 42 --end-line 48 --top-line 36 --highlight`
 reveals a range without changing source text or creating a destructive selection.
-`--focus` explicitly activates the managed Kitty pane; `--reveal` switches its terminal tab
+`--select-end-line` and `--select-end-column` set an exclusive source selection.
+`--navigation` expires interactive jumps after 700 ms and skips them during prompts.
+`--focus` explicitly activates the managed Kitty pane and desktop window; `--reveal` switches its terminal tab
 without taking desktop focus. Omit line coordinates to retain the file's cursor.
 
 Use `workspace-edit status FILE --json` for fresh open-buffer state: `modified`,

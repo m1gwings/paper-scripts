@@ -68,7 +68,7 @@ def live():
 
 
 def send(record, path, line=0, column=1, *, action="open", end_line=0, top_line=0,
-         highlight=False, if_open=False, if_clean=False, discard=False, expected_version="", edits=None):
+         highlight=False, if_open=False, if_clean=False, discard=False, expected_version="", edits=None, select_end_line=0, select_end_column=0, navigation=False):
     path = str(Path(path).expanduser().resolve()) if path else ''
     if any(c in path for c in '\n\r\0'):
         raise ValueError('Newlines and NUL are not supported in editor file paths.')
@@ -79,13 +79,13 @@ def send(record, path, line=0, column=1, *, action="open", end_line=0, top_line=
         raise ValueError('Unsupported editor action.')
     fields = [action, path, line, column, end_line, top_line, int(highlight), int(if_open),
               int(if_clean), int(discard), expected_version]
-    if action in ('read', 'apply', 'save'):
-        fields += [int(time.time() * 1000) + 4500, len(edits or [])]
+    fields += [int(time.time() * 1000) + (700 if navigation else 4500), len(edits or [])]
     payload = ('\n'.join(map(str, fields)) + '\n').encode()
     for edit in edits or []:
         text = edit['text'].encode()
         points = [edit['start']['line'], edit['start']['column'], edit['end']['line'], edit['end']['column'], len(text)]
         payload += ('\n'.join(map(str, points)) + '\n').encode() + text + b'\n'
+    payload += f"{select_end_line}\n{select_end_column}\n{int(navigation)}\n".encode()
     pending.write_bytes(payload)
     pending.chmod(0o600)
     pending.rename(endpoint / (name + '.request'))
@@ -140,6 +140,9 @@ def run(argv=None, _locked=False):
     parser.add_argument('--session', help='paired workspace ID')
     parser.add_argument('--line', type=int, default=0, help='one-based cursor line; omit to preserve it')
     parser.add_argument('--column', type=int, default=1)
+    parser.add_argument('--select-end-line', type=int, default=0, help='exclusive end of source selection')
+    parser.add_argument('--select-end-column', type=int, default=0)
+    parser.add_argument('--navigation', action='store_true', help='expire interactive navigation after 700 ms')
     parser.add_argument('--end-line', type=int, default=0, help='inclusive end of the highlighted range')
     parser.add_argument('--top-line', type=int, default=0, help='one-based first visible buffer line')
     parser.add_argument('--highlight', action='store_true', help='temporary display-only line highlight')
@@ -158,6 +161,9 @@ def run(argv=None, _locked=False):
         register(args.register, args.project or os.environ.get('PROJECT_WORKSPACE_ROOT') or str(Path.cwd()),
                  args.session or os.environ.get('PROJECT_WORKSPACE_ID', ''))
         return 0
+    if bool(args.select_end_line) != bool(args.select_end_column) or (args.select_end_line and
+            (args.line < 1 or args.column < 1 or (args.select_end_line, args.select_end_column) <= (args.line, args.column))):
+        parser.error('Source selection requires an exclusive end after the starting line/column.')
     if args.expected_version and (len(args.expected_version) != 64 or any(c not in 'abcdef0123456789' for c in args.expected_version)):
         parser.error('--expected-version must be the SHA256 returned by status.')
     action = 'open'
@@ -212,13 +218,17 @@ def run(argv=None, _locked=False):
                     if args.json: print(json.dumps({'ok': True, 'skipped': 'editor_needs_restart'}))
                     return 0
                 raise ValueError('Reopen Editor to enable the updated view/status controls; its current buffers are untouched.')
+            if (args.navigation or args.select_end_line or args.select_end_column) and matches[0].get('protocol', 1) < 4:
+                raise ValueError('Reopen Editor to enable safe navigation and source selections; buffers are untouched.')
             result = {'ok': True}
             for path in files or ([None] if action in ('status', 'reload-ui') else []):
                 extra = {'edits': edits} if action == 'apply' else {}
                 result = send(matches[0], path, max(0, args.line), max(1, args.column),
                               action=action, end_line=args.end_line, top_line=args.top_line,
                               highlight=args.highlight, if_open=args.if_open, if_clean=args.if_clean,
-                              discard=args.discard, expected_version=args.expected_version, **extra)
+                              discard=args.discard, expected_version=args.expected_version,
+                              select_end_line=args.select_end_line, select_end_column=args.select_end_column,
+                              navigation=args.navigation, **extra)
             if (args.focus or args.reveal) and not result.get('skipped'):
                 from project_workspace import live_workspaces as workspaces, remote
                 selected = [r for r in workspaces() if r['id'] == matches[0]['session']]
@@ -231,6 +241,16 @@ def run(argv=None, _locked=False):
                                str(Path(__file__).with_name('kitty_reveal.py')))
                 else:
                     result['focus_unavailable'] = True
+            if args.focus and not result.get('skipped'):
+                from desktop_launch import desktop
+                if result.get('focus_unavailable'):
+                    raise ValueError('Cannot identify the Editor window to focus.')
+                title = 'Editor — ' + selected[0]['name']
+                windows = [w for w in desktop('info')['windows'] if w['app_id'] == 'workspace-editor'
+                           and (w['title'] == title or w['title'].startswith(title + ' · '))]
+                if len(windows) != 1:
+                    raise ValueError('Cannot identify a unique Editor window to focus.')
+                desktop('focus', '--window', windows[0]['id'])
             if args.reveal and not result.get('skipped'):
                 from desktop_launch import reveal_existing
                 if result.get('focus_unavailable'):

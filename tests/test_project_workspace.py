@@ -82,6 +82,27 @@ class WorkspaceTest(unittest.TestCase):
             self.assertTrue(send.call_args.kwargs['highlight'])
             self.assertEqual(send.call_args.args[2], 42)
 
+    def test_navigation_requires_updated_editor(self):
+        editor = dict(project=str(self.project), session='old', protocol=3)
+        with patch.object(EDITOR, 'live', return_value=[editor]), patch.object(EDITOR, 'send') as send:
+            with self.assertRaisesRegex(ValueError, 'safe navigation'):
+                EDITOR.run([str(self.project/'proof.tex'), '--project', str(self.project), '--navigation'])
+            send.assert_not_called()
+
+    def test_source_selection_and_focus_target_the_registered_window(self):
+        from unittest.mock import Mock
+        editor = dict(project=str(self.project), session=self.record['id'], kitty_window='2', protocol=4)
+        desktop = Mock(side_effect=[{'windows':[{'app_id':'workspace-editor', 'title':'Editor — '+self.record['name'], 'id':'42'}]}, {'ok':True}])
+        with patch.dict(sys.modules, {'project_workspace':WORKSPACE,'desktop_launch':SimpleNamespace(desktop=desktop)}), \
+             patch.object(EDITOR,'live',return_value=[editor]), \
+             patch.object(EDITOR,'send',return_value={'ok':True}) as send, \
+             patch.object(WORKSPACE,'live_workspaces',return_value=[self.record]), \
+             patch.object(WORKSPACE,'remote',return_value=''), contextlib.redirect_stdout(io.StringIO()):
+            EDITOR.run([str(self.project/'proof.tex'),'--project',str(self.project),'--line','2','--column','3',
+                        '--select-end-line','2','--select-end-column','8','--navigation','--focus'])
+            self.assertEqual(send.call_args.kwargs['select_end_column'],8)
+            desktop.assert_called_with('focus','--window','42')
+
     def test_old_editor_cannot_silently_ignore_source_link_guards(self):
         editor = dict(project=str(self.project), session=self.record['id'], protocol=1)
         output = io.StringIO()
