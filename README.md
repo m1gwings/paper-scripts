@@ -130,6 +130,16 @@ Terminal mode requires Kitty and Micro on `PATH`; VS Code mode requires `code`. 
 separately. Micro's optional Filemanager2 plugin provides a project file tree;
 enable `filemanager2.openonstart` in Micro's settings to show it at launch.
 
+### Reading Markdown libraries
+
+`project-open --read research_index.md DIRECTORY` opens an existing Markdown file
+in native Reader with a paired terminal Editor kept minimized. Reopening reuses
+the same pair and preserves Editor buffers. Reader source navigation restores
+Editor; saved Markdown changes refresh automatically without a build watcher.
+`--focus` activates Reader in this mode. Requires `workspace-read`; minimizing
+a reused Editor requires the desktop adapter’s `minimize` action. The ordinary
+project and paper opening behavior is unchanged.
+
 The project window inherits your Kitty theme. Click to focus either pane, use
 Ctrl+Alt+arrow to move between panes, Ctrl+Shift+Z to zoom/restore the active
 pane, Ctrl+Shift+R to resize, and Ctrl+Shift+Enter to add a shell split in the

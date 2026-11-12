@@ -211,6 +211,7 @@ def run(argv=None):
     parser.add_argument('--no-reader', action='store_true', help='open only the editor/build workspace')
     parser.add_argument('--no-post-open', action='store_true', help='skip the optional personal placement hook')
     parser.add_argument('--focus', action='store_true', help='reveal and activate the new or existing Editor after project setup')
+    parser.add_argument('--read', metavar='FILE', help='open a Markdown file in Reader with a paired, minimized Editor; --focus activates Reader')
     parser.add_argument('--hot', action='store_true', help='list hot projects from registry cache')
     parser.add_argument('--list', action='store_true', help='list all projects in registry')
     parser.add_argument('directory', nargs='?', default=None, help='project directory, ID, or alias (default: current)')
@@ -231,6 +232,16 @@ def run(argv=None):
         return 1
 
     directory = resolve_target(args.directory, paper, parser)
+    reading = None
+    if args.read:
+        if paper or args.no_reader or args.editor == 'vscode':
+            parser.error('--read requires a terminal project with Reader enabled.')
+        reading = Path(args.read).expanduser()
+        reading = (directory / reading).resolve()
+        if not reading.is_file() or reading.suffix.lower() != '.md' or not reading.is_relative_to(directory):
+            parser.error('--read must name an existing Markdown file inside the project.')
+        if not shutil.which('workspace-read'):
+            parser.error('--read requires workspace-read.')
     mark('project_resolved')
 
     if paper:
@@ -272,6 +283,8 @@ def run(argv=None):
         parser.error('root_tex must be a relative .tex path inside the project.')
     pdf = directory / 'output' / source.with_suffix('.pdf')
     def reader_for(identifier):
+        if reading:
+            return open_pdf(reading, directory, identifier, focus=args.focus)
         if paper and not args.no_reader and ((directory / source).is_file() or pdf.is_file()):
             try:
                 # Opening a paper selects/reveals its manuscript. Reader's
@@ -294,6 +307,17 @@ def run(argv=None):
         if len(matches) > 1:
             parser.error('Multiple editors match; select --session or use --new.')
         if matches:
+            if reading:
+                # Do not switch/reload existing buffers merely to enter the library.
+                window = existing_window('workspace-editor', f'Editor — {label}')
+                if not args.no_post_open:
+                    post_open(directory, matches[0]['session'], label, phase='editor', window=window)
+                from desktop_launch import desktop
+                reader_and_place(matches[0]['session'])
+                if not desktop('minimize', '--window', window).get('ok'):
+                    raise ValueError('Reader opened, but the paired Editor could not be minimized.')
+                print(f'Reused editor workspace {matches[0]["session"]}.')
+                return 0
             for file in args.file:
                 send(matches[0], file, max(1, args.line), max(1, args.column))
             if paper and (directory / source).is_file():
@@ -346,6 +370,8 @@ def run(argv=None):
             mark('complete')
             return 0
     session = 'new_tab ' + ('Paper' if paper else 'Editor') + '\n' + SESSION
+    if reading and not args.file:
+        args.file = [str(reading)]
     if args.file:
         files = [str(Path(file).expanduser().resolve()) for file in args.file]
         location = f'+{max(1, args.line)}:{max(1, args.column)}'
@@ -360,7 +386,7 @@ def run(argv=None):
     cosmic = 'COSMIC' in os.environ.get('XDG_CURRENT_DESKTOP', '').upper().split(':')
     # On COSMIC, stage the window without activation so the placement hook can
     # move it to its intended monitor. Explicit activation happens last.
-    staged = not args.focus or cosmic
+    staged = bool(reading) or not args.focus or cosmic
     existing_windows = desktop_snapshot() if staged else None
     command = [kitty, '--listen-on', 'unix:' + workspace['socket'], '--directory', str(directory),
                '--class', 'workspace-editor', '--name', 'workspace-editor',
@@ -420,6 +446,15 @@ def run(argv=None):
                 raise ValueError('Editor did not become available for activation; project remains open.')
             print('Editor started minimized; workspace-desktop reveal is required to show it without changing keyboard focus.', file=sys.stderr)
         def finish_open():
+            if reading:
+                # Stage/place the paired Editor but leave it minimized until an
+                # explicit Reader source-navigation request reveals it.
+                window = desktop_wait(existing_windows, 'workspace-editor', f'Editor — {label}')
+                if not args.no_post_open:
+                    post_open(directory, workspace['id'], label, phase='editor', window=window)
+                reader_and_place(workspace['id'])
+                mark('complete')
+                return
             if independent:
                 # Each app can become usable while the other initializes. Only
                 # hooks declaring phase support receive separate placement calls.

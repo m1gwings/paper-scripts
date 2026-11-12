@@ -6,8 +6,8 @@ import subprocess
 import json
 
 
-def open_pdf(pdf, project=None, session=None, background=False):
-    viewer = os.environ.get('PAPER_PDF_VIEWER') or (
+def open_pdf(pdf, project=None, session=None, background=False, focus=False):
+    viewer = 'workspace-read' if Path(pdf).suffix.lower() == '.md' else os.environ.get('PAPER_PDF_VIEWER') or (
         'workspace-read' if shutil.which('workspace-read') else 'evince' if shutil.which('evince') else 'xdg-open')
     if not shutil.which(viewer):
         raise ValueError(f"PDF viewer '{viewer}' is not installed.")
@@ -20,6 +20,8 @@ def open_pdf(pdf, project=None, session=None, background=False):
             command += ['--session', session]
         if background:
             command += ['--background']
+        if focus:
+            command += ['--focus']
     elif not Path(pdf).is_file():
         return  # Native reader can wait for the first build; ordinary viewers cannot.
     command += [str(Path(pdf).resolve())]

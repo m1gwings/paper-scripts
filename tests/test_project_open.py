@@ -320,6 +320,41 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
         self.env['XDG_CURRENT_DESKTOP'] = 'COSMIC'
         return events
 
+    def test_reading_library_keeps_new_editor_minimized_and_focuses_reader(self):
+        events = self.desktop_fixture()
+        note = self.project / 'research_index.md'
+        note.write_text('# Research index\n')
+        self.launch('--read', note.name, '--focus', str(self.project), generic=True)
+        calls = [json.loads(line) for line in events.read_text().splitlines()]
+        self.assertFalse(any(c[0] in ('reveal', 'focus') for c in calls))
+        reader = next(c for c in calls if '--project' in c)
+        self.assertIn('--focus', reader)
+        self.assertEqual(reader[-1], str(note))
+        self.assertIn('--session', reader)
+        self.assertIn(str(note), self.record()['session'])
+        self.assertNotIn('new_tab Build', self.record()['session'])
+
+    def test_reading_reuses_editor_without_touching_unsaved_buffers(self):
+        events = self.desktop_fixture(reused=True)
+        note = self.project / 'research_index.md'
+        note.write_text('# Research index\n')
+        endpoint = self.root / f'runtime/workspace-editors/{os.getpid()}-fixture'
+        endpoint.mkdir(parents=True)
+        (endpoint / 'record.json').write_text(json.dumps({'pid': os.getpid(),
+            'project': str(self.project), 'session': 'paired', 'endpoint': str(endpoint), 'protocol': 1}))
+        self.assertIn('Reused editor', self.launch('--read', note.name, str(self.project), generic=True))
+        calls = [json.loads(line) for line in events.read_text().splitlines()]
+        self.assertIn(['minimize', '--window', 'editor'], calls)
+        self.assertFalse(any(c[0] in ('reveal', 'focus') for c in calls))
+        reader = next(c for c in calls if '--project' in c)
+        self.assertEqual(reader[reader.index('--session') + 1], 'paired')
+        self.assertFalse(self.log.exists())
+        self.assertFalse((endpoint / 'request.json').exists())
+
+    def test_invalid_library_entry_does_not_launch_editor(self):
+        self.launch('--read', '../missing.md', str(self.project), generic=True, ok=False)
+        self.assertFalse(self.log.exists())
+
     def test_desktop_focus_is_last_after_reader_startup(self):
         events = self.desktop_fixture()
         self.launch('--terminal', '--focus', '--no-post-open')
