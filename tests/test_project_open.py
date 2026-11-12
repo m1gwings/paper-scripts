@@ -7,12 +7,39 @@ import sys
 import tempfile
 import unittest
 import fcntl
+from unittest import mock
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'lib'))
+import project_open
 
 
 SOURCE = Path(__file__).resolve().parents[1]
 
 
 class ProjectOpenTest(unittest.TestCase):
+    def test_ready_control_socket_ends_startup_wait_immediately(self):
+        process = mock.Mock()
+        process.communicate.side_effect = subprocess.TimeoutExpired('kitty', .05)
+        with mock.patch.object(project_open.Path, 'is_socket', return_value=True):
+            project_open.start_session(process, 'session contents', '/unused/socket')
+        process.communicate.assert_called_once_with('session contents', timeout=.05)
+
+    def test_startup_failure_before_control_socket_is_observed(self):
+        process = mock.Mock()
+        process.communicate.side_effect = [subprocess.TimeoutExpired('kitty', .05), None]
+        with mock.patch.object(project_open.Path, 'is_socket', return_value=False):
+            project_open.start_session(process, 'session contents', '/unused/socket')
+        self.assertEqual(process.communicate.call_count, 2)
+        self.assertEqual(process.communicate.call_args.kwargs, {'timeout': .05})
+
+    def test_slow_startup_retains_bounded_failure_detection(self):
+        process = mock.Mock()
+        process.communicate.side_effect = subprocess.TimeoutExpired('kitty', .05)
+        with mock.patch.object(project_open.Path, 'is_socket', return_value=False), \
+                mock.patch.object(project_open.time, 'monotonic', side_effect=[0, .5, 1]):
+            project_open.start_session(process, 'session contents', '/unused/socket')
+        self.assertEqual(process.communicate.call_count, 2)
+
     def test_personal_hook_runs_once_and_can_be_skipped(self):
         config = self.root / 'config'
         (config / 'project-open').mkdir(parents=True)

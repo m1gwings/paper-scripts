@@ -9,6 +9,7 @@ import tempfile
 import shlex
 import fcntl
 import json
+import time
 from project_metadata import metadata
 from project_workspace import prepare, register
 from viewer import open_pdf
@@ -39,6 +40,27 @@ KITTY_OVERRIDES = [
     'mouse_map shift+left triplepress grabbed',
     'window_border_width=2',
 ]
+
+
+def start_session(process, session, address):
+    """Deliver the session and stop waiting as soon as Kitty accepts control.
+
+    communicate's timeout is a failure-detection budget, not a startup delay.
+    Keep checking early exits while a slow Kitty has not created its socket.
+    """
+    deadline = time.monotonic() + 1
+    try:
+        process.communicate(session, timeout=.05)
+    except subprocess.TimeoutExpired:
+        while not Path(address).is_socket():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return
+            try:
+                process.communicate(timeout=min(.05, remaining))
+                return
+            except subprocess.TimeoutExpired:
+                pass
 
 
 def post_open(directory, identifier, label, no_reader=False):
@@ -339,9 +361,8 @@ def run(argv=None):
             # Reader startup can outlast the Editor's initial map. Reveal only
             # after both startup and placement, including explicit focus last.
             reveal_editor()
-        try:
-            process.communicate(session, timeout=1)
-        except subprocess.TimeoutExpired:
+        start_session(process, session, workspace['socket'])
+        if process.poll() is None:
             finish_open()
             return 0
         if process.returncode:

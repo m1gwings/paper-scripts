@@ -219,6 +219,8 @@ does not prevent its move to the intended monitor. A Kitty pre-show callback set
 minimized hint on XWayland before mapping, then `workspace-desktop reveal`
 unminimizes the exact window, followed by activation only with `--focus`.
 The reveal waits up to ten seconds for a slow initial map and reports failure.
+Startup proceeds as soon as Kitty's control socket is ready, without a fixed
+one-second delay; Reader can initialize while the Editor finishes mapping.
 This uses the system `libX11.so.6`; without
 passive reveal support the Editor stays minimized and the launcher reports it.
 `--reveal` uses a no-UI Kitty helper because native `focus-tab` also activates
