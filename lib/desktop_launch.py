@@ -15,7 +15,7 @@ def snapshot():
     if not shutil.which('workspace-desktop'):
         return None
     try:
-        state = desktop('info')
+        state = desktop('info', '--no-focus')
         if 4 in state.get('capabilities', []):
             return {w['id'] for w in state['windows']}
     except (OSError, ValueError, subprocess.SubprocessError):
@@ -37,7 +37,7 @@ def wait_new(existing, app_id, title):
         return None
     deadline = time.monotonic() + 10
     while True:
-        windows = [w for w in desktop('info')['windows'] if w['id'] not in existing
+        windows = [w for w in desktop('info', '--no-focus')['windows'] if w['id'] not in existing
                    and w['app_id'] == app_id and w['title'] == title]
         if len(windows) > 1:
             raise ValueError('Multiple new windows match; leave them minimized rather than reveal an unrelated window.')
@@ -56,12 +56,18 @@ def reveal(existing, app_id, title, *, focus=False):
     return True
 
 
-def reveal_existing(app_id, title, *, focus=False):
-    """Restore one unique window, activating only with explicit focus permission."""
-    windows = [w for w in desktop('info')['windows'] if w.get('id')
+def existing_window(app_id, title):
+    """Resolve one exact identity without probing unrelated keyboard focus."""
+    windows = [w for w in desktop('info', '--no-focus')['windows'] if w.get('id')
                and w['app_id'] == app_id
                and (w['title'] == title or w['title'].startswith(title + ' · '))]
     if len(windows) != 1:
         raise ValueError('Cannot identify a unique Editor window to reveal; close duplicate project windows and retry.')
-    present(windows[0]['id'], focus=focus)
-    return True
+    return windows[0]['id']
+
+
+def reveal_existing(app_id, title, *, focus=False):
+    """Restore one unique window, activating only with explicit focus permission."""
+    window = existing_window(app_id, title)
+    present(window, focus=focus)
+    return window

@@ -31,7 +31,7 @@ class PassiveLaunchTest(unittest.TestCase):
         with patch.object(DESKTOP, 'desktop', return_value={'windows': windows}) as call:
             with self.assertRaisesRegex(ValueError, 'Multiple new windows'):
                 DESKTOP.reveal(set(), 'workspace-editor', 'Editor')
-            call.assert_called_once_with('info')
+            call.assert_called_once_with('info', '--no-focus')
 
     def test_reused_window_is_unminimized_without_activation(self):
         windows=[{'id':'target','app_id':'workspace-editor','title':'Editor — Example · Paper'}]
@@ -44,14 +44,14 @@ class PassiveLaunchTest(unittest.TestCase):
         with patch.object(DESKTOP,'desktop',return_value={'windows':windows}) as call:
             with self.assertRaisesRegex(ValueError,'unique Editor'):
                 DESKTOP.reveal_existing('workspace-editor','Editor — Example')
-            call.assert_called_once_with('info')
+            call.assert_called_once_with('info', '--no-focus')
 
     def test_explicit_open_reveals_before_activating_the_same_window(self):
         windows = [{'id': 'target', 'app_id': 'workspace-editor', 'title': 'Editor — Example'}]
         with patch.object(DESKTOP, 'desktop', side_effect=[{'windows': windows}, {'ok': True}, {'ok': True}]) as call:
             self.assertTrue(DESKTOP.reveal_existing('workspace-editor', 'Editor — Example', focus=True))
         self.assertEqual([c.args for c in call.call_args_list], [
-            ('info',), ('reveal', '--window', 'target'), ('focus', '--window', 'target')])
+            ('info', '--no-focus'), ('reveal', '--window', 'target'), ('focus', '--window', 'target')])
 
     def test_failed_reveal_is_reported_without_activation(self):
         windows = [{'id': 'target', 'app_id': 'workspace-editor', 'title': 'Editor'}]

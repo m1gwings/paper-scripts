@@ -57,11 +57,46 @@ class ProjectOpenTest(unittest.TestCase):
         self.assertEqual(args.count('--session'), 1)
         self.assertIn(str(self.project), args)
         self.assertIn('--no-reader', args)
+        self.assertNotIn('--editor-window', args)
+        self.assertNotIn('--phase', args)
         (self.root / 'hook.json').unlink()
         result = subprocess.run([str(SOURCE / 'project-open'), '--no-post-open', str(self.project)],
                                 env=self.env, text=True, capture_output=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertFalse((self.root / 'hook.json').exists())
+
+    def test_absent_hook_allows_independent_startup(self):
+        with mock.patch.dict(os.environ, {'XDG_CONFIG_HOME': str(self.root / 'absent-config')}):
+            self.assertTrue(project_open.phased_open())
+
+    def test_phased_open_reveals_editor_while_reader_is_still_starting(self):
+        events = self.desktop_fixture()
+        config = self.root / 'config'
+        (config / 'project-open').mkdir(parents=True)
+        self.env['XDG_CONFIG_HOME'] = str(config)
+        hook = self.root / 'phase_hook.py'
+        hook.write_text('import json,sys\nfrom pathlib import Path\n'
+                        f'events=Path({str(events)!r})\n'
+                        'with events.open("a") as f: f.write(json.dumps(sys.argv[1:])+"\\n")\n')
+        (config / 'project-open/config.json').write_text(json.dumps(
+            dict(post_open=[sys.executable, str(hook)], phased_open=True)))
+        reader = self.bin / 'workspace-read'
+        reader.write_text(f'#!{sys.executable}\n' +
+            'import json,time\nfrom pathlib import Path\n' +
+            f'events=Path({str(events)!r})\n' +
+            'deadline=time.monotonic()+3\n' +
+            'while time.monotonic()<deadline:\n'
+            ' calls=[json.loads(line) for line in events.read_text().splitlines()]\n'
+            ' if ["reveal","--window","editor"] in calls: break\n'
+            ' time.sleep(.01)\n'
+            'else: raise SystemExit("Editor waited for Reader")\n'
+            'print(json.dumps(dict(ok=True, windowTitle="Reader — Launch Fixture")))\n')
+        self.launch('--terminal')
+        calls = [json.loads(line) for line in events.read_text().splitlines()]
+        phases = [c[c.index('--phase') + 1] for c in calls if '--phase' in c]
+        self.assertEqual(phases, ['editor', 'reader'])
+        editor_phase = next(c for c in calls if '--phase' in c and 'editor' in c)
+        self.assertEqual(editor_phase[editor_phase.index('--editor-window') + 1], 'editor')
 
     def test_failed_personal_hook_keeps_successful_open(self):
         config = self.root / 'config'

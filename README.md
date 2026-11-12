@@ -221,6 +221,9 @@ unminimizes the exact window, followed by activation only with `--focus`.
 The reveal waits up to ten seconds for a slow initial map and reports failure.
 Startup proceeds as soon as Kitty's control socket is ready, without a fixed
 one-second delay; Reader can initialize while the Editor finishes mapping.
+Without a placement hook, or with a phase-aware hook, Editor is revealed as soon
+as its own mapping and placement finish; Reader startup does not gate it.
+Explicit `--focus` activation still happens after both apps finish.
 This uses the system `libX11.so.6`; without
 passive reveal support the Editor stays minimized and the launcher reports it.
 `--reveal` uses a no-UI Kitty helper because native `focus-tab` also activates
@@ -831,6 +834,19 @@ session and report partial placement. `--no-post-open` skips it for one opening.
 VS Code opening does not run this paired-workspace hook. A hook failure or timeout
 is reported without closing a successfully opened Editor. Portable installs have
 no hook and no machine-specific layout policy.
+
+A hook supporting independent placement may opt in with `"phased_open": true`
+in the same configuration. It receives `--phase editor` and, when Reader opens,
+`--phase reader` in separate concurrent invocations. Each invocation must affect
+only that app. Editor placement receives `--editor-window ID` when available;
+Reader placement receives its acknowledged `--reader-title TITLE` and
+`--reader-window ID` when available. Hooks without this opt-in retain one call
+after both apps start. `--no-post-open` launches/reveals both apps independently.
+
+Set `WORKSPACE_STARTUP_TRACE` to a writable JSONL file to record project
+resolution, Kitty readiness, Editor mapping/reveal, Reader acknowledgement and
+completion times. Each record contains a stage, elapsed milliseconds in that
+process, and its PID. Tracing is optional and failure to write never blocks opening.
 
 ## Feature cleanup safety
 

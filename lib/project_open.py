@@ -10,10 +10,11 @@ import shlex
 import fcntl
 import json
 import time
+from concurrent.futures import ThreadPoolExecutor
 from project_metadata import metadata
 from project_workspace import prepare, register
 from viewer import open_pdf
-from desktop_launch import snapshot as desktop_snapshot, wait_new as desktop_wait, present as desktop_present, reveal_existing
+from desktop_launch import snapshot as desktop_snapshot, wait_new as desktop_wait, present as desktop_present, existing_window
 
 
 SESSION = """layout fat:bias=74
@@ -63,7 +64,18 @@ def start_session(process, session, address):
                 pass
 
 
-def post_open(directory, identifier, label, no_reader=False):
+def phased_open():
+    config = Path(os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config') / 'project-open/config.json'
+    try:
+        value = json.loads(config.read_text())
+        return not value.get('post_open') or value.get('phased_open') is True
+    except FileNotFoundError:
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def post_open(directory, identifier, label, no_reader=False, *, phase=None, window=None, reader=None):
     """Run one optional user-level hook; never load commands from a project."""
     config = Path(os.environ.get('XDG_CONFIG_HOME') or Path.home() / '.config') / 'project-open/config.json'
     try:
@@ -74,8 +86,15 @@ def post_open(directory, identifier, label, no_reader=False):
             return
         if not isinstance(command, list) or not all(isinstance(part, str) and part for part in command):
             raise ValueError('post_open must be a nonempty command argument array')
+        extra = ['--phase', phase] if phase else []
+        if phase and window: extra += ['--editor-window', window]
+        if phase and reader and reader.get('windowTitle'):
+            extra += ['--reader-title', reader['windowTitle']]
+        if phase and reader and reader.get('desktopWindow'):
+            extra += ['--reader-window', reader['desktopWindow']]
         result = subprocess.run([*command, '--project', str(directory), '--session', identifier,
                                  '--editor-title', f'Editor — {label}',
+                                 *extra,
                                  *(['--no-reader'] if no_reader else [])],
                                 capture_output=True, text=True, timeout=20)
         if result.stdout:
@@ -157,6 +176,18 @@ def resolve_target(target, paper, parser):
 
 
 def run(argv=None):
+    started = time.monotonic()
+    trace = os.environ.get('WORKSPACE_STARTUP_TRACE')
+    def mark(stage):
+        if not trace:
+            return
+        try:
+            fd = os.open(trace, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+            with os.fdopen(fd, 'w') as stream:
+                stream.write(json.dumps({'stage': stage, 'ms': round((time.monotonic() - started) * 1000, 2),
+                                         'pid': os.getpid()}) + '\n')
+        except OSError:
+            pass  # Optional diagnostics cannot prevent a project from opening.
     argv = list(sys.argv[1:] if argv is None else argv)
     paper = bool(argv and argv[0] == '--paper')
     if paper:
@@ -198,6 +229,7 @@ def run(argv=None):
         return 1
 
     directory = resolve_target(args.directory, paper, parser)
+    mark('project_resolved')
 
     if paper:
         configured = ''
@@ -242,9 +274,17 @@ def run(argv=None):
             try:
                 # Opening a paper selects/reveals its manuscript. Reader's
                 # explicit focus flag is separate from background tab updates.
-                open_pdf(pdf, directory, identifier)
+                state = open_pdf(pdf, directory, identifier)
+                mark('reader_ready')
+                return state
             except (OSError, ValueError, subprocess.SubprocessError) as error:
                 print(f'Editor remains available; PDF reader: {error}', file=sys.stderr)
+    independent = args.no_post_open or phased_open()
+    def reader_and_place(identifier):
+        state = reader_for(identifier)
+        if state and not args.no_post_open:
+            post_open(directory, identifier, label, phase='reader', reader=state)
+
     if not args.new:
         from workspace_edit import live, send
         matches = [r for r in live() if r['project'] == str(directory) and
@@ -259,31 +299,49 @@ def run(argv=None):
                     ensure_watcher(directory, source, matches[0]['session'])
                 except (OSError, subprocess.SubprocessError) as error:
                     print(f'Editor reused; could not verify/start the build watcher: {error}', file=sys.stderr)
-            reader_for(matches[0]['session'])
-            print(f'Reused editor workspace {matches[0]["session"]}.')
-            if not args.no_post_open: post_open(directory, matches[0]['session'], label, args.no_reader or not paper)
-            bridge = shutil.which('workspace-desktop')
-            if bridge or args.focus:
-                # A reused workspace may be minimized or showing its Build tab.
-                # Select the exact registered Editor pane without opening files
-                # or changing any buffer/cursor, then restore its desktop window.
-                record = matches[0]
-                pane = record.get('kitty_window', '')
-                if pane.isdecimal():
-                    from project_workspace import live_workspaces, remote
-                    managed = [w for w in live_workspaces(session=record['session'], inspect_tabs=False)
-                               if w['id'] == record['session'] and w['root'] == str(directory)]
-                    if len(managed) != 1:
-                        raise ValueError('The selected Editor workspace closed during opening.')
-                    if args.focus and not bridge:
-                        remote(managed[0], 'focus-window', '--match', 'id:' + pane)
+            def reveal_reused(*, phase=None, activate=False, place=True):
+                bridge = shutil.which('workspace-desktop')
+                window = existing_window('workspace-editor', f'Editor — {label}') if bridge else None
+                if place and not args.no_post_open:
+                    post_open(directory, matches[0]['session'], label, args.no_reader or not paper, phase=phase, window=window)
+                if bridge or args.focus:
+                    # A reused workspace may be minimized or showing its Build tab.
+                    # Select the exact registered Editor pane without opening files
+                    # or changing any buffer/cursor, then restore its desktop window.
+                    record = matches[0]
+                    pane = record.get('kitty_window', '')
+                    if pane.isdecimal():
+                        from project_workspace import live_workspaces, remote
+                        managed = [w for w in live_workspaces(session=record['session'], inspect_tabs=False)
+                                   if w['id'] == record['session'] and w['root'] == str(directory)]
+                        if len(managed) != 1:
+                            raise ValueError('The selected Editor workspace closed during opening.')
+                        if activate and not bridge:
+                            remote(managed[0], 'focus-window', '--match', 'id:' + pane)
+                        else:
+                            remote(managed[0], 'kitten', '--match', 'id:' + pane,
+                                   str(Path(__file__).with_name('kitty_reveal.py')))
+                    elif activate and not bridge:
+                        raise ValueError('Cannot identify the existing Editor pane for activation.')
+                    if bridge:
+                        desktop_present(window, focus=activate)
+                mark('editor_revealed')
+                return window
+            if independent:
+                with ThreadPoolExecutor(max_workers=1) as workers:
+                    pending = workers.submit(reader_and_place, matches[0]['session'])
+                    window = reveal_reused(phase='editor')
+                    pending.result()
+                if args.focus:
+                    if window:
+                        desktop_present(window, focus=True)
                     else:
-                        remote(managed[0], 'kitten', '--match', 'id:' + pane,
-                               str(Path(__file__).with_name('kitty_reveal.py')))
-                elif args.focus and not bridge:
-                    raise ValueError('Cannot identify the existing Editor pane for activation.')
-                if bridge:
-                    reveal_existing('workspace-editor', f'Editor — {label}', focus=args.focus)
+                        reveal_reused(activate=True, place=False)
+            else:
+                reader_for(matches[0]['session'])
+                reveal_reused(activate=args.focus)
+            print(f'Reused editor workspace {matches[0]["session"]}.')
+            mark('complete')
             return 0
     session = 'new_tab ' + ('Paper' if paper else 'Editor') + '\n' + SESSION
     if args.file:
@@ -339,16 +397,19 @@ def run(argv=None):
             try: process.communicate(timeout=2)
             except subprocess.TimeoutExpired: process.kill(); process.communicate()
             raise
-        def reveal_editor():
+        def reveal_editor(phase=None, focus=None):
+            activate = args.focus if focus is None else focus
             if not staged:
-                if not args.no_post_open: post_open(directory, workspace['id'], label, args.no_reader or not paper)
+                if not args.no_post_open: post_open(directory, workspace['id'], label, args.no_reader or not paper, phase=phase)
                 return
             try:
                 window = desktop_wait(existing_windows, 'workspace-editor', f'Editor — {label}')
-                if not args.no_post_open: post_open(directory, workspace['id'], label, args.no_reader or not paper)
+                mark('editor_mapped')
+                if not args.no_post_open: post_open(directory, workspace['id'], label, args.no_reader or not paper, phase=phase, window=window)
                 if window is not None:
-                    desktop_present(window, focus=args.focus)
-                    return
+                    desktop_present(window, focus=activate)
+                    mark('editor_revealed')
+                    return window
             except (OSError, ValueError, subprocess.SubprocessError) as error:
                 if args.focus:
                     raise ValueError(f'Editor could not be restored: {error}') from error
@@ -357,11 +418,22 @@ def run(argv=None):
                 raise ValueError('Editor did not become available for activation; project remains open.')
             print('Editor started minimized; workspace-desktop reveal is required to show it without changing keyboard focus.', file=sys.stderr)
         def finish_open():
-            reader_for(workspace['id'])
-            # Reader startup can outlast the Editor's initial map. Reveal only
-            # after both startup and placement, including explicit focus last.
-            reveal_editor()
+            if independent:
+                # Each app can become usable while the other initializes. Only
+                # hooks declaring phase support receive separate placement calls.
+                with ThreadPoolExecutor(max_workers=1) as workers:
+                    pending = workers.submit(reader_and_place, workspace['id'])
+                    window = reveal_editor(phase='editor', focus=False)
+                    pending.result()
+                if args.focus and window:
+                    desktop_present(window, focus=True)
+            else:
+                # Existing third-party hooks retain their once-per-open contract.
+                reader_for(workspace['id'])
+                reveal_editor()
+            mark('complete')
         start_session(process, session, workspace['socket'])
+        mark('kitty_socket_ready')
         if process.poll() is None:
             finish_open()
             return 0
