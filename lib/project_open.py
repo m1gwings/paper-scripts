@@ -12,7 +12,7 @@ import json
 from project_metadata import metadata
 from project_workspace import prepare, register
 from viewer import open_pdf
-from desktop_launch import snapshot as desktop_snapshot, reveal as desktop_reveal
+from desktop_launch import snapshot as desktop_snapshot, wait_new as desktop_wait, present as desktop_present, reveal_existing
 
 
 SESSION = """layout fat:bias=74
@@ -155,7 +155,7 @@ def run(argv=None):
     parser.add_argument('--new', action='store_true', help='open an additional independent workspace')
     parser.add_argument('--no-reader', action='store_true', help='open only the editor/build workspace')
     parser.add_argument('--no-post-open', action='store_true', help='skip the optional personal placement hook')
-    parser.add_argument('--focus', action='store_true', help='explicitly activate the new editor window')
+    parser.add_argument('--focus', action='store_true', help='reveal and activate the new or existing Editor after project setup')
     parser.add_argument('--hot', action='store_true', help='list hot projects from registry cache')
     parser.add_argument('--list', action='store_true', help='list all projects in registry')
     parser.add_argument('directory', nargs='?', default=None, help='project directory, ID, or alias (default: current)')
@@ -240,6 +240,28 @@ def run(argv=None):
             reader_for(matches[0]['session'])
             print(f'Reused editor workspace {matches[0]["session"]}.')
             if not args.no_post_open: post_open(directory, matches[0]['session'], label, args.no_reader or not paper)
+            bridge = shutil.which('workspace-desktop')
+            if bridge or args.focus:
+                # A reused workspace may be minimized or showing its Build tab.
+                # Select the exact registered Editor pane without opening files
+                # or changing any buffer/cursor, then restore its desktop window.
+                record = matches[0]
+                pane = record.get('kitty_window', '')
+                if pane.isdecimal():
+                    from project_workspace import live_workspaces, remote
+                    managed = [w for w in live_workspaces(session=record['session'], inspect_tabs=False)
+                               if w['id'] == record['session'] and w['root'] == str(directory)]
+                    if len(managed) != 1:
+                        raise ValueError('The selected Editor workspace closed during opening.')
+                    if args.focus and not bridge:
+                        remote(managed[0], 'focus-window', '--match', 'id:' + pane)
+                    else:
+                        remote(managed[0], 'kitten', '--match', 'id:' + pane,
+                               str(Path(__file__).with_name('kitty_reveal.py')))
+                elif args.focus and not bridge:
+                    raise ValueError('Cannot identify the existing Editor pane for activation.')
+                if bridge:
+                    reveal_existing('workspace-editor', f'Editor — {label}', focus=args.focus)
             return 0
     session = 'new_tab ' + ('Paper' if paper else 'Editor') + '\n' + SESSION
     if args.file:
@@ -253,13 +275,17 @@ def run(argv=None):
                                     'build', '--watch', info['root_tex']])
         session += f'new_tab Build\nlaunch --title "PDF build" {build_command}\n'
     workspace = prepare(directory, info['project_name'], args.session)
-    existing_windows = desktop_snapshot() if not args.focus else None
+    cosmic = 'COSMIC' in os.environ.get('XDG_CURRENT_DESKTOP', '').upper().split(':')
+    # On COSMIC, stage the window without activation so the placement hook can
+    # move it to its intended monitor. Explicit activation happens last.
+    staged = not args.focus or cosmic
+    existing_windows = desktop_snapshot() if staged else None
     command = [kitty, '--listen-on', 'unix:' + workspace['socket'], '--directory', str(directory),
                '--class', 'workspace-editor', '--name', 'workspace-editor',
                '--title', f'Editor — {label}', '--session', '-']
-    if not args.focus:
+    if staged:
         command += ['--start-as', 'minimized']
-        if 'COSMIC' in os.environ.get('XDG_CURRENT_DESKTOP', '').upper().split(':'):
+        if cosmic:
             helper = Path(__file__).with_name('kitty_passive.py')
             command[1:1] = ['+runpy', f'import runpy; runpy.run_path({str(helper)!r}, run_name="__main__")']
     for override in KITTY_OVERRIDES:
@@ -268,7 +294,7 @@ def run(argv=None):
                         '--workspace', workspace['id']])
     command.extend(['--override', 'map ctrl+grave launch --type=background ' + toggle])
     env = os.environ.copy()
-    if not args.focus:
+    if staged:
         env.pop('XDG_ACTIVATION_TOKEN', None)
         env.pop('DESKTOP_STARTUP_ID', None)
     env['PROJECT_WORKSPACE_NAME'] = info['project_name']
@@ -292,29 +318,38 @@ def run(argv=None):
             except subprocess.TimeoutExpired: process.kill(); process.communicate()
             raise
         def reveal_editor():
-            if args.focus:
+            if not staged:
+                if not args.no_post_open: post_open(directory, workspace['id'], label, args.no_reader or not paper)
                 return
             try:
-                if desktop_reveal(existing_windows, 'workspace-editor', f'Editor — {label}'):
+                window = desktop_wait(existing_windows, 'workspace-editor', f'Editor — {label}')
+                if not args.no_post_open: post_open(directory, workspace['id'], label, args.no_reader or not paper)
+                if window is not None:
+                    desktop_present(window, focus=args.focus)
                     return
             except (OSError, ValueError, subprocess.SubprocessError) as error:
+                if args.focus:
+                    raise ValueError(f'Editor could not be restored: {error}') from error
                 print(f'Editor passive reveal: {error}', file=sys.stderr)
+            if args.focus:
+                raise ValueError('Editor did not become available for activation; project remains open.')
             print('Editor started minimized; workspace-desktop reveal is required to show it without changing keyboard focus.', file=sys.stderr)
+        def finish_open():
+            reader_for(workspace['id'])
+            # Reader startup can outlast the Editor's initial map. Reveal only
+            # after both startup and placement, including explicit focus last.
+            reveal_editor()
         try:
             process.communicate(session, timeout=1)
         except subprocess.TimeoutExpired:
-            reveal_editor()
-            reader_for(workspace['id'])
-            if not args.no_post_open: post_open(directory, workspace['id'], label, args.no_reader or not paper)
+            finish_open()
             return 0
         if process.returncode:
             log.seek(0)
             print(log.read(), file=sys.stderr, end='')
             print(f'Kitty startup log: {log.name}', file=sys.stderr)
         else:
-            reveal_editor()
-            reader_for(workspace['id'])
-            if not args.no_post_open: post_open(directory, workspace['id'], label, args.no_reader or not paper)
+            finish_open()
         return process.returncode
 
 

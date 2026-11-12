@@ -240,6 +240,47 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
         self.assertEqual(json.loads(viewer_log.read_text()), viewer)
         self.assertFalse(layout_log.exists())
 
+    def desktop_fixture(self, reused=False):
+        (self.project / '.paper').mkdir(exist_ok=True)
+        (self.project / '.paper/config.json').write_text(json.dumps({
+            'project_name': 'Launch Fixture', 'document_type': 'paper'}))
+        (self.project / 'main.tex').write_text('Source fixture.\n')
+        events = self.root / 'events.jsonl'
+        for program in ('workspace-desktop', 'workspace-read'):
+            stub = self.bin / program
+            stub.write_text(f'#!{sys.executable}\nimport json,sys\nfrom pathlib import Path\n'
+                            f'events=Path({str(events)!r})\n'
+                            'with events.open("a") as f: f.write(json.dumps(sys.argv[1:])+"\\n")\n'
+                            f'windows=([{{"id":"editor","app_id":"workspace-editor","title":"Editor — Launch Fixture · Paper"}}] '
+                            f'if {reused!r} or Path({str(self.log)!r}).exists() else [])\n'
+                            'print(json.dumps({"ok":True,"capabilities":[4],"windows":windows}))\n')
+            stub.chmod(0o755)
+        self.env['XDG_CURRENT_DESKTOP'] = 'COSMIC'
+        return events
+
+    def test_desktop_focus_is_last_after_reader_startup(self):
+        events = self.desktop_fixture()
+        self.launch('--terminal', '--focus', '--no-post-open')
+        calls = [json.loads(line) for line in events.read_text().splitlines()]
+        self.assertEqual(calls[-2:], [['reveal', '--window', 'editor'], ['focus', '--window', 'editor']])
+        reader_index = next(i for i, call in enumerate(calls) if '--project' in call)
+        self.assertLess(reader_index, len(calls) - 2)
+        self.assertIn('--start-as', self.record()['args'])
+
+    def test_reused_minimized_editor_is_restored_without_creating_another(self):
+        events = self.desktop_fixture(reused=True)
+        endpoint = self.root / f'runtime/workspace-editors/{os.getpid()}-fixture'
+        endpoint.mkdir(parents=True)
+        (endpoint / 'record.json').write_text(json.dumps({'pid': os.getpid(), 'project': str(self.project),
+            'session': 'existing', 'endpoint': str(endpoint), 'protocol': 1}))
+        (self.project / 'output').mkdir()
+        with (self.project / 'output/.main.watch.lock').open('a') as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            self.launch('--terminal', '--focus', '--no-post-open')
+        self.assertFalse(self.log.exists())
+        calls = [json.loads(line) for line in events.read_text().splitlines()]
+        self.assertEqual(calls[-2:], [['reveal', '--window', 'editor'], ['focus', '--window', 'editor']])
+
     def test_reused_standalone_editor_restores_only_a_missing_build_watcher(self):
         endpoint = self.root / f'runtime/workspace-editors/{os.getpid()}-fixture'
         endpoint.mkdir(parents=True)

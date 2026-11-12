@@ -46,6 +46,27 @@ class PassiveLaunchTest(unittest.TestCase):
                 DESKTOP.reveal_existing('workspace-editor','Editor — Example')
             call.assert_called_once_with('info')
 
+    def test_explicit_open_reveals_before_activating_the_same_window(self):
+        windows = [{'id': 'target', 'app_id': 'workspace-editor', 'title': 'Editor — Example'}]
+        with patch.object(DESKTOP, 'desktop', side_effect=[{'windows': windows}, {'ok': True}, {'ok': True}]) as call:
+            self.assertTrue(DESKTOP.reveal_existing('workspace-editor', 'Editor — Example', focus=True))
+        self.assertEqual([c.args for c in call.call_args_list], [
+            ('info',), ('reveal', '--window', 'target'), ('focus', '--window', 'target')])
+
+    def test_failed_reveal_is_reported_without_activation(self):
+        windows = [{'id': 'target', 'app_id': 'workspace-editor', 'title': 'Editor'}]
+        with patch.object(DESKTOP, 'desktop', side_effect=[{'windows': windows}, {'ok': False}]) as call:
+            with self.assertRaisesRegex(ValueError, 'could not reveal'):
+                DESKTOP.reveal(set(), 'workspace-editor', 'Editor', focus=True)
+        self.assertEqual(call.call_count, 2)
+
+    def test_slow_editor_can_map_after_the_old_three_second_budget(self):
+        windows = [{'id': 'late', 'app_id': 'workspace-editor', 'title': 'Editor'}]
+        with patch.object(DESKTOP.time, 'monotonic', side_effect=[0, 4]), \
+                patch.object(DESKTOP.time, 'sleep'), \
+                patch.object(DESKTOP, 'desktop', side_effect=[{'windows': []}, {'windows': windows}, {'ok': True}]):
+            self.assertTrue(DESKTOP.reveal(set(), 'workspace-editor', 'Editor'))
+
     def test_initial_minimized_hint_preserves_input_and_icon_settings(self):
         hints = KITTY.WMHints(flags=1 | 4, input=1, initial_state=1, icon_pixmap=99)
         library = Mock()

@@ -210,10 +210,16 @@ automatically when its installer publishes a complete runtime generation.
 Only explicit open/view/status/read/apply/reload/reload-ui messages are accepted.
 `project-open` and `paper open` also accept `--file`, `--line`, `--session`, and
 `--new`. `paper open --no-reader` leaves the reader launch disabled.
-New Editor windows preserve desktop focus by default; `--focus` requests an
-explicit activation. On COSMIC, a Kitty pre-show callback sets the initial
+New and reused Editor windows are revealed without taking desktop focus by
+default; `--focus` explicitly restores and activates the Editor after Reader
+startup and the optional placement hook. Reusing a workspace selects its existing
+Editor pane without opening files or changing buffers/cursors. On COSMIC,
+explicit opens are also staged until placement completes, so the active window
+does not prevent its move to the intended monitor. A Kitty pre-show callback sets the initial
 minimized hint on XWayland before mapping, then `workspace-desktop reveal`
-unminimizes without activation. This uses the system `libX11.so.6`; without
+unminimizes the exact window, followed by activation only with `--focus`.
+The reveal waits up to ten seconds for a slow initial map and reports failure.
+This uses the system `libX11.so.6`; without
 passive reveal support the Editor stays minimized and the launcher reports it.
 `--reveal` uses a no-UI Kitty helper because native `focus-tab` also activates
 the desktop window. These helpers are included in newly vendored runtimes.
