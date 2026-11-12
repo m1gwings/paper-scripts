@@ -64,7 +64,7 @@ def remote(record, *args):
     return result.stdout
 
 
-def live_workspaces():
+def live_workspaces(session=None, *, inspect_tabs=True):
     result = []
     directory = runtime_directory()
     for path in sorted(directory.glob('*.json')):
@@ -78,6 +78,11 @@ def live_workspaces():
                 continue
             address = Path(record['socket'])
             if not address.is_socket() or address.stat().st_uid != os.getuid():
+                continue
+            if session is not None and record['id'] != session:
+                continue
+            if not inspect_tabs:
+                result.append(record)
                 continue
             windows = json.loads(remote(record, 'ls'))
             tabs = []

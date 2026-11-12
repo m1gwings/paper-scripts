@@ -101,7 +101,7 @@ class WorkspaceTest(unittest.TestCase):
             EDITOR.run([str(self.project/'proof.tex'),'--project',str(self.project),'--line','2','--column','3',
                         '--select-end-line','2','--select-end-column','8','--navigation','--focus'])
             self.assertEqual(send.call_args.kwargs['select_end_column'],8)
-            desktop.assert_called_with('focus','--window','42')
+            desktop.assert_called_once_with('focus','--app-id','workspace-editor','--title-prefix','Editor — '+self.record['name'])
 
     def test_old_editor_cannot_silently_ignore_source_link_guards(self):
         editor = dict(project=str(self.project), session=self.record['id'], protocol=1)
@@ -192,6 +192,11 @@ class WorkspaceTest(unittest.TestCase):
                 {'id': 2, 'title': 'Editor', 'env': {'PRIVATE_VALUE': 'do-not-return'}}]}]}]
             with patch.object(WORKSPACE, 'remote', return_value=json.dumps(response)):
                 records = WORKSPACE.live_workspaces()
+            with patch.object(WORKSPACE, 'remote') as remote:
+                self.assertEqual(WORKSPACE.live_workspaces(session='absent'), [])
+                targeted = WORKSPACE.live_workspaces(session=self.record['id'], inspect_tabs=False)
+                self.assertEqual([r['id'] for r in targeted], [self.record['id']])
+                remote.assert_not_called()
         self.assertEqual(len(records), 1)
         self.assertEqual(records[0]['tabs'][0]['panes'], [{'id': 2, 'title': 'Editor'}])
         self.assertNotIn('PRIVATE_VALUE', json.dumps(records))

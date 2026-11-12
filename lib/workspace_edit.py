@@ -102,7 +102,7 @@ def send(record, path, line=0, column=1, *, action="open", end_line=0, top_line=
                 if value.get('ok'):
                     return value
             raise ValueError(result or 'Editor rejected the request.')
-        time.sleep(.04)
+        time.sleep(.005)
     (endpoint / (name + '.request')).unlink(missing_ok=True)
     raise ValueError('Editor did not acknowledge the request; no keyboard input was sent.')
 
@@ -231,7 +231,7 @@ def run(argv=None, _locked=False):
                               navigation=args.navigation, **extra)
             if (args.focus or args.reveal) and not result.get('skipped'):
                 from project_workspace import live_workspaces as workspaces, remote
-                selected = [r for r in workspaces() if r['id'] == matches[0]['session']]
+                selected = [r for r in workspaces(session=matches[0]['session'], inspect_tabs=False) if r['id'] == matches[0]['session']]
                 pane = matches[0].get('kitty_window', '')
                 if len(selected) == 1 and pane.isdecimal():
                     if args.focus:
@@ -245,12 +245,8 @@ def run(argv=None, _locked=False):
                 from desktop_launch import desktop
                 if result.get('focus_unavailable'):
                     raise ValueError('Cannot identify the Editor window to focus.')
-                title = 'Editor — ' + selected[0]['name']
-                windows = [w for w in desktop('info')['windows'] if w['app_id'] == 'workspace-editor'
-                           and (w['title'] == title or w['title'].startswith(title + ' · '))]
-                if len(windows) != 1:
-                    raise ValueError('Cannot identify a unique Editor window to focus.')
-                desktop('focus', '--window', windows[0]['id'])
+                desktop('focus', '--app-id', 'workspace-editor',
+                        '--title-prefix', 'Editor — ' + selected[0]['name'])
             if args.reveal and not result.get('skipped'):
                 from desktop_launch import reveal_existing
                 if result.get('focus_unavailable'):
