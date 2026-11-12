@@ -63,6 +63,10 @@ class BuildTest(unittest.TestCase):
         last_good = (self.root / 'output/.latex/main.pdf.last-good').read_bytes()
         self.assertIn(b'%PDF-', last_good)
         self.assertIn(b'%%EOF', last_good[-2048:])
+        # An unchanged staged build must repair a corrupt published copy too.
+        pdf.write_bytes(b'corrupt published copy')
+        self.paper('build')
+        self.assertIn('Valid version', self.pdf_text())
 
     def test_output_clean_and_alternative_root(self):
         self.paper('build')

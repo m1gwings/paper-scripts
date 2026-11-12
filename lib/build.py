@@ -127,7 +127,7 @@ def compile_locked(command, out):
         elif not status and not clean and (aux / pdf.name).is_file():
             new_data = (aux / pdf.name).read_bytes()
             if is_valid_pdf(new_data):
-                if new_data != old_pdf:
+                if not pdf.is_file() or new_data != pdf.read_bytes():
                     pending = aux / (source.stem + '.publish.tmp')
                     pending.write_bytes(new_data)
                     pending.replace(pdf)
