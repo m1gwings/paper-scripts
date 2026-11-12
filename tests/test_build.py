@@ -40,7 +40,7 @@ class BuildTest(unittest.TestCase):
         (self.root / 'body.tex').write_text(r'Broken \undefinedcommand' + '\n')
         self.paper('build', ok=False)
         self.assertEqual(pdf.read_bytes(), previous)
-        state = json.loads((self.root / 'output/main.build.json').read_text())
+        state = json.loads((self.root / 'output/.latex/main.build.json').read_text())
         self.assertEqual(state['state'], 'failed')
         self.assertIn('Undefined control', state['error'])
         self.assertEqual(state['file'], './body.tex')
@@ -48,7 +48,7 @@ class BuildTest(unittest.TestCase):
         (self.root / 'body.tex').write_text('Recovered.\n')
         self.paper('build')
         self.assertIn('Recovered', self.pdf_text())
-        self.assertEqual(json.loads((self.root / 'output/main.build.json').read_text())['state'], 'success')
+        self.assertEqual(json.loads((self.root / 'output/.latex/main.build.json').read_text())['state'], 'success')
 
     def test_corrupt_pdf_is_not_retained_as_last_good(self):
         pdf = self.root / 'output/main.pdf'
@@ -60,7 +60,7 @@ class BuildTest(unittest.TestCase):
         (self.root / 'body.tex').write_text('Valid version.\n')
         self.paper('build')
         self.assertIn('Valid version', self.pdf_text())
-        last_good = (self.root / 'output/main.pdf.last-good').read_bytes()
+        last_good = (self.root / 'output/.latex/main.pdf.last-good').read_bytes()
         self.assertIn(b'%PDF-', last_good)
         self.assertIn(b'%%EOF', last_good[-2048:])
 
@@ -69,6 +69,12 @@ class BuildTest(unittest.TestCase):
         self.assertIn('First version', self.pdf_text())
         self.assertFalse((self.root / 'main.pdf').exists())
         self.assertFalse((self.root / 'main.aux').exists())
+        self.assertEqual({p.name for p in (self.root / 'output').iterdir()}, {'main.pdf', '.latex'})
+        self.assertTrue((self.root / 'output/.latex/main.aux').is_file())
+        self.assertTrue((self.root / 'output/.latex/main.synctex.gz').is_file())
+        study = self.root / 'output/study'
+        study.mkdir()
+        (study / 'metadata.json').write_text('preserve study')
         variants = self.root / 'variants'
         variants.mkdir()
         (variants / 'draft.tex').write_text('\\documentclass{article}\n'
@@ -79,6 +85,7 @@ class BuildTest(unittest.TestCase):
         self.assertFalse((self.root / 'output/main.pdf').exists())
         self.assertTrue((self.root / 'output/variants/draft.pdf').exists())
         self.assertTrue((self.root / 'main.tex').exists())
+        self.assertEqual((study / 'metadata.json').read_text(), 'preserve study')
 
     def test_explicit_watch_root_rebuilds_saved_dependencies(self):
         with (self.root / 'watch.log').open('w') as log:
@@ -112,6 +119,53 @@ class BuildTest(unittest.TestCase):
                     os.killpg(watcher.pid, signal.SIGKILL)
                     watcher.wait()
 
+    def test_watcher_tracks_ews_pdf_inputs_without_rebuilding_its_own_output(self):
+        study = self.root / 'output/study'
+        study.mkdir(parents=True)
+        scratch = self.root / 'figure_source'
+        scratch.mkdir()
+
+        def figure(text):
+            (scratch / 'figure.tex').write_text(
+                r'\documentclass{article}\pagestyle{empty}\begin{document}'
+                + text + r'\end{document}')
+            subprocess.run(['latexmk', '-pdf', '-interaction=nonstopmode', 'figure.tex'],
+                           cwd=scratch, stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT,
+                           check=True, timeout=20)
+            shutil.copyfile(scratch / 'figure.pdf', study / 'figure.pdf')
+
+        figure('Initial experiment figure')
+        (self.root / 'main.tex').write_text(
+            r'\documentclass{article}\usepackage{graphicx}\begin{document}'
+            r'\includegraphics[width=3cm]{output/study/figure.pdf}\end{document}')
+        with (self.root / 'watch.log').open('w') as log:
+            watcher = subprocess.Popen(['bash', str(SCRIPT), 'build', '--watch'], cwd=self.root,
+                                       env=self.env, stdout=log, stderr=log, start_new_session=True)
+            def wait_for(text):
+                deadline = time.monotonic() + 15
+                while time.monotonic() < deadline:
+                    self.assertIsNone(watcher.poll(), (self.root / 'watch.log').read_text())
+                    pdf = self.root / 'output/main.pdf'
+                    if pdf.exists():
+                        result = subprocess.run(['pdftotext', str(pdf), '-'],
+                                                capture_output=True, text=True)
+                        if text in result.stdout:
+                            return
+                    time.sleep(.1)
+                self.fail((self.root / 'watch.log').read_text())
+            try:
+                wait_for('Initial experiment figure')
+                figure('Updated experiment figure')
+                wait_for('Updated experiment figure')
+                time.sleep(1.5)
+                state = self.root / 'output/.latex/main.build.json'
+                stamp = state.stat().st_mtime_ns
+                time.sleep(1)
+                self.assertEqual(state.stat().st_mtime_ns, stamp)
+            finally:
+                os.killpg(watcher.pid, signal.SIGINT)
+                watcher.wait(timeout=5)
+
     def test_invalid_source_and_external_output_are_rejected(self):
         self.paper('build', '../secret.tex', ok=False)
         with tempfile.TemporaryDirectory() as outside:
@@ -127,6 +181,7 @@ class BuildTest(unittest.TestCase):
 import os,sys,time
 from pathlib import Path
 out=Path('output'); out.mkdir(exist_ok=True)
+aux=Path(next(a.split('=',1)[1] for a in sys.argv if a.startswith('-outdir=')))
 try: (out/'busy').mkdir()
 except FileExistsError:
     (out/'overlap').touch(); sys.exit(99)
@@ -135,8 +190,8 @@ try:
     time.sleep(.4)
     if '-C' in sys.argv: (out/'main.pdf').unlink(missing_ok=True)
     else:
-        (out/'main.pdf').write_text(Path('body.tex').read_text())
-        (out/'main.fls').write_text('INPUT main.tex\\nINPUT body.tex\\n')
+        (aux/'main.pdf').write_text('%PDF-1.5 '+ ' ' * 100 + Path('body.tex').read_text() + '%%EOF')
+        (aux/'main.fls').write_text('INPUT main.tex\\nINPUT body.tex\\n')
 finally: (out/'busy').rmdir()
 ''')
         compiler.chmod(0o755)
@@ -215,13 +270,14 @@ finally: (out/'busy').rmdir()
         compiler = fake_bin / 'latexmk'
         compiler.write_text('''#!/usr/bin/python3
 from pathlib import Path
-import time
+import sys,time
 out=Path('output'); out.mkdir(exist_ok=True)
+aux=Path(next(a.split('=',1)[1] for a in sys.argv if a.startswith('-outdir=')))
 text=Path('part.fragment').read_text()
 (out/'started').touch()
 while not (out/'continue').exists(): time.sleep(.02)
-(out/'main.pdf').write_text(text)
-(out/'main.fls').write_text('INPUT main.tex\\nINPUT part.fragment\\n')
+(aux/'main.pdf').write_text('%PDF-1.5 '+ ' ' * 100 + text + '%%EOF')
+(aux/'main.fls').write_text('INPUT main.tex\\nINPUT part.fragment\\n')
 ''')
         compiler.chmod(0o755)
         env = dict(self.env, PATH=str(fake_bin) + os.pathsep + self.env['PATH'])
@@ -237,7 +293,7 @@ while not (out/'continue').exists(): time.sleep(.02)
                 (self.root / 'output/continue').touch()
                 while True:
                     pdf = self.root / 'output/main.pdf'
-                    if pdf.exists() and pdf.read_text() == 'Saved during the first build': break
+                    if pdf.exists() and 'Saved during the first build' in pdf.read_text(): break
                     self.assertIsNone(watcher.poll())
                     self.assertLess(time.monotonic(), deadline, (self.root / 'watch.log').read_text())
                     time.sleep(.05)

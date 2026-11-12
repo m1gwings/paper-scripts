@@ -34,7 +34,8 @@ once through its file-tree UI. Later exports do not recreate them.
 After source edits, build and fix introduced errors before reporting completion.
 Reuse `paper build --watch [ROOT.tex]` for rebuilds after saved edits; avoid
 overlapping builds. `paper view [ROOT.tex]` builds and opens the external viewer.
-Keep PDFs and auxiliary files in ignored `output/`. Report failures: the viewer
+Keep PDFs in ignored `output/`; build files stay in `output/.latex/`.
+EWS studies use sibling `output/<study_name>/` folders; clean each study separately. Report failures: the viewer
 may still show an older PDF. Documentation-only changes need no manuscript build.
 
 ## Notifications and cloud execution

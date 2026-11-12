@@ -294,7 +294,7 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
             'session': session, 'endpoint': str(endpoint), 'protocol': 1}))
         self.log.unlink()
         viewer_log.unlink()
-        (self.project / 'output').mkdir()
+        (self.project / 'output/.latex').mkdir(parents=True)
         with (self.project / 'output/.main.watch.lock').open('a') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
             self.assertIn('Reused editor', self.launch('--terminal'))
@@ -335,8 +335,8 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
         endpoint.mkdir(parents=True)
         (endpoint / 'record.json').write_text(json.dumps({'pid': os.getpid(), 'project': str(self.project),
             'session': 'existing', 'endpoint': str(endpoint), 'protocol': 1}))
-        (self.project / 'output').mkdir()
-        with (self.project / 'output/.main.watch.lock').open('a') as lock:
+        (self.project / 'output/.latex').mkdir(parents=True)
+        with (self.project / 'output/.latex/.main.watch.lock').open('a') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
             self.launch('--terminal', '--focus', '--no-post-open')
         self.assertFalse(self.log.exists())
@@ -360,8 +360,8 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
         self.assertEqual(command[-3:], ['build', '--watch', 'main.tex'])
         self.assertFalse(self.log.exists())  # No duplicate desktop editor.
         log.unlink()
-        (self.project / 'output').mkdir()
-        with (self.project / 'output/.main.watch.lock').open('a') as lock:
+        (self.project / 'output/.latex').mkdir(parents=True)
+        with (self.project / 'output/.latex/.main.watch.lock').open('a') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
             self.launch('--terminal', '--no-reader')
             self.assertFalse(log.exists())  # Existing watcher remains the only one.

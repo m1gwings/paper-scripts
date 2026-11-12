@@ -109,14 +109,16 @@ def post_open(directory, identifier, label, no_reader=False, *, phase=None, wind
 
 def ensure_watcher(directory, source, identifier):
     """Restore Build when paper open reuses an editor opened standalone."""
-    lock_path = directory / 'output' / source.parent / f'.{source.stem}.watch.lock'
-    if lock_path.exists():
-        with lock_path.open('a') as lock:
-            try:
-                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                return
-            fcntl.flock(lock, fcntl.LOCK_UN)
+    # A pinned runtime may still be watching with the previous visible layout.
+    for output in ('output/.latex', 'output'):
+        lock_path = directory / output / source.parent / f'.{source.stem}.watch.lock'
+        if lock_path.exists():
+            with lock_path.open('a') as lock:
+                try:
+                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    return
+                fcntl.flock(lock, fcntl.LOCK_UN)
     subprocess.run(['project-terminal', 'run', '--workspace', identifier, '--title', 'Build',
                     '--cwd', str(directory), '--keep-focus', '--', sys.executable,
                     str(Path(__file__).with_name('build.py')), 'build', '--watch', str(source)],

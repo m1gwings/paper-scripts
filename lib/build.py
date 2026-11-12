@@ -1,5 +1,6 @@
 """Canonical local PDF builds and continuous preview, independent of an IDE."""
 import argparse
+from contextlib import ExitStack
 import json
 import fcntl
 import os
@@ -26,14 +27,20 @@ def file_stamp(path):
         return None
 
 
+def auxiliary_directory(source):
+    """Keep compiler products hidden, mirroring the source directory hierarchy."""
+    return Path("output/.latex") / source.parent
+
+
 def dependencies(source, out):
     """Use TeX's recorder and latexmk's database (which also includes BibTeX)."""
     paths = {source.resolve(), Path('.latexmkrc').resolve(), Path('latexmkrc').resolve()}
-    recorder = out / (source.stem + '.fls')
+    aux = auxiliary_directory(source)
+    recorder = aux / (source.stem + '.fls')
     if recorder.exists():
         paths.update(Path(line[6:]).resolve() for line in recorder.read_text(errors='replace').splitlines()
                      if line.startswith('INPUT '))
-    database = out / (source.stem + '.fdb_latexmk')
+    database = aux / (source.stem + '.fdb_latexmk')
     if database.exists():
         for line in database.read_text(errors='replace').splitlines():
             match = re.match(r'  "((?:[^"\\]|\\.)*)" \d', line)
@@ -42,9 +49,12 @@ def dependencies(source, out):
                 paths.add(Path(name).resolve())
     # Generated inputs change during compilation; they must not trigger a loop.
     output = Path('output').resolve()
-    paths = {p for p in paths if not p.is_relative_to(output)}
+    generated = (output / '.latex').resolve()
+    pdf = (out / (source.stem + '.pdf')).resolve()
+    paths = {p for p in paths if not p.is_relative_to(generated) and p != pdf}
     # A newly created missing input must also wake a failed build.
-    paths.update(p.parent for p in list(paths) if p.is_relative_to(Path.cwd()))
+    paths.update(p.parent for p in list(paths)
+                 if p.is_relative_to(Path.cwd()) and p.parent != output)
     return paths
 
 
@@ -52,12 +62,22 @@ def compile_locked(command, out):
     # All roots sharing an auxiliary directory may write the same include files.
     # Keep the descriptor in latexmk too, so an interrupted wrapper cannot release
     # the lock while its child is still writing output.
-    with (out / '.build.lock').open('a') as lock:
+    source = Path(command[-1])
+    aux = auxiliary_directory(source)
+    with ExitStack() as locks:
+        # Coordinate with an older pinned builder when its legacy lock exists.
+        legacy = out / '.build.lock'
+        inherited = []
+        if legacy.exists():
+            old_lock = locks.enter_context(legacy.open('a'))
+            fcntl.flock(old_lock, fcntl.LOCK_EX)
+            inherited.append(old_lock.fileno())
+        lock = locks.enter_context((aux / '.build.lock').open('a'))
         fcntl.flock(lock, fcntl.LOCK_EX)
-        source = Path(command[-1])
+        inherited.append(lock.fileno())
         pdf = out / (source.stem + '.pdf')
-        state_file = out / (source.stem + '.build.json')
-        last_good = pdf.with_suffix('.pdf.last-good')
+        state_file = aux / (source.stem + '.build.json')
+        last_good = aux / (source.stem + '.pdf.last-good')
         clean = '-C' in command
         old_pdf = pdf.read_bytes() if pdf.is_file() else None
         old_mtime = pdf.stat().st_mtime_ns if pdf.is_file() else None
@@ -88,12 +108,15 @@ def compile_locked(command, out):
             pending.replace(state_file)
         report('building')
         try:
-            status = subprocess.run(command, pass_fds=(lock.fileno(),)).returncode
+            status = subprocess.run(command, pass_fds=tuple(inherited)).returncode
         except BaseException:
             report('failed', error='Compilation interrupted')
             raise
+        compiled = aux / pdf.name
+        if not status and not clean and (not compiled.is_file() or not is_valid_pdf(compiled.read_bytes())):
+            status = 1
         if status and not clean and old_pdf is not None:
-            pending = pdf.with_suffix('.pdf.tmp')
+            pending = aux / (source.stem + '.publish.tmp')
             pending.write_bytes(old_pdf)
             pending.replace(pdf)
             if old_mtime is not None:
@@ -101,9 +124,13 @@ def compile_locked(command, out):
                     os.utime(pdf, ns=(old_mtime, old_mtime))
                 except OSError:
                     pass
-        elif not status and not clean and pdf.is_file():
-            new_data = pdf.read_bytes()
+        elif not status and not clean and (aux / pdf.name).is_file():
+            new_data = (aux / pdf.name).read_bytes()
             if is_valid_pdf(new_data):
+                if new_data != old_pdf:
+                    pending = aux / (source.stem + '.publish.tmp')
+                    pending.write_bytes(new_data)
+                    pending.replace(pdf)
                 try:
                     pending_lg = last_good.with_suffix('.tmp')
                     pending_lg.write_bytes(new_data)
@@ -111,9 +138,12 @@ def compile_locked(command, out):
                 except OSError:
                     pass
         if clean:
-            report('idle')
+            if not status:
+                pdf.unlink(missing_ok=True)
+                last_good.unlink(missing_ok=True)
+            report('idle' if not status else 'failed')
         elif status:
-            log = out / (source.stem + '.log')
+            log = aux / (source.stem + '.log')
             text = log.read_text(errors='replace') if log.exists() else ''
             match = re.search(r'^(.+?\.tex):(\d+): (.+)$', text, re.M)
             generic = re.search(r'^! (.+)$', text, re.M)
@@ -126,9 +156,15 @@ def compile_locked(command, out):
 
 
 def watch(command, source, out):
-    with (out / f'.{source.stem}.watch.lock').open('a') as lock:
+    with ExitStack() as locks:
         try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            paths = [out / f'.{source.stem}.watch.lock',
+                     auxiliary_directory(source) / f'.{source.stem}.watch.lock']
+            for path in paths:
+                if path == paths[0] and not path.exists():
+                    continue
+                lock = locks.enter_context(path.open('a'))
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             print(f'A continuous builder is already watching {source}.', flush=True)
             return 0
@@ -173,14 +209,18 @@ def run(argv=None):
     out = Path('output') / source.parent
     if not (root / out).resolve().is_relative_to(root.resolve()):
         parser.error('Output directory must remain inside the repository.')
+    aux = auxiliary_directory(source)
+    if not (root / aux).resolve().is_relative_to(root.resolve()):
+        parser.error('Auxiliary directory must remain inside the repository.')
     out.mkdir(parents=True, exist_ok=True)
+    aux.mkdir(parents=True, exist_ok=True)
     pdf = out / (source.stem + '.pdf')
     if pdf.is_symlink():
         parser.error('Refusing a symlinked PDF output.')
     if not shutil.which('latexmk'):
         parser.error("Required command 'latexmk' is not installed.")
     command = ['latexmk', '-pdf', '-interaction=nonstopmode', '-file-line-error',
-               '-halt-on-error', '-synctex=1', f'-outdir={out}', f'-auxdir={out}']
+               '-halt-on-error', '-synctex=1', f'-outdir={aux}', f'-auxdir={aux}']
     if args.action == 'clean':
         command.append('-C')
     command.append(str(source))

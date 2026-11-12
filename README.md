@@ -298,8 +298,11 @@ required. Use `paper open --vscode` for a one-off VS Code window.
 
 ### PDF output
 
-`paper build` writes `output/main.pdf` and its auxiliary files. An explicit root,
-such as `paper build variants/draft.tex`, writes `output/variants/draft.pdf`.
+`paper build` writes `output/main.pdf`; compiler files, logs, build status,
+SyncTeX data, and last-good backups stay hidden in `output/.latex/`. An explicit root,
+such as `paper build variants/draft.tex`, writes `output/variants/draft.pdf`, with compiler files in `output/.latex/variants/`.
+EWS studies can share the parent as `output/<study_name>/`; recorded figure
+inputs there are watched for changes, and document cleanup leaves studies alone.
 `paper clean` removes only the selected document's generated output. These local
 commands require Git but no remotes. Keep `/output/` in the project's `.gitignore`;
 do not ignore all PDFs, since reference papers and source graphics may be tracked.
@@ -912,7 +915,7 @@ projects.
 
 ### Build status for Editor and Reader
 
-Local builds publish atomic `output/ROOT.build.json` records with building,
+Local builds publish atomic `output/.latex/ROOT.build.json` records with building,
 success, failed or idle state, the last successful PDF time, and the first
 compiler error location. Failed builds restore the previous valid PDF. Editor
 and Reader consume this local, ignored status; ordinary projects have no build UI.
