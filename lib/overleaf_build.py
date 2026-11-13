@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -127,11 +128,18 @@ def verify_snapshot(candidate):
         write(temporary/tex_environment.MANIFEST, candidate)
         subprocess.run(['git', 'init', '-q', str(temporary)], check=True, capture_output=True)
         env = dict(os.environ, PAPER_OVERLEAF_AUTO='0')
-        result = subprocess.run([sys.executable, str(Path(__file__).with_name('build.py').resolve()), 'build'],
-                                cwd=temporary, env=env, capture_output=True, text=True, timeout=300)
         verification_log = root/CACHE/'verification.log'
-        verification_log.write_text(result.stdout+result.stderr)
-        if result.returncode:
+        with verification_log.open('w') as output:
+            process = subprocess.Popen([sys.executable, str(Path(__file__).with_name('build.py').resolve()), 'build'],
+                                       cwd=temporary, env=env, stdin=subprocess.DEVNULL,
+                                       stdout=output, stderr=output, start_new_session=True)
+            try:
+                status = process.wait(timeout=600)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait()
+                raise ValueError('Isolated local verification exceeded ten minutes; the compiler process was stopped. See the verification log.') from None
+        if status:
             raise ValueError('Isolated local build of Overleaf source failed. See the verification log; previous environment retained.')
         main = Path(candidate['main'])
         drift = tex_environment.differences(temporary/'output/.latex'/main.parent/(main.stem+'.log'), candidate)
@@ -139,9 +147,10 @@ def verify_snapshot(candidate):
             with verification_log.open('a') as output:
                 output.write('\n'.join(drift)+'\n')
             raise ValueError('Local compiler/package versions differ from the actual Overleaf build. See the verification log.')
+        shutil.copyfile(temporary/'output'/main.parent/(main.stem+'.pdf'), root/CACHE/'verification.pdf')
         pages = tex_environment.compare_pdfs(temporary/'output'/main.parent/(main.stem+'.pdf'), root/CACHE/'output.pdf', 72)
         if pages:
-            raise ValueError('Local and Overleaf rendered output differ on '+str(len(pages))+' page(s). See the verification log.')
+            raise ValueError('Local and Overleaf rendered output differ on '+', '.join(pages)+'. Compare verification.pdf with output.pdf in the verification cache.')
         return dict(dpi=72, source_sha256=source_digest(source), environment_sha256=hashlib.sha256(json.dumps(candidate['baseline'], sort_keys=True).encode()).hexdigest(), verified_at=time.time())
 
 
