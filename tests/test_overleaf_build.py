@@ -62,6 +62,27 @@ class OverleafBuildTest(unittest.TestCase):
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         self.assertTrue((self.root/'output/.latex/output.tex').is_symlink())
 
+    @unittest.skipUnless(shutil.which('latexmk'),'TeX unavailable')
+    def test_running_watcher_reloads_a_replaced_runtime(self):
+        import time
+        source=self.root/'main.tex';source.write_text(r'\documentclass{article}\begin{document}Before reload.\end{document}')
+        runtime=self.root/'.paper/runtime'
+        shutil.copytree(SCRIPT.parent/'lib',runtime/'lib',ignore=shutil.ignore_patterns('__pycache__'))
+        output=self.root/'watch.log'
+        with output.open('w') as log:
+            process=subprocess.Popen([sys.executable,str(runtime/'lib/build.py'),'build','--watch'],env=dict(os.environ,PAPER_OVERLEAF_AUTO='0'),stdout=log,stderr=log)
+            try:
+                deadline=time.monotonic()+20
+                while not (self.root/'output/main.pdf').is_file() and time.monotonic()<deadline:time.sleep(.1)
+                self.assertTrue((self.root/'output/main.pdf').is_file())
+                file=runtime/'lib/build.py';file.write_text(file.read_text()+'\n# Runtime replacement fixture.\n')
+                deadline=time.monotonic()+10
+                while 'reloading watcher' not in output.read_text() and time.monotonic()<deadline:time.sleep(.1)
+                self.assertIn('reloading watcher',output.read_text())
+                self.assertIsNone(process.poll())
+            finally:
+                process.terminate();process.wait(timeout=5)
+
     def test_failed_capture_preserves_last_verified_manifest_and_timestamp(self):
         tex.MANIFEST.parent.mkdir()
         original=b'{"verified":"previous environment"}\n';tex.MANIFEST.write_bytes(original)

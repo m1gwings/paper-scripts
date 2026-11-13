@@ -200,7 +200,22 @@ def watch(command, source, out):
             return 0
         print(f'Watching {source}; PDF: {out / (source.stem + ".pdf")}. Stop with Ctrl+C.', flush=True)
         previous = None
+        runtime_files = (Path(__file__).resolve(), Path(tex_environment.__file__).resolve(), Path(overleaf_build.__file__).resolve())
+        runtime_stamps = {path: file_stamp(path) for path in runtime_files}
         while True:
+            current_runtime = {path: file_stamp(path) for path in runtime_files}
+            if current_runtime != runtime_stamps:
+                # Wait for a complete, syntactically valid runtime replacement.
+                time.sleep(.2)
+                if current_runtime != {path: file_stamp(path) for path in runtime_files}:
+                    continue
+                try:
+                    for path in runtime_files:
+                        compile(path.read_bytes(), str(path), 'exec')
+                except (OSError, SyntaxError):
+                    continue
+                print('Build runtime updated; reloading watcher.', flush=True)
+                os.execv(sys.executable, [sys.executable, str(runtime_files[0]), 'build', '--watch', str(source)])
             overleaf_build.refresh_async()
             tracked = dependencies(source, out)
             tracked.add((out / (source.stem + '.pdf')).resolve())
