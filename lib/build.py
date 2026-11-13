@@ -2,6 +2,7 @@
 import argparse
 from contextlib import ExitStack
 import json
+import hashlib
 import fcntl
 import os
 import re
@@ -122,9 +123,12 @@ def compile_locked(command, out):
         except (OSError, ValueError):
             previous = {}
         last_success = previous.get('last_success', pdf.stat().st_mtime if pdf.exists() and is_valid_pdf(old_pdf) else None)
+        build_signature = previous.get('build_signature')
+        requested_signature = None
         def report(state, **extra):
             value = dict(state=state, source=str(source), pdf=str(pdf), updated=time.time(),
-                         last_success=last_success, warning=overleaf_build.warning(), **extra)
+                         last_success=last_success, build_signature=build_signature,
+                         warning=overleaf_build.warning(), **extra)
             pending = state_file.with_suffix('.json.tmp')
             pending.write_text(json.dumps(value))
             pending.replace(state_file)
@@ -145,6 +149,11 @@ def compile_locked(command, out):
                     active.insert(-1, '-no-shell-escape')
                 if config.get('jobname') == 'output':
                     active.insert(-1, '-jobname=output')
+                requested_signature = hashlib.sha256(json.dumps(dict(command=active, config=config), sort_keys=True).encode()).hexdigest()
+                if not clean and requested_signature != build_signature:
+                    # latexmk does not invalidate old outputs for every engine /
+                    # shell-mode change. Rebuild once, then retain its fast path.
+                    active.insert(-1, '-g')
             status = subprocess.run(active, env=env, pass_fds=tuple(inherited)).returncode
             if not clean and '-jobname=output' in active:
                 compiled_log = aux/'output.log'
@@ -200,6 +209,7 @@ def compile_locked(command, out):
                    file=match[1] if match else str(source), line=int(match[2]) if match else 1)
         else:
             last_success = pdf.stat().st_mtime if pdf.exists() else None
+            build_signature = requested_signature
             report('success')
         return status
 

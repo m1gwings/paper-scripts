@@ -20,6 +20,9 @@ the log/profile and frozen catalogue contents. Refresh workers run at reduced
 CPU priority, and isolated verification builds/page comparisons share one
 machine-wide lock so different projects cannot run those expensive stages at
 the same time. Normal foreground builds do not acquire that verification lock.
+Pinned builds record their compiler/configuration signature. A changed signature
+(or an older build without one) forces one rebuild to retire stale latexmk
+outputs; unchanged subsequent builds retain latexmk's normal incremental path.
 
 ## Status and failure behavior
 

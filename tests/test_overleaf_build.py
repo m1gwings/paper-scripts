@@ -62,6 +62,32 @@ class OverleafBuildTest(unittest.TestCase):
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         self.assertTrue((self.root/'output/.latex/output.tex').is_symlink())
 
+    @unittest.skipUnless(shutil.which('latexmk') and shutil.which('pdflatex'),'TeX unavailable')
+    def test_changed_shell_mode_invalidates_old_outputs_only_once(self):
+        source=self.root/'main.tex'
+        source.write_text(r'\documentclass{article}\begin{document}Mode check.\end{document}')
+        env=dict(os.environ,PAPER_OVERLEAF_AUTO='0')
+        subprocess.run(['bash',str(SCRIPT),'build'],env=env,check=True,capture_output=True)
+        baseline=tex.environment(self.root/'output/.latex/main.log')
+        recipe=json.loads((SCRIPT.parent/'lib/texlive_2025.json').read_text())
+        binaries=self.root/'toolchain/bin/x86_64-linux';binaries.mkdir(parents=True)
+        for name in ('latexmk','pdflatex'):(binaries/name).symlink_to(shutil.which(name))
+        env['PAPER_TEXLIVE_ROOT']=str(self.root/'toolchain')
+        tex.MANIFEST.parent.mkdir(exist_ok=True)
+        config=dict(version=1,main='main.tex',compiler='pdflatex',recipe=recipe,baseline=baseline,shell_escape='restricted')
+        tex.MANIFEST.write_text(json.dumps(config))
+        subprocess.run(['bash',str(SCRIPT),'build'],env=env,check=True,capture_output=True)
+        config['shell_escape']='enabled';config['baseline']['shell_escape']='enabled'
+        tex.MANIFEST.write_text(json.dumps(config))
+        rebuilt=subprocess.run(['bash',str(SCRIPT),'build'],env=env,capture_output=True,text=True)
+        self.assertEqual(rebuilt.returncode,0,rebuilt.stdout+rebuilt.stderr)
+        self.assertEqual(tex.environment(self.root/'output/.latex/main.log')['shell_escape'],'enabled')
+        log=self.root/'output/.latex/main.log';stamp=log.stat().st_mtime_ns
+        cached=subprocess.run(['bash',str(SCRIPT),'build'],env=env,capture_output=True,text=True)
+        self.assertEqual(cached.returncode,0,cached.stdout+cached.stderr)
+        self.assertEqual(log.stat().st_mtime_ns,stamp)
+        self.assertIn('Nothing to do',cached.stdout)
+
     @unittest.skipUnless(shutil.which('latexmk'),'TeX unavailable')
     def test_running_watcher_reloads_a_replaced_runtime(self):
         import time
