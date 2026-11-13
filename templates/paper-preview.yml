@@ -12,7 +12,8 @@ concurrency:
 jobs:
   preview:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # First restoration of a full frozen TeX environment can be substantial.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -22,6 +23,11 @@ jobs:
           # Avoid slow Azure mirror downloads exhausting the job timeout.
           sudo sed -i 's|http://azure.archive.ubuntu.com/ubuntu|https://archive.ubuntu.com/ubuntu|g' /etc/apt/sources.list.d/ubuntu.sources
           sudo apt-get update -qq
+          if test -f .paper/tex_environment.json; then
+            sudo apt-get install -y --no-install-recommends curl perl xz-utils
+            python3 .paper/runtime/lib/tex_environment.py install
+            exit 0
+          fi
           sudo apt-get install -y --no-install-recommends latexmk lmodern texlive-latex-extra texlive-fonts-recommended texlive-science texlive-plain-generic
       - name: Compile without credentials or shell escape
         run: python3 .paper/runtime/lib/preview.py

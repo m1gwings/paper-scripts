@@ -1,0 +1,11 @@
+{
+  "repository": "https://texlive.info/tlnet-archive/2025/06/15/tlnet",
+  "installer_sha256": "91c45ba9a4c22cfe7b6e9a49d0362f1abd410518d388839800ff3db6a57f20e7",
+  "catalogue_sha256": "eba524cdceb1360ad02fabf7d082f3cbfce617341aa7cddc10d83f37cdb8fed8",
+  "packages": [
+    "scheme-full"
+  ],
+  "engine_repository": "https://texlive.info/tlnet-archive/2025/03/09/tlnet",
+  "engine_catalogue_sha256": "84e5d354c00eb54e43c6b3c0c63e288a462b8bc61732f8832aa4e6fc097da0a4",
+  "engine_version": "pdfTeX 3.141592653-2.6-1.40.27 (TeX Live 2025)"
+}

@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 from viewer import open_pdf
+import tex_environment
 
 
 def is_valid_pdf(data):
@@ -34,7 +35,7 @@ def auxiliary_directory(source):
 
 def dependencies(source, out):
     """Use TeX's recorder and latexmk's database (which also includes BibTeX)."""
-    paths = {source.resolve(), Path('.latexmkrc').resolve(), Path('latexmkrc').resolve()}
+    paths = {tex_environment.MANIFEST.resolve(), source.resolve(), Path('.latexmkrc').resolve(), Path('latexmkrc').resolve()}
     aux = auxiliary_directory(source)
     recorder = aux / (source.stem + '.fls')
     if recorder.exists():
@@ -108,7 +109,21 @@ def compile_locked(command, out):
             pending.replace(state_file)
         report('building')
         try:
-            status = subprocess.run(command, pass_fds=tuple(inherited)).returncode
+            env = tex_environment.build_environment() if not clean else None
+            active = list(command)
+            if env is not None:
+                config = tex_environment.load()
+                active[0] = str(tex_environment.installation_root(config['recipe'])/'bin/x86_64-linux/latexmk')
+                active[1] = tex_environment.COMPILERS[config['compiler']]
+            status = subprocess.run(active, env=env, pass_fds=tuple(inherited)).returncode
+            if not status and not clean and tex_environment.MANIFEST.exists():
+                drift = tex_environment.differences(aux / (source.stem + '.log'))
+                if drift:
+                    print('Overleaf environment drift:\n'+'\n'.join(drift), file=sys.stderr)
+                    status = 1
+        except (OSError, ValueError, KeyError) as error:
+            print(f'paper: {error}', file=sys.stderr)
+            status = 1
         except BaseException:
             report('failed', error='Compilation interrupted')
             raise
@@ -191,7 +206,7 @@ def run(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=('build', 'clean', 'view'))
     parser.add_argument('--watch', action='store_true', help='rebuild after source saves until Ctrl+C')
-    parser.add_argument('source', nargs='?', default='main.tex')
+    parser.add_argument('source', nargs='?')
     args = parser.parse_intermixed_args(argv)
     if args.watch and args.action != 'build':
         parser.error('--watch is only available for build')
@@ -200,7 +215,11 @@ def run(argv=None):
         parser.error('Not inside a Git repository.')
     root = Path(result.stdout.removesuffix('\n'))
     os.chdir(root)
-    source = Path(args.source)
+    try:
+        default_source = tex_environment.load()['main'] if tex_environment.MANIFEST.exists() else 'main.tex'
+    except (OSError, ValueError, KeyError) as error:
+        parser.error(str(error))
+    source = Path(args.source or default_source)
     if (source.is_absolute() or '..' in source.parts or source.suffix != '.tex'
             or str(source).startswith('-') or any(c in str(source) for c in '\n\r')):
         parser.error('Source must be a relative .tex path inside the repository.')
@@ -217,7 +236,7 @@ def run(argv=None):
     pdf = out / (source.stem + '.pdf')
     if pdf.is_symlink():
         parser.error('Refusing a symlinked PDF output.')
-    if not shutil.which('latexmk'):
+    if not tex_environment.MANIFEST.exists() and not shutil.which('latexmk'):
         parser.error("Required command 'latexmk' is not installed.")
     command = ['latexmk', '-pdf', '-interaction=nonstopmode', '-file-line-error',
                '-halt-on-error', '-synctex=1', f'-outdir={aux}', f'-auxdir={aux}']

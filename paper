@@ -639,6 +639,9 @@ COMMANDS
       Create the standard paper .gitignore if none exists.
       Existing .gitignore files are never overwritten.
 
+  paper tex capture|install|status|check|compare-pdf
+      Capture, restore and verify a pinned Overleaf build environment.
+
   paper build [--watch] [ROOT.tex]
       Compile with latexmk into output/; defaults to main.tex.
       --watch rebuilds after saved source changes. Stop with Ctrl+C.
@@ -833,6 +836,10 @@ Use 'paper sync' to reconcile manuscript changes and 'paper publish' to publish 
         exit 0
         ;;
 
+    tex)
+        helper tex_environment "$@"
+        exit 0
+        ;;
     build|clean|view)
         helper build "$CMD" "$@"
         exit 0
