@@ -1,5 +1,6 @@
 """Automatic, cached Overleaf HTTP enrollment; never requires an agent."""
 import argparse
+from contextlib import contextmanager
 import fcntl
 import hashlib
 import json
@@ -96,7 +97,17 @@ def recipe_for(metadata, log):
         data = catalogue.read_bytes()
         if hashlib.sha256(data).hexdigest() != recipe['catalogue_sha256']:
             raise ValueError('Frozen package catalogue checksum mismatch')
+        # All inputs remain content-checked, but an unchanged log need not
+        # decompress and scan the entire TeX Live catalogue every five minutes.
+        key = hashlib.sha256(json.dumps(dict(version=1, recipe=recipe,
+            log=hashlib.sha256(Path(log).read_bytes()).hexdigest()), sort_keys=True).encode()).hexdigest()
+        resolved = CACHE/'resolved_recipe.json'
+        cached = read(resolved)
+        if cached.get('key') == key:
+            tex_environment.validate_recipe(cached['recipe'])
+            return cached['recipe']
         recipe['packages'] = sorted(set(recipe['packages']) | package_names(log, lzma.decompress(data).decode()))
+        write(resolved, dict(key=key, recipe=recipe))
     return recipe
 
 
@@ -109,7 +120,23 @@ def source_digest(path):
     return digest.hexdigest()
 
 
+@contextmanager
+def verification_slot():
+    # Different projects may refresh together. Only one isolated compilation /
+    # page comparison should compete with the user's normal build at a time.
+    cache = Path(os.environ.get('XDG_CACHE_HOME', Path.home()/'.cache'))/'paper'
+    cache.mkdir(parents=True, exist_ok=True)
+    with (cache/'overleaf-verification.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
+
+
 def verify_snapshot(candidate):
+    with verification_slot():
+        return _verify_snapshot(candidate)
+
+
+def _verify_snapshot(candidate):
     """Build the exact cloud source in isolation; never touch current Editor buffers."""
     source = CACHE/'source.zip'
     if not source.is_file():
@@ -249,6 +276,13 @@ def run(argv=None):
     parser.add_argument('--install', action='store_true')
     parser.add_argument('--fresh', action='store_true')
     args = parser.parse_args(argv)
+    if args.action == 'refresh':
+        # Inherited by the HTTP helper, isolated compiler and rasterizers; this
+        # never changes the foreground watcher or Editor's scheduling priority.
+        try:
+            os.nice(10)
+        except OSError:
+            pass
     result = subprocess.run(['git', 'rev-parse', '--show-toplevel'], capture_output=True, text=True)
     if result.returncode:
         parser.error('Not inside a Git repository')

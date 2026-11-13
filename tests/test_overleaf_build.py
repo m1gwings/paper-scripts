@@ -101,6 +101,40 @@ class OverleafBuildTest(unittest.TestCase):
         log=self.root/'cloud.log';log.write_text('</usr/local/texlive/texmf-local/fonts/pk/ljfour/public/bbm/bbm10.600pk>')
         catalogue='name bbm\nrunfiles size=1\n RELOC/fonts/source/public/bbm/bbm10.mf\n\n'
         self.assertEqual(overleaf.package_names(log,catalogue),{'bbm'})
+    def test_cached_recipe_skips_catalogue_scan_and_still_checks_inputs(self):
+        import hashlib,lzma
+        profile=overleaf.read(SCRIPT.parent/'lib/texlive_2026.json')
+        data=lzma.compress(b'name bbm\nrunfiles size=1\n RELOC/fonts/source/public/bbm/bbm10.mf\n\n')
+        profile['catalogue_sha256']=hashlib.sha256(data).hexdigest()
+        profile['packages']=['base']
+        overleaf.CACHE.mkdir(parents=True)
+        catalogue=overleaf.CACHE/('catalogue-'+profile['catalogue_sha256']+'.xz');catalogue.write_bytes(data)
+        log=self.root/'cloud.log';log.write_text('texmf-dist/fonts/source/public/bbm/bbm10.mf')
+        original=overleaf.read
+        def read(path, default=None):
+            return dict(profile) if Path(path).name=='texlive_2026.json' else original(path,default)
+        with patch.object(overleaf,'read',side_effect=read), patch.object(overleaf,'package_names',wraps=overleaf.package_names) as scan:
+            first=overleaf.recipe_for({'image':'texlive-full:2026.1'},log)
+            self.assertEqual(first,overleaf.recipe_for({'image':'texlive-full:2026.1'},log))
+            self.assertEqual(scan.call_count,1)
+            log.write_text('changed log')
+            overleaf.recipe_for({'image':'texlive-full:2026.1'},log)
+            self.assertEqual(scan.call_count,2)
+            catalogue.write_bytes(b'corrupted')
+            with self.assertRaisesRegex(ValueError,'checksum'):
+                overleaf.recipe_for({'image':'texlive-full:2026.1'},log)
+
+    def test_verification_slot_excludes_other_processes_and_releases(self):
+        env=dict(os.environ,XDG_CACHE_HOME=str(self.root/'cache'))
+        code="import fcntl,sys; f=open(sys.argv[1],'a'); fcntl.flock(f,fcntl.LOCK_EX|fcntl.LOCK_NB)"
+        with patch.dict(os.environ,env):
+            with overleaf.verification_slot():
+                lock=self.root/'cache/paper/overleaf-verification.lock'
+                blocked=subprocess.run([sys.executable,'-c',code,str(lock)],capture_output=True)
+                self.assertNotEqual(blocked.returncode,0)
+            released=subprocess.run([sys.executable,'-c',code,str(lock)],capture_output=True)
+            self.assertEqual(released.returncode,0,released.stderr)
+
     def test_future_environment_is_warning_not_silent_repin(self):
         with self.assertRaisesRegex(ValueError,'previous environment'):
             overleaf.recipe_for({'image':'texlive-full:2099.1'},self.root/'unused.log')

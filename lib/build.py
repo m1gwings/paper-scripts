@@ -14,6 +14,8 @@ from viewer import open_pdf
 import tex_environment
 import overleaf_build
 
+_DEPENDENCIES = {}
+
 
 def is_valid_pdf(data):
     if not data or len(data) < 100:
@@ -36,14 +38,22 @@ def auxiliary_directory(source):
 
 def dependencies(source, out):
     """Use TeX's recorder and latexmk's database (which also includes BibTeX)."""
+    identity = (Path.cwd(), source, out)
+    manifest_stamp = file_stamp(tex_environment.MANIFEST)
+    cached = _DEPENDENCIES.get(identity)
+    if cached and cached[0] == manifest_stamp and all(file_stamp(path) == stamp for path, stamp in cached[1].items()):
+        return set(cached[2])
     paths = {tex_environment.MANIFEST.resolve(), source.resolve(), Path('.latexmkrc').resolve(), Path('latexmkrc').resolve()}
     aux = auxiliary_directory(source)
     jobname = 'output' if tex_environment.MANIFEST.exists() and tex_environment.load().get('jobname') == 'output' else source.stem
     recorder = aux / (jobname + '.fls')
+    database = aux / (jobname + '.fdb_latexmk')
+    # Capture before parsing: a concurrent compiler update must invalidate the
+    # next scan rather than cache an incomplete dependency list as current.
+    stamps = {path: file_stamp(path) for path in (recorder, database)}
     if recorder.exists():
         paths.update(Path(line[6:]).resolve() for line in recorder.read_text(errors='replace').splitlines()
                      if line.startswith('INPUT '))
-    database = aux / (jobname + '.fdb_latexmk')
     if database.exists():
         for line in database.read_text(errors='replace').splitlines():
             match = re.match(r'  "((?:[^"\\]|\\.)*)" \d', line)
@@ -58,6 +68,7 @@ def dependencies(source, out):
     # A newly created missing input must also wake a failed build.
     paths.update(p.parent for p in list(paths)
                  if p.is_relative_to(Path.cwd()) and p.parent != output)
+    _DEPENDENCIES[identity] = (manifest_stamp, stamps, frozenset(paths))
     return paths
 
 

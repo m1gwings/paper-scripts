@@ -13,6 +13,14 @@ schedules background refreshes at most every five minutes; one-shot builds also
 schedule a refresh when due. Network access, installation and comparison stay off
 the typing/navigation path. Cloud refresh never publishes local draft edits.
 
+Watchers cache the parsed dependency graph until the compiler recorder/database
+or environment manifest changes; source file timestamps are still checked on
+every poll. Unchanged logs reuse their resolved package recipe after checking
+the log/profile and frozen catalogue contents. Refresh workers run at reduced
+CPU priority, and isolated verification builds/page comparisons share one
+machine-wide lock so different projects cannot run those expensive stages at
+the same time. Normal foreground builds do not acquire that verification lock.
+
 ## Status and failure behavior
 
 Reader shows a dismissible amber **Overleaf verification** notice, with a small
