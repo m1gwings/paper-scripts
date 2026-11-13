@@ -21,15 +21,17 @@ def main():
     if any(path.is_symlink() for path in (build_out, *build_out.parents)):
         raise SystemExit('Refusing symlinked build output directory.')
     build_out.mkdir(parents=True, exist_ok=True)
-    subprocess.run([latexmk, '-norc', mode, '-no-shell-escape', '-halt-on-error',
+    tex_environment.prepare_auxiliary_tree(build_out)
+    command = [latexmk, '-norc', mode, '-jobname=output'] if pinned and pinned.get('jobname') == 'output' else [latexmk, '-norc', mode]
+    subprocess.run([*command, '-no-shell-escape', '-halt-on-error',
                     '-interaction=nonstopmode', '-file-line-error',
                     f'-outdir={build_out}', f'-auxdir={build_out}', str(root)],
                    check=True, timeout=600, env=env)
     if pinned:
-        drift = tex_environment.differences(build_out/(root.stem+'.log'), pinned)
+        drift = tex_environment.differences(build_out/('output.log' if pinned.get('jobname') == 'output' else root.stem+'.log'), pinned, strict=False)
         if drift:
             raise SystemExit('Overleaf environment drift:\n'+'\n'.join(drift))
-    pdf = build_out / (root.stem + '.pdf')
+    pdf = build_out / ('output.pdf' if pinned and pinned.get('jobname') == 'output' else root.stem + '.pdf')
     if not pdf.is_file() or pdf.is_symlink():
         raise SystemExit('Expected PDF output is missing.')
     out = Path('.paper-preview')

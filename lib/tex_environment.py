@@ -27,6 +27,18 @@ def environment(path):
     return result
 
 
+def prepare_auxiliary_tree(auxiliary):
+    # TeX writes per-include .aux files but does not create their parent folders.
+    # Mirror source directories as Overleaf's compilation setup does.
+    for folder, directories, files in os.walk('.'):
+        directories[:] = [name for name in directories if not name.startswith('.') and name != 'output']
+        if any(name.endswith('.tex') for name in files):
+            target = auxiliary/Path(folder)
+            if not target.resolve().is_relative_to(Path.cwd().resolve()):
+                raise ValueError('Auxiliary source tree must remain inside the project')
+            target.mkdir(parents=True, exist_ok=True)
+
+
 def source_path(value):
     path = Path(value)
     if (path.is_absolute() or '..' in path.parts or path.suffix != '.tex'
@@ -68,7 +80,7 @@ def load():
 
 
 def installation_root(recipe):
-    identity = hashlib.sha256(json.dumps(recipe, sort_keys=True).encode()).hexdigest()[:20]
+    identity = hashlib.sha256(json.dumps({k: v for k, v in recipe.items() if k != 'packages'}, sort_keys=True).encode()).hexdigest()[:20]
     base = Path(os.environ.get('XDG_DATA_HOME', Path.home()/'.local/share'))
     return Path(os.environ.get('PAPER_TEXLIVE_ROOT', base/'paper/texlive'/identity)).expanduser().resolve()
 
@@ -90,11 +102,12 @@ def build_environment():
     return env
 
 
-def differences(log, config=None):
+def differences(log, config=None, strict=True):
     expected = (config or load())['baseline']
     actual = environment(log)
+    keys = (actual.keys() | expected.keys()) if strict else (actual.keys() & expected.keys()) | {'engine', 'LaTeX'}
     return [f'{key}: local={actual.get(key, "MISSING")}; Overleaf={expected.get(key, "MISSING")}'
-            for key in sorted(actual.keys() | expected.keys()) if actual.get(key) != expected.get(key)]
+            for key in sorted(keys) if actual.get(key) != expected.get(key)]
 
 
 def compare_pdfs(local, reference, dpi):
@@ -120,6 +133,9 @@ def run(argv=None):
     capture.add_argument('--recipe', type=Path, default=Path(__file__).with_name('texlive_2025.json'), help='Frozen recipe; default is the full verified pdfTeX/Overleaf 2025 snapshot')
     capture.add_argument('--compiler', choices=COMPILERS, default='pdflatex')
     capture.add_argument('--main', default='main.tex')
+    for action in ('sync', 'enroll'):
+        sync = sub.add_parser(action, help='Automatically capture settings/log/PDF over HTTP and restore the local environment')
+        sync.add_argument('--fresh', action='store_true', help='Request a fresh Overleaf compilation')
     sub.add_parser('install')
     sub.add_parser('status')
     check = sub.add_parser('check')
@@ -138,6 +154,9 @@ def run(argv=None):
             setattr(args, key, getattr(args, key).resolve())
     os.chdir(result.stdout.rstrip('\n'))
     try:
+        if args.action in ('sync', 'enroll'):
+            import overleaf_build
+            return overleaf_build.run(['refresh', '--install']+(['--fresh'] if args.fresh else []))
         if args.action == 'capture':
             if MANIFEST.exists() or MANIFEST.is_symlink():
                 raise ValueError(f'{MANIFEST} exists; review/edit it explicitly to change the baseline')
@@ -170,10 +189,12 @@ def run(argv=None):
             print('Different/missing pages: '+', '.join(drift) if drift else f'All rendered pages match at {args.dpi} dpi (PDF metadata excluded).')
             return int(bool(drift))
         elif not MANIFEST.exists():
-            print('Unmanaged: using the existing project/system TeX configuration; Overleaf parity is unverified.')
+            import overleaf_build
+            print(json.dumps(dict(managed=False, message='Unmanaged local toolchain', verification=overleaf_build.read(overleaf_build.STATUS), warning=overleaf_build.warning()), indent=2))
         else:
             config = load()
-            print(json.dumps(dict(manifest=str(MANIFEST), compiler=config['compiler'], main=config['main'], installation=str(installation_root(config['recipe'])), baseline=config['baseline']), indent=2))
+            import overleaf_build
+            print(json.dumps(dict(manifest=str(MANIFEST), compiler=config['compiler'], main=config['main'], image=config.get('overleaf_image'), installation=str(installation_root(config['recipe'])), baseline_items=len(config['baseline']), verification=overleaf_build.read(overleaf_build.STATUS), warning=overleaf_build.warning()), indent=2))
     except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as error:
         parser.exit(1, f'paper tex: {error}\n')
     return 0

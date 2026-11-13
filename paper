@@ -639,7 +639,7 @@ COMMANDS
       Create the standard paper .gitignore if none exists.
       Existing .gitignore files are never overwritten.
 
-  paper tex capture|install|status|check|compare-pdf
+  paper tex sync|enroll|capture|install|status|check|compare-pdf
       Capture, restore and verify a pinned Overleaf build environment.
 
   paper build [--watch] [ROOT.tex]
@@ -981,6 +981,8 @@ case "$CMD" in
 
         sync_collaborative_base
 
+        helper overleaf_build refresh --install || echo "Warning: Overleaf verification is unavailable; local builds remain usable." >&2
+
         echo "Synchronized '$BASE' with GitHub and Overleaf."
         if [[ "$EXECUTION" == cloud ]]; then
             echo "CI refreshed the GitHub mirror; Overleaf was not modified."
@@ -1072,6 +1074,7 @@ case "$CMD" in
             if [[ "$B" != "$BASE" ]]; then
                 git update-ref "refs/heads/$B" "refs/remotes/github/$B" "$SHA"
             fi
+            helper overleaf_build refresh --install || echo "Warning: Overleaf verification is unavailable; local builds remain usable." >&2
             echo "Published successfully. Current branch: $BASE. Feature branches were kept."
             exit 0
         fi
@@ -1115,6 +1118,7 @@ case "$CMD" in
             echo "Current branch: $BASE"
             echo "Feature '$WORK' was kept."
         fi
+        helper overleaf_build refresh --install || echo "Warning: Overleaf verification is unavailable; local builds remain usable." >&2
         ;;
 
     abort)

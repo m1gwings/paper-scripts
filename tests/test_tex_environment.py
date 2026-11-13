@@ -54,7 +54,8 @@ class EnvironmentTest(unittest.TestCase):
     def test_recipe_identity(self):
         with patch.dict(os.environ, {}, clear=True):
             self.assertEqual(tex.installation_root(RECIPE), tex.installation_root(dict(RECIPE)))
-            self.assertNotEqual(tex.installation_root(RECIPE), tex.installation_root(dict(RECIPE, packages=['latex'])))
+            self.assertEqual(tex.installation_root(RECIPE), tex.installation_root(dict(RECIPE, packages=['latex'])))
+            self.assertNotEqual(tex.installation_root(RECIPE), tex.installation_root(dict(RECIPE, catalogue_sha256='c'*64)))
     def test_missing_toolchain_fails_without_fallback(self):
         self.capture()
         (self.root/'main.tex').write_text(r'\documentclass{article}\begin{document}Hi\end{document}')

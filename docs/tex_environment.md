@@ -1,98 +1,98 @@
-# Matching Overleaf builds
+# Automatic Overleaf build synchronization
 
-Paper Scripts can restore a frozen native TeX installation and enforce a captured
-Overleaf compilation baseline. The declaration is portable project data in
-`.paper/tex_environment.json`; it contains version information and archive hashes,
-not downloaded logs, private paths, credentials or PDF files.
+`paper create` enrolls a project automatically: it retrieves the selected compiler,
+TeX Live image and main document over HTTP, downloads the cloud log/PDF/source,
+restores the native toolchain, and builds the matching source in a disposable
+local directory. It compares declared engine/kernel/package versions and every
+rendered page at 72 dpi. Current Editor buffers are never used for this check.
+No manual log download, recipe editing, agent, MCP call or GUI automation is part
+of the routine workflow. Website creation itself is a separate operation.
 
-## Enroll a project
+`paper sync` and `paper publish` refresh this verification. `paper build --watch`
+schedules background refreshes at most every five minutes; one-shot builds also
+schedule a refresh when due. Network access, installation and comparison stay off
+the typing/navigation path. Cloud refresh never publishes local draft edits.
 
-In Overleaf, confirm the compiler, TeX Live release and main document. Recompile
-from scratch and download the **full compilation log** and resulting PDF from
-**Logs and output files**. Use source revisions identical to the local checkout.
-Overleaf's Git export does not contain these settings; Paper Scripts does not
-claim to discover or update them through Git.
+## Status and failure behavior
 
-```sh
-paper tex capture --log /path/to/overleaf.log --main main.tex
-paper tex install
-paper build
-paper tex compare-pdf output/main.pdf /path/to/overleaf.pdf
-```
+Reader shows a dismissible amber **Overleaf verification** notice, with a small
+status control retained after dismissal. Editor's build status includes
+**Overleaf ⚠**, and its Build panel explains the warning. CLI builds print it too.
+Local compilation and the last good PDF remain available when HTTP capture fails.
+Missing/locked cookies, expired authentication, network/rate-limit errors,
+interface changes, unavailable restoration profiles and stale verification have
+separate diagnostic codes. A failed refresh does not overwrite the last verified
+environment or claim current parity. A genuine compiler error remains a build
+failure, separate from a verification warning.
 
-The supplied default recipe targets the verified pdfLaTeX / TeX Live 2025
-combination: packages frozen at 2025-06-15, pdfTeX 1.40.27 from 2025-03-09.
-It installs `scheme-full` to support different document classes, languages and
-fonts: allow **several GB** and a substantial initial download. This is a candidate
-environment, not a guarantee for every Overleaf image labelled 2025. Capture
-rejects incompatible engine banners, and builds reject declared version drift.
-A failed match requires a reviewed recipe matching that project's actual log.
-Existing projects without a declaration retain their current build behavior;
-`paper tex status` explicitly reports their parity as unverified.
+Portable compiler settings and frozen recipes live in `.paper/tex_environment.json`.
+Runtime status, downloaded artifacts and the verification log live in ignored
+`output/.overleaf/`. ZIP timestamps do not cause redundant verification; source
+contents determine the proof identity. The selected main file is reflected in
+`.paper/config.json`, so Reader/Editor agree with the build command.
 
-For a smaller or different frozen installation, supply `--recipe recipe.json`.
-The existing stopped-ranking project's `tools/texlive.json` is accepted directly
-(the old embedded baseline is ignored in favor of the supplied log). To add
-packages, edit the portable recipe's `packages` array and rerun installation;
-its new identity gets a separate cache directory. No rolling package updates run.
-Do not replace the baseline simply to silence a mismatch. Capture refuses to
-replace an existing manifest; deliberate upgrades require reviewing its diff.
+Local draft changes can add/remove packages; builds compare versions of shared
+package declarations and always check the engine/kernel. The stricter complete
+package/class comparison and pixel comparison run against the exact cloud source.
+Pixel equality is at the recorded resolution; PDF metadata/timestamps and PDF
+object byte identity are not compared.
 
-## Build and CI behavior
+## Standalone connector and repair
 
-`paper build`, `paper build --watch` and `paper view` select the manifest's main
-file, compiler and isolated TeX user trees. They check the full log's engine,
-LaTeX kernel and all dated class/package declarations before publishing the PDF.
-Missing or different declarations fail the build and preserve the last good
-preview. Explicit alternative roots are checked against the same baseline, so a
-root with different packages needs its own reviewed project declaration.
-Watch mode notices manifest changes. Missing installations fail with a restoration
-instruction; there is no silent system-TeX fallback or download during editing.
+The machine provides a `workspace-overleaf` HTTP connector. Paper Scripts invokes
+its command interface; it has no dependency on an AI provider or browser driver.
+`PAPER_OVERLEAF_HELPER` can select a compatible executable elsewhere. Authentication
+stays in local browser storage/keyring; no cookies or session values belong in
+project files, logs, command arguments, Git or agent messages.
 
-The managed preview workflow restores the same recipe when the declaration is
-present. The preview worker uses its compiler/main file and checks versions before
-uploading. As before, CI disables project rc files and shell escape and receives
-no publication credentials. Projects needing custom rc rules must account for
-that existing restriction. Upgrade project runtimes and generated CI using
-`paper init --workflow-only`; custom workflows are preserved and need equivalent
-explicit installation/check steps. The shared `paper` command works immediately.
+Optional inspection/recovery commands:
 
 ```sh
 paper tex status
+paper tex sync
+paper tex sync --fresh
+workspace-overleaf diagnose --project PROJECT_ID
 paper tex check output/.latex/main.log
-paper tex compare-pdf output/main.pdf /path/to/overleaf.pdf --dpi 144
+paper tex compare-pdf output/main.pdf /path/to/reference.pdf
 ```
 
-PDF comparison uses Poppler to rasterize every page with the same renderer,
-compares all raster bytes and detects missing pages. Equality is at the selected
-resolution (default 144 dpi), not proof of identical PDF objects or behavior at
-all zoom levels. Metadata and timestamps are excluded. Matching declared versions
-also does not prove identical package/font bytes; the PDF comparison is an
-independent output check. New figures or prose naturally require a fresh matching
-Overleaf build before comparing.
+The connector's `http_contract.json` owns routes, CSRF metadata/header names and
+required response fields. Unexpected redirects, HTTP errors, schema changes and
+invalid artifacts fail explicitly. Its sanitized diagnose output identifies the
+failing route/field without printing credentials. Repair requires one targeted
+browser/network inspection, updating that adapter and rerunning its contract tests;
+routine captures continue as HTTP calls. See the connector's README for the exact
+repair procedure. Credentials are never recovered by an agentic repair.
 
-## Restoration and dependencies
+## Restoration and supported environments
 
-Linux x86_64, Python 3.12+, Perl, curl, tar and xz are required for native restore.
-PDF comparison requires Poppler's `pdftoppm`. Install Paper Scripts normally with
-`./install.sh`; project runtime upgrades include the installer and default recipe.
-No Docker daemon, root installation or global PATH modification is required.
-Toolchains are cached under `$XDG_DATA_HOME/paper/texlive/<recipe-hash>` (default
-`~/.local/share`). A completed matching installation is reused without downloading
-again. `PAPER_TEXLIVE_ROOT` can explicitly select an existing installation for
-verification or testing; its actual compiler/package versions remain checked.
-Installation serializes concurrent restorations and checks installer/catalogue
-SHA-256 values; TeX Live checks package archives. Incomplete trees are preserved
-for inspection rather than automatically deleted.
+The included profiles cover the observed Overleaf `texlive-full:2025.1` and
+`texlive-full:2026.1` environments, with frozen repositories and checked installer/
+catalogue hashes. The 2025 profile pins the original pdfTeX binary independently
+of its newer packages. The 2026 profile resolves additional packages from actual
+log input paths and its immutable catalogue, including generated bitmap fonts.
+Frozen environments share a cache across projects; adding packages expands the
+same frozen tree rather than installing another copy. Both pdfLaTeX and XeLaTeX
+are verified against the projects that use them. Other compilers can use suitable
+verified profiles; unknown images produce a warning instead of silently choosing
+a different annual release.
 
-Recipes include `repository`, `installer_sha256`, `catalogue_sha256`, `packages`
-and `engine_version` (first line of the engine executable's `--version`). Optional
-`engine_repository` and `engine_catalogue_sha256` pin an older engine binary.
-`engine_command` defaults to `pdftex`; custom verified recipes can select `xetex`
-or `luahbtex`, paired with `--compiler xelatex` or `--compiler lualatex` at capture.
-Only the supplied pdfTeX recipe has been validated against the existing paper;
-other engines/releases require independently verified recipes. There is no claim
-that a full recipe for another Overleaf release can be inferred from a log alone.
+Native restoration needs Linux x86_64, Python 3.12+, Perl, curl, tar and xz.
+Poppler's `pdftoppm` is required for output verification. `./install.sh` installs
+Paper Scripts command links. `paper init --workflow-only` deploys the shared runtime
+conservatively to existing projects; custom Actions workflows are preserved and
+must use the same installer/build declaration. The managed preview worker uses
+the selected compiler, root and Overleaf job name (`output`), then checks versions.
+CI has no browser cookies or publication credentials in the build worker.
 
-Overleaf documents [compiler and release selection](https://docs.overleaf.com/getting-started/recompiling-your-project/selecting-a-tex-live-version-and-latex-compiler)
-and its [TeX Live release policy](https://docs.overleaf.com/troubleshooting-and-support/tex-live).
+The shared profiles install the packages identified from actual Overleaf logs,
+rather than an entire TeX distribution. Both are expanded automatically when a log
+requires another package; subsequent projects reuse the same frozen cache. Cache roots live below `$XDG_DATA_HOME/paper/texlive/`
+(default `~/.local/share`). `PAPER_TEXLIVE_ROOT` is an explicit testing override.
+No global PATH change, Docker daemon or root TeX installation is needed.
+`PAPER_OVERLEAF_AUTO=0` disables background scheduling for isolated/test builds.
+
+Sources: Overleaf's public server routes/compile-cache implementation and
+[compiler selection](https://docs.overleaf.com/getting-started/recompiling-your-project/selecting-a-tex-live-version-and-latex-compiler),
+[generated outputs](https://docs.overleaf.com/navigating-in-the-editor/generated-files),
+[system LatexMk configuration](https://docs.overleaf.com/managing-projects-and-files/the-latexmkrc-file).

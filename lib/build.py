@@ -12,6 +12,7 @@ import subprocess
 import sys
 from viewer import open_pdf
 import tex_environment
+import overleaf_build
 
 
 def is_valid_pdf(data):
@@ -37,11 +38,12 @@ def dependencies(source, out):
     """Use TeX's recorder and latexmk's database (which also includes BibTeX)."""
     paths = {tex_environment.MANIFEST.resolve(), source.resolve(), Path('.latexmkrc').resolve(), Path('latexmkrc').resolve()}
     aux = auxiliary_directory(source)
-    recorder = aux / (source.stem + '.fls')
+    jobname = 'output' if tex_environment.MANIFEST.exists() and tex_environment.load().get('jobname') == 'output' else source.stem
+    recorder = aux / (jobname + '.fls')
     if recorder.exists():
         paths.update(Path(line[6:]).resolve() for line in recorder.read_text(errors='replace').splitlines()
                      if line.startswith('INPUT '))
-    database = aux / (source.stem + '.fdb_latexmk')
+    database = aux / (jobname + '.fdb_latexmk')
     if database.exists():
         for line in database.read_text(errors='replace').splitlines():
             match = re.match(r'  "((?:[^"\\]|\\.)*)" \d', line)
@@ -103,11 +105,13 @@ def compile_locked(command, out):
         last_success = previous.get('last_success', pdf.stat().st_mtime if pdf.exists() and is_valid_pdf(old_pdf) else None)
         def report(state, **extra):
             value = dict(state=state, source=str(source), pdf=str(pdf), updated=time.time(),
-                         last_success=last_success, **extra)
+                         last_success=last_success, warning=overleaf_build.warning(), **extra)
             pending = state_file.with_suffix('.json.tmp')
             pending.write_text(json.dumps(value))
             pending.replace(state_file)
+        overleaf_build.refresh_async()
         report('building')
+        active = list(command)
         try:
             env = tex_environment.build_environment() if not clean else None
             active = list(command)
@@ -115,9 +119,15 @@ def compile_locked(command, out):
                 config = tex_environment.load()
                 active[0] = str(tex_environment.installation_root(config['recipe'])/'bin/x86_64-linux/latexmk')
                 active[1] = tex_environment.COMPILERS[config['compiler']]
+                if config.get('jobname') == 'output':
+                    active.insert(-1, '-jobname=output')
             status = subprocess.run(active, env=env, pass_fds=tuple(inherited)).returncode
+            if not clean and '-jobname=output' in active:
+                compiled_log = aux/'output.log'
+                if compiled_log.is_file():
+                    shutil.copyfile(compiled_log, aux/(source.stem+'.log'))
             if not status and not clean and tex_environment.MANIFEST.exists():
-                drift = tex_environment.differences(aux / (source.stem + '.log'))
+                drift = tex_environment.differences(aux / (source.stem + '.log'), strict=False)
                 if drift:
                     print('Overleaf environment drift:\n'+'\n'.join(drift), file=sys.stderr)
                     status = 1
@@ -127,7 +137,7 @@ def compile_locked(command, out):
         except BaseException:
             report('failed', error='Compilation interrupted')
             raise
-        compiled = aux / pdf.name
+        compiled = aux / ('output.pdf' if '-jobname=output' in active else pdf.name)
         if not status and not clean and (not compiled.is_file() or not is_valid_pdf(compiled.read_bytes())):
             status = 1
         if status and not clean and old_pdf is not None:
@@ -139,8 +149,8 @@ def compile_locked(command, out):
                     os.utime(pdf, ns=(old_mtime, old_mtime))
                 except OSError:
                     pass
-        elif not status and not clean and (aux / pdf.name).is_file():
-            new_data = (aux / pdf.name).read_bytes()
+        elif not status and not clean and compiled.is_file():
+            new_data = compiled.read_bytes()
             if is_valid_pdf(new_data):
                 if not pdf.is_file() or new_data != pdf.read_bytes():
                     pending = aux / (source.stem + '.publish.tmp')
@@ -186,6 +196,7 @@ def watch(command, source, out):
         print(f'Watching {source}; PDF: {out / (source.stem + ".pdf")}. Stop with Ctrl+C.', flush=True)
         previous = None
         while True:
+            overleaf_build.refresh_async()
             tracked = dependencies(source, out)
             tracked.add((out / (source.stem + '.pdf')).resolve())
             current = {p: file_stamp(p) for p in tracked}
@@ -233,6 +244,7 @@ def run(argv=None):
         parser.error('Auxiliary directory must remain inside the repository.')
     out.mkdir(parents=True, exist_ok=True)
     aux.mkdir(parents=True, exist_ok=True)
+    tex_environment.prepare_auxiliary_tree(aux)
     pdf = out / (source.stem + '.pdf')
     if pdf.is_symlink():
         parser.error('Refusing a symlinked PDF output.')
@@ -250,6 +262,9 @@ def run(argv=None):
         return status
     if not pdf.is_file():
         parser.error(f'Build produced no PDF at {pdf}.')
+    notice = overleaf_build.warning()
+    if notice:
+        print('Warning: '+notice, file=sys.stderr)
     print(f'PDF: {pdf.resolve()}', flush=True)
     if args.action == 'view':
         open_pdf(pdf, root, os.environ.get('PROJECT_WORKSPACE_ID'))

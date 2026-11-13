@@ -18,6 +18,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Reuse frozen TeX environment
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.local/share/paper/texlive
+          key: ${{ runner.os }}-overleaf-${{ hashFiles('.paper/tex_environment.json') }}
+          restore-keys: ${{ runner.os }}-overleaf-
       - name: Install TeX
         run: |
           # Avoid slow Azure mirror downloads exhausting the job timeout.

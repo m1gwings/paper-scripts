@@ -21,20 +21,23 @@ def download(url, destination, expected):
     destination.write_bytes(data)
 
 
-def main():
+def main(config=None):
     from tex_environment import load, installation_root
-    config = load()['recipe']
+    config = load()['recipe'] if config is None else config
     engine = config.get('engine_command', 'pdftex')
     root = installation_root(config)
     binaries = root/'bin/x86_64-linux'
     if platform.system() != 'Linux' or platform.machine() != 'x86_64':
         raise SystemExit('This pinned restoration recipe supports Linux x86_64.')
     root.parent.mkdir(parents=True, exist_ok=True)
-    with (root.parent/'.install.lock').open('a') as lock:
+    with (root.parent/(root.name+'.install.lock')).open('a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         repository = config['repository']
         stamp = root/'.paper-recipe.json'
-        if stamp.is_file() and json.loads(stamp.read_text()) == config:
+        installed = json.loads(stamp.read_text()) if stamp.is_file() else {}
+        same = {k:v for k,v in installed.items() if k != 'packages'} == {k:v for k,v in config.items() if k != 'packages'}
+        covered = 'scheme-full' in installed.get('packages', []) or set(config['packages']) <= set(installed.get('packages', []))
+        if same and covered:
             version = subprocess.check_output([str(binaries/engine), '--version'], text=True).splitlines()[0]
             if version == config['engine_version']:
                 print('Pinned TeX toolchain already installed: ' + str(binaries))
@@ -83,7 +86,7 @@ def main():
                 version = subprocess.check_output([str(binaries/engine), '--version'], text=True).splitlines()[0]
                 if version != config['engine_version']:
                     raise SystemExit('Restored engine differs from the verified Overleaf engine.')
-        stamp.write_text(json.dumps(config, sort_keys=True)+'\n')
+        stamp.write_text(json.dumps(dict(config, packages=sorted(set(config['packages']) | set(installed.get('packages', []) if same else []))), sort_keys=True)+'\n')
     print('Project TeX toolchain restored: ' + str(binaries))
 
 

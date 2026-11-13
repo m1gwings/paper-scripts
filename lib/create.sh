@@ -242,7 +242,9 @@ instructions. Existing files and remotes were preserved."
 network access, and OWNER/REPO, then rerun the same paper create command."
     [[ "$EXISTING_GITHUB" == "https://github.com/$EXPECTED_GITHUB" || "$EXISTING_GITHUB" == "https://github.com/$EXPECTED_GITHUB.git" || "$EXISTING_GITHUB" == "git@github.com:$EXPECTED_GITHUB.git" ]] \
         || die "Existing GitHub remote does not match; refusing to repoint it."
-    exec bash "$SCRIPT_DIR/paper" init "${INIT_OPTIONS[@]}"
+    bash "$SCRIPT_DIR/paper" init "${INIT_OPTIONS[@]}"
+    bash "$SCRIPT_DIR/paper" tex sync || echo "Warning: automatic Overleaf verification is pending; see paper tex status." >&2
+    exit 0
 fi
 
 OVERLEAF_URL="https://git@git.overleaf.com/${OVERLEAF_ID}"
@@ -294,6 +296,8 @@ echo
 echo "Installing canonical paper workflow and task instructions..."
 
 bash "$SCRIPT_DIR/paper" init "${INIT_OPTIONS[@]}"
+echo "Capturing Overleaf settings and restoring its build environment..."
+bash "$SCRIPT_DIR/paper" tex sync || echo "Warning: automatic Overleaf verification is pending; see paper tex status." >&2
 
 git add -A -- .
 if ! git diff --cached --quiet; then

@@ -935,11 +935,11 @@ Editor source/log handoffs serialize startup per project/session. `workspace-edi
 activation. Closed session records can be reused; competing live sessions are
 preserved and reported instead of silently opening another window.
 
-### Overleaf compilation parity
+### Automatic Overleaf compilation parity
 
-Use `paper tex capture --log /path/to/overleaf.log`, `paper tex install`, then
-`paper build` to restore and enforce a project-specific frozen build environment.
-The supplied full pdfLaTeX/2025 recipe takes several GB; custom lean recipes are
-supported. `paper tex check` checks declared versions and `paper tex compare-pdf`
-compares all rendered pages. See [Overleaf build environments](docs/tex_environment.md)
-for enrollment, CI/runtime upgrades, supported recipes and verification limits.
+`paper create` captures Overleaf settings and build outputs over HTTP, restores
+its native environment and verifies the rendered result automatically. Sync,
+publication and active build watchers keep verification fresh without agents or
+manual log downloads. Reader, Editor and CLI show nonblocking warnings when
+cookies, HTTP contracts or verification are unavailable. See
+[automatic Overleaf builds](docs/tex_environment.md) for behavior and diagnostics.
