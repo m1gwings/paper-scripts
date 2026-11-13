@@ -35,7 +35,7 @@ jobs:
             exit 0
           fi
           sudo apt-get install -y --no-install-recommends latexmk lmodern texlive-latex-extra texlive-fonts-recommended texlive-science texlive-plain-generic
-      - name: Compile without credentials or shell escape
+      - name: Compile with the declared environment, without credentials
         run: python3 .paper/runtime/lib/preview.py
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

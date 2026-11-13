@@ -113,12 +113,17 @@ def compile_locked(command, out):
         report('building')
         active = list(command)
         try:
-            env = tex_environment.build_environment() if not clean else None
+            env = tex_environment.build_environment()
             active = list(command)
             if env is not None:
                 config = tex_environment.load()
+                env = tex_environment.configure_job_environment(env, source, aux, config)
                 active[0] = str(tex_environment.installation_root(config['recipe'])/'bin/x86_64-linux/latexmk')
                 active[1] = tex_environment.COMPILERS[config['compiler']]
+                if config.get('shell_escape') == 'enabled':
+                    active.insert(-1, '-shell-escape')
+                elif config.get('shell_escape') == 'disabled':
+                    active.insert(-1, '-no-shell-escape')
                 if config.get('jobname') == 'output':
                     active.insert(-1, '-jobname=output')
             status = subprocess.run(active, env=env, pass_fds=tuple(inherited)).returncode

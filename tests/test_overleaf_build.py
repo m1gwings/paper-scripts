@@ -45,6 +45,23 @@ class OverleafBuildTest(unittest.TestCase):
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         self.assertTrue((self.root/'output/.latex/appendix/part.aux').is_file())
 
+    @unittest.skipUnless(shutil.which('latexmk') and shutil.which('pdflatex'),'TeX unavailable')
+    def test_declared_shell_mode_and_output_root_alias_are_applied(self):
+        source=self.root/'main.tex'
+        source.write_text(r'\documentclass{article}\begin{document}Initial.\end{document}')
+        base_env=dict(os.environ,PAPER_OVERLEAF_AUTO='0')
+        subprocess.run(['bash',str(SCRIPT),'build'],env=base_env,check=True,capture_output=True)
+        baseline=tex.environment(self.root/'output/.latex/main.log');baseline['shell_escape']='enabled'
+        binaries=self.root/'toolchain/bin/x86_64-linux';binaries.mkdir(parents=True)
+        for name in ('latexmk','pdflatex'):(binaries/name).symlink_to(shutil.which(name))
+        recipe=json.loads((SCRIPT.parent/'lib/texlive_2025.json').read_text())
+        tex.MANIFEST.parent.mkdir(exist_ok=True)
+        tex.MANIFEST.write_text(json.dumps(dict(version=1,main='main.tex',compiler='pdflatex',recipe=recipe,baseline=baseline,shell_escape='enabled',jobname='output')))
+        source.write_text(r'\documentclass{article}\begin{document}\ifnum\pdfshellescape=1 Enabled.\else\errmessage{Wrong shell mode}\fi\IfFileExists{output.tex}{Alias ready.}{\errmessage{Root alias missing}}\end{document}')
+        result=subprocess.run(['bash',str(SCRIPT),'build'],env=dict(base_env,PAPER_TEXLIVE_ROOT=str(self.root/'toolchain')),capture_output=True,text=True)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertTrue((self.root/'output/.latex/output.tex').is_symlink())
+
     def test_failed_capture_preserves_last_verified_manifest_and_timestamp(self):
         tex.MANIFEST.parent.mkdir()
         original=b'{"verified":"previous environment"}\n';tex.MANIFEST.write_bytes(original)

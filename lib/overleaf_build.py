@@ -151,7 +151,7 @@ def verify_snapshot(candidate):
         pages = tex_environment.compare_pdfs(temporary/'output'/main.parent/(main.stem+'.pdf'), root/CACHE/'output.pdf', 72)
         if pages:
             raise ValueError('Local and Overleaf rendered output differ on '+', '.join(pages)+'. Compare verification.pdf with output.pdf in the verification cache.')
-        return dict(dpi=72, source_sha256=source_digest(source), environment_sha256=hashlib.sha256(json.dumps(candidate['baseline'], sort_keys=True).encode()).hexdigest(), verified_at=time.time())
+        return dict(dpi=72, source_sha256=source_digest(source), environment_sha256=hashlib.sha256(json.dumps(candidate['baseline'], sort_keys=True).encode()).hexdigest(), cloud_pdf_sha256=hashlib.sha256((root/CACHE/'output.pdf').read_bytes()).hexdigest(), verified_at=time.time())
 
 
 def record_failure(code, message):
@@ -195,10 +195,10 @@ def refresh(install=False, fresh=False, helper=None):
             baseline = tex_environment.environment(log)
             recipe = recipe_for(metadata, log)
             candidate = dict(version=1, main=tex_environment.source_path(metadata['main']), compiler=metadata['compiler'],
-                             recipe=recipe, baseline=baseline, overleaf_image=metadata['image'], jobname='output')
+                             recipe=recipe, baseline=baseline, overleaf_image=metadata['image'], jobname='output', shell_escape=baseline['shell_escape'])
             previous = read(tex_environment.MANIFEST)
             # Loaded packages change with the manuscript; do not dirty a lockfile on every refresh.
-            if previous and all(previous.get(k) == candidate.get(k) for k in ('main', 'compiler', 'overleaf_image', 'recipe')):
+            if previous and all(previous.get(k) == candidate.get(k) for k in ('main', 'compiler', 'overleaf_image', 'recipe', 'shell_escape')):
                 candidate = previous
             if install:
                 from tex_install import main
@@ -206,8 +206,9 @@ def refresh(install=False, fresh=False, helper=None):
                 old_status = read(STATUS)
                 same_source = old_status.get('proof', {}).get('source_sha256') == source_digest(CACHE/'source.zip')
                 cloud_environment = hashlib.sha256(json.dumps(baseline, sort_keys=True).encode()).hexdigest()
+                same_pdf = old_status.get('proof', {}).get('cloud_pdf_sha256') == hashlib.sha256((CACHE/'output.pdf').read_bytes()).hexdigest()
                 same_environment = old_status.get('proof', {}).get('environment_sha256') == cloud_environment
-                proof = old_status.get('proof') if same_source and same_environment and previous == candidate else verify_snapshot(dict(candidate, baseline=baseline))
+                proof = old_status.get('proof') if same_source and same_environment and same_pdf and previous == candidate else verify_snapshot(dict(candidate, baseline=baseline))
                 # Publish the lock only after the new environment passes actual build parity.
                 if candidate != previous:
                     write(tex_environment.MANIFEST, candidate)
@@ -224,7 +225,7 @@ def refresh(install=False, fresh=False, helper=None):
                          transport='http', proof=proof if install else read(STATUS).get('proof'))
             write(STATUS, state)
             return state
-        except (OSError, ValueError, KeyError, subprocess.SubprocessError, SystemExit) as error:
+        except (OSError, ValueError, KeyError, zipfile.BadZipFile, EOFError, subprocess.SubprocessError, SystemExit) as error:
             return record_failure('restoration_unavailable', str(error) if isinstance(error, (ValueError, SystemExit)) else 'HTTP capture or native environment restoration failed; previous verification is retained.')
 
 

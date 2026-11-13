@@ -22,8 +22,9 @@ def main():
         raise SystemExit('Refusing symlinked build output directory.')
     build_out.mkdir(parents=True, exist_ok=True)
     tex_environment.prepare_auxiliary_tree(build_out)
+    env = tex_environment.configure_job_environment(env, root, build_out, pinned) if pinned else env
     command = [latexmk, '-norc', mode, '-jobname=output'] if pinned and pinned.get('jobname') == 'output' else [latexmk, '-norc', mode]
-    subprocess.run([*command, '-no-shell-escape', '-halt-on-error',
+    subprocess.run([*command, ('-shell-escape' if pinned and pinned.get('shell_escape') == 'enabled' else '-no-shell-escape'), '-halt-on-error',
                     '-interaction=nonstopmode', '-file-line-error',
                     f'-outdir={build_out}', f'-auxdir={build_out}', str(root)],
                    check=True, timeout=600, env=env)

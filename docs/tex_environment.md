@@ -28,7 +28,7 @@ failure, separate from a verification warning.
 Portable compiler settings and frozen recipes live in `.paper/tex_environment.json`.
 Runtime status, downloaded artifacts and the verification log live in ignored
 `output/.overleaf/`. ZIP timestamps do not cause redundant verification; source
-contents determine the proof identity. The selected main file is reflected in
+contents determine the proof identity. The captured shell-escape mode and `output.tex` root alias also match Overleaf, including TikZ externalization and cached plot selection. The selected main file is reflected in
 `.paper/config.json`, so Reader/Editor agree with the build command.
 
 Local draft changes can add/remove packages; builds compare versions of shared

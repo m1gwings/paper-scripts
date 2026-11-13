@@ -21,6 +21,12 @@ def environment(path):
     if not engine or not kernel:
         raise ValueError(f'{path}: expected a full LaTeX log, not console output')
     result = {'engine': engine[1], 'LaTeX': kernel[1] + ' patch ' + (kernel[2] or '0')}
+    if re.search(r'(?m)^\s*\\write18 enabled\.', text):
+        result['shell_escape'] = 'enabled'
+    elif r'restricted \write18 enabled' in text:
+        result['shell_escape'] = 'restricted'
+    else:
+        result['shell_escape'] = 'disabled'
     for kind, pattern in [('class', 'Document Class'), ('package', 'Package')]:
         for match in re.finditer(r'^' + pattern + r': (\S+) (\d{4}[-/]\d{2}[-/]\d{2})(?: (v\S+))?', text, re.M):
             result[kind+'/'+match[1]] = match[2] + (' '+match[3] if match[3] else '')
@@ -32,7 +38,7 @@ def prepare_auxiliary_tree(auxiliary):
     # Mirror source directories as Overleaf's compilation setup does.
     for folder, directories, files in os.walk('.'):
         directories[:] = [name for name in directories if not name.startswith('.') and name != 'output']
-        if any(name.endswith('.tex') for name in files):
+        if files:
             target = auxiliary/Path(folder)
             if not target.resolve().is_relative_to(Path.cwd().resolve()):
                 raise ValueError('Auxiliary source tree must remain inside the project')
@@ -83,6 +89,24 @@ def installation_root(recipe):
     identity = hashlib.sha256(json.dumps({k: v for k, v in recipe.items() if k != 'packages'}, sort_keys=True).encode()).hexdigest()[:20]
     base = Path(os.environ.get('XDG_DATA_HOME', Path.home()/'.local/share'))
     return Path(os.environ.get('PAPER_TEXLIVE_ROOT', base/'paper/texlive'/identity)).expanduser().resolve()
+
+
+def configure_job_environment(env, source, auxiliary, config):
+    if env is None or config.get('jobname') != 'output':
+        return env
+    # Overleaf exposes its selected root as output.tex. TikZ externalization
+    # uses that job name when it starts a child compiler.
+    alias = auxiliary/'output.tex'
+    if alias.is_symlink():
+        if alias.resolve() != source.resolve():
+            alias.unlink()
+    elif alias.exists():
+        raise ValueError('Unexpected generated output.tex; inspect the auxiliary directory')
+    if not alias.is_symlink():
+        alias.symlink_to(source.resolve())
+    env = dict(env)
+    env['TEXINPUTS'] = str(auxiliary.resolve())+os.pathsep+str(Path.cwd())+os.pathsep
+    return env
 
 
 def build_environment():
