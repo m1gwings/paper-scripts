@@ -43,7 +43,14 @@ def dependencies(source, out):
     cached = _DEPENDENCIES.get(identity)
     if cached and cached[0] == manifest_stamp and all(file_stamp(path) == stamp for path, stamp in cached[1].items()):
         return set(cached[2])
-    paths = {tex_environment.MANIFEST.resolve(), source.resolve(), Path('.latexmkrc').resolve(), Path('latexmkrc').resolve()}
+    paths = set()
+    def add_path(name):
+        path = Path(name)
+        # Keep the lexical input too: retargeting a symlink must wake the
+        # watcher even while the recorder/database remain unchanged.
+        paths.update((path.absolute(), path.resolve()))
+    for path in (tex_environment.MANIFEST, source, '.latexmkrc', 'latexmkrc'):
+        add_path(path)
     aux = auxiliary_directory(source)
     jobname = 'output' if tex_environment.MANIFEST.exists() and tex_environment.load().get('jobname') == 'output' else source.stem
     recorder = aux / (jobname + '.fls')
@@ -52,14 +59,15 @@ def dependencies(source, out):
     # next scan rather than cache an incomplete dependency list as current.
     stamps = {path: file_stamp(path) for path in (recorder, database)}
     if recorder.exists():
-        paths.update(Path(line[6:]).resolve() for line in recorder.read_text(errors='replace').splitlines()
-                     if line.startswith('INPUT '))
+        for line in recorder.read_text(errors='replace').splitlines():
+            if line.startswith('INPUT '):
+                add_path(line[6:])
     if database.exists():
         for line in database.read_text(errors='replace').splitlines():
             match = re.match(r'  "((?:[^"\\]|\\.)*)" \d', line)
             if match:
                 name = re.sub(r'\\(["\\])', r'\1', match[1])
-                paths.add(Path(name).resolve())
+                add_path(name)
     # Generated inputs change during compilation; they must not trigger a loop.
     output = Path('output').resolve()
     generated = (output / '.latex').resolve()

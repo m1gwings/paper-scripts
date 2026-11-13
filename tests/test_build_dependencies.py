@@ -45,4 +45,15 @@ class DependencyTest(unittest.TestCase):
         Path('output/.latex/main.fdb_latexmk').write_text('  "new.bib" 1\n')
         self.assertIn(Path('new.bib').resolve(),self.scan())
 
+    def test_symlink_retarget_wakes_cached_watch_set(self):
+        Path('first.tex').write_text('first')
+        Path('second.tex').write_text('second')
+        link=Path('linked.tex');link.symlink_to('first.tex')
+        self.recorder.write_text('INPUT main.tex\nINPUT linked.tex\n')
+        paths=self.scan();self.assertIn(link.absolute(),paths)
+        before={p:build.file_stamp(p) for p in paths}
+        link.unlink();link.symlink_to('second.tex')
+        after={p:build.file_stamp(p) for p in self.scan()}
+        self.assertNotEqual(before,after)
+
 if __name__=='__main__':unittest.main()
