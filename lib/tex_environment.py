@@ -36,9 +36,10 @@ def environment(path):
 def prepare_auxiliary_tree(auxiliary):
     # TeX writes per-include .aux files but does not create their parent folders.
     # Mirror source directories as Overleaf's compilation setup does.
+    ignored = {'output', 'tasks', 'tools', 'references', 'experiments', 'data', 'node_modules', '.paper'}
     for folder, directories, files in os.walk('.'):
-        directories[:] = [name for name in directories if not name.startswith('.') and name != 'output']
-        if files:
+        directories[:] = [name for name in directories if not name.startswith('.') and name not in ignored]
+        if any(f.endswith(('.tex', '.sty', '.cls', '.bib')) for f in files):
             target = auxiliary/Path(folder)
             if not target.resolve().is_relative_to(Path.cwd().resolve()):
                 raise ValueError('Auxiliary source tree must remain inside the project')

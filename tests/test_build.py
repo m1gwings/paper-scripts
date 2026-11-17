@@ -91,6 +91,45 @@ class BuildTest(unittest.TestCase):
         self.assertTrue((self.root / 'main.tex').exists())
         self.assertEqual((study / 'metadata.json').read_text(), 'preserve study')
 
+    def test_clean_output_clutter_moves_checks_and_unlinks_locks(self):
+        self.paper('build')
+        out = self.root / 'output'
+        # Add diverse clutter
+        (out / '.build.lock').touch()
+        (out / '.main.watch.lock').touch()
+        (out / 'citation_check.tex').write_text('check tex')
+        (out / 'citation_check.pdf').write_text('%PDF-check')
+        (out / 'layout_check-1.png').write_text('fake png')
+        (out / 'comment.cut').write_text('cut file')
+        (out / 'main.auxlock').write_text('auxlock')
+        review_dir = out / 'final-uif-review'
+        review_dir.mkdir()
+        (review_dir / 'page.png').write_text('review png')
+        empty_dir = out / 'appendix'
+        empty_dir.mkdir()
+
+        # Re-building or cleaning cleans the clutter
+        self.paper('build')
+
+        self.assertTrue((out / 'main.pdf').exists())
+        self.assertFalse((out / '.build.lock').exists())
+        self.assertFalse((out / '.main.watch.lock').exists())
+        self.assertFalse((out / 'citation_check.tex').exists())
+        self.assertFalse((out / 'citation_check.pdf').exists())
+        self.assertFalse((out / 'layout_check-1.png').exists())
+        self.assertFalse((out / 'comment.cut').exists())
+        self.assertFalse((out / 'main.auxlock').exists())
+        self.assertFalse((out / 'final-uif-review').exists())
+        self.assertFalse(empty_dir.exists())
+
+        # Checks are safely preserved in .latex/checks/ and .latex/reviews/
+        self.assertTrue((out / '.latex/checks/citation_check.tex').exists())
+        self.assertTrue((out / '.latex/checks/citation_check.pdf').exists())
+        self.assertTrue((out / '.latex/checks/layout_check-1.png').exists())
+        self.assertTrue((out / '.latex/comment.cut').exists())
+        self.assertTrue((out / '.latex/main.auxlock').exists())
+        self.assertTrue((out / '.latex/reviews/final-uif-review/page.png').exists())
+
     def test_explicit_watch_root_rebuilds_saved_dependencies(self):
         with (self.root / 'watch.log').open('w') as log:
             watcher = subprocess.Popen(['bash', str(SCRIPT), 'build', '--watch', 'main.tex'], cwd=self.root,

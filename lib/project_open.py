@@ -114,12 +114,17 @@ def ensure_watcher(directory, source, identifier):
         for lock_name in ('.project.watch.lock', source.parent / f'.{source.stem}.watch.lock'):
             lock_path = directory / output / lock_name
             if lock_path.exists():
-                with lock_path.open('a') as lock:
-                    try:
-                        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                    except BlockingIOError:
-                        return
-                    fcntl.flock(lock, fcntl.LOCK_UN)
+                try:
+                    with lock_path.open('a') as lock:
+                        try:
+                            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        except BlockingIOError:
+                            return
+                        fcntl.flock(lock, fcntl.LOCK_UN)
+                    if output == 'output':
+                        lock_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
     subprocess.run(['project-terminal', 'run', '--workspace', identifier, '--title', 'Build',
                     '--cwd', str(directory), '--keep-focus', '--', sys.executable,
                     str(Path(__file__).with_name('build.py')), 'build', '--watch'],

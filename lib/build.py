@@ -37,6 +37,123 @@ def auxiliary_directory(source):
     return Path("output/.latex") / source.parent
 
 
+def clean_output_clutter(root=None):
+    """Ensure output/ contains only deliverables; move compiler/check artifacts to output/.latex/."""
+    root = Path(root) if root else Path.cwd()
+    out = root / 'output'
+    if not out.is_dir():
+        return
+    aux = out / '.latex'
+    checks_dir = aux / 'checks'
+    reviews_dir = aux / 'reviews'
+
+    for item in list(out.iterdir()):
+        name = item.name
+        if name in ('.latex', '.overleaf', 'notes', 'pdf'):
+            continue
+
+        # 1. Lock files: unlink if unheld
+        if name.startswith('.') and name.endswith('.lock'):
+            try:
+                with item.open('a') as fl:
+                    fcntl.flock(fl, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    fcntl.flock(fl, fcntl.LOCK_UN)
+                item.unlink(missing_ok=True)
+            except (BlockingIOError, OSError):
+                pass
+            continue
+
+        # 2. Compiler auxiliary leftovers (*.auxlock, *.cut)
+        if name.endswith(('.auxlock', '.cut')):
+            aux.mkdir(parents=True, exist_ok=True)
+            try:
+                shutil.move(str(item), str(aux / name))
+            except OSError:
+                pass
+            continue
+
+        # 3. Diagnostic / publish logs
+        if name.endswith('.log'):
+            aux.mkdir(parents=True, exist_ok=True)
+            try:
+                shutil.move(str(item), str(aux / name))
+            except OSError:
+                pass
+            continue
+
+        # 4. Review images (.png, .jpg, etc.)
+        if item.is_file() and item.suffix.lower() in ('.png', '.jpg', '.jpeg', '.svg'):
+            checks_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                shutil.move(str(item), str(checks_dir / name))
+            except OSError:
+                pass
+            continue
+
+        # 5. Ad-hoc TeX checks inside output/ and their matching PDFs
+        if item.is_file() and item.suffix == '.tex':
+            checks_dir.mkdir(parents=True, exist_ok=True)
+            try:
+                shutil.move(str(item), str(checks_dir / name))
+            except OSError:
+                pass
+            check_pdf = out / (item.stem + '.pdf')
+            if check_pdf.is_file():
+                try:
+                    shutil.move(str(check_pdf), str(checks_dir / check_pdf.name))
+                except OSError:
+                    pass
+            continue
+
+        # 5b. Ad-hoc check PDFs (without .tex in root, notes or variants)
+        if item.is_file() and item.suffix == '.pdf':
+            is_check_name = any(t in item.stem.lower() for t in ('check', 'debug', 'refactor_review'))
+            has_source = (root / f'{item.stem}.tex').is_file() or (root / 'notes' / f'{item.stem}.tex').is_file() or (root / 'variants' / f'{item.stem}.tex').is_file()
+            if is_check_name and not has_source:
+                checks_dir.mkdir(parents=True, exist_ok=True)
+                try:
+                    shutil.move(str(item), str(checks_dir / name))
+                except OSError:
+                    pass
+                continue
+
+        # 6. Review directories (e.g. final-uif-review, tikz-review)
+        if item.is_dir() and ('review' in name.lower() or 'check' in name.lower()):
+            reviews_dir.mkdir(parents=True, exist_ok=True)
+            target = reviews_dir / name
+            try:
+                if target.exists():
+                    shutil.rmtree(str(target))
+                shutil.move(str(item), str(target))
+            except OSError:
+                pass
+            continue
+
+        # 7. Stray nested output dir (e.g. output/output)
+        if item.is_dir() and name == 'output':
+            checks_dir.mkdir(parents=True, exist_ok=True)
+            for sub in list(item.iterdir()):
+                try:
+                    if sub.name.endswith('.lock'):
+                        sub.unlink(missing_ok=True)
+                    else:
+                        shutil.move(str(sub), str(checks_dir / sub.name))
+                except OSError:
+                    pass
+            try:
+                item.rmdir()
+            except OSError:
+                pass
+            continue
+
+        # 8. Empty directories (e.g. output/appendix if empty)
+        if item.is_dir():
+            try:
+                item.rmdir()
+            except OSError:
+                pass
+
+
 def dependencies(source, out):
     """Use TeX's recorder and latexmk's database (which also includes BibTeX)."""
     identity = (Path.cwd(), source, out)
@@ -89,13 +206,21 @@ def compile_locked(command, out):
     source = Path(command[-1])
     aux = auxiliary_directory(source)
     with ExitStack() as locks:
-        # Coordinate with an older pinned builder when its legacy lock exists.
+        # Check and remove stale legacy lock in output/ if unheld
         legacy = out / '.build.lock'
         inherited = []
         if legacy.exists():
-            old_lock = locks.enter_context(legacy.open('a'))
-            fcntl.flock(old_lock, fcntl.LOCK_EX)
-            inherited.append(old_lock.fileno())
+            try:
+                with legacy.open('a') as fl:
+                    fcntl.flock(fl, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    fcntl.flock(fl, fcntl.LOCK_UN)
+                legacy.unlink(missing_ok=True)
+            except BlockingIOError:
+                old_lock = locks.enter_context(legacy.open('a'))
+                fcntl.flock(old_lock, fcntl.LOCK_EX)
+                inherited.append(old_lock.fileno())
+            except OSError:
+                pass
         lock = locks.enter_context((aux / '.build.lock').open('a'))
         fcntl.flock(lock, fcntl.LOCK_EX)
         inherited.append(lock.fileno())
@@ -214,6 +339,7 @@ def compile_locked(command, out):
             last_success = pdf.stat().st_mtime if pdf.exists() else None
             build_signature = requested_signature
             report('success')
+        clean_output_clutter(Path.cwd())
         return status
 
 
@@ -274,12 +400,23 @@ def find_project_roots(root):
 def watch_project(root):
     output_latex = Path('output/.latex')
     output_latex.mkdir(parents=True, exist_ok=True)
+    legacy = Path('output/.project.watch.lock')
+    if legacy.exists():
+        try:
+            with legacy.open('a') as fl:
+                fcntl.flock(fl, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(fl, fcntl.LOCK_UN)
+            legacy.unlink(missing_ok=True)
+        except BlockingIOError:
+            print('A continuous builder is already watching the project.', flush=True)
+            return 0
+        except OSError:
+            pass
+
     with ExitStack() as locks:
         try:
-            paths = [Path('output/.project.watch.lock'), output_latex / '.project.watch.lock']
+            paths = [output_latex / '.project.watch.lock']
             for path in paths:
-                if path == paths[0] and not path.exists():
-                    continue
                 lock = locks.enter_context(path.open('a'))
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
@@ -379,13 +516,25 @@ def watch_project(root):
 
 
 def watch(command, source, out):
+    aux = auxiliary_directory(source)
+    aux.mkdir(parents=True, exist_ok=True)
+    legacy = out / f'.{source.stem}.watch.lock'
+    if legacy.exists():
+        try:
+            with legacy.open('a') as fl:
+                fcntl.flock(fl, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(fl, fcntl.LOCK_UN)
+            legacy.unlink(missing_ok=True)
+        except BlockingIOError:
+            print(f'A continuous builder is already watching {source}.', flush=True)
+            return 0
+        except OSError:
+            pass
+
     with ExitStack() as locks:
         try:
-            paths = [out / f'.{source.stem}.watch.lock',
-                     auxiliary_directory(source) / f'.{source.stem}.watch.lock']
+            paths = [aux / f'.{source.stem}.watch.lock']
             for path in paths:
-                if path == paths[0] and not path.exists():
-                    continue
                 lock = locks.enter_context(path.open('a'))
                 fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
@@ -470,6 +619,8 @@ def run(argv=None):
         return watch(command, source, out)
     status = compile_locked(command, out)
     if status or args.action == 'clean':
+        if args.action == 'clean':
+            clean_output_clutter(root)
         return status
     if not pdf.is_file():
         parser.error(f'Build produced no PDF at {pdf}.')
