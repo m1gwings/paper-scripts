@@ -248,7 +248,7 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
         record = self.record()
         self.assertEqual(record['project_name'], 'CMABs with Ranking Feedback')
         self.assertIn('Editor — CMABs with Ranking Feedback · Poster', record['args'])
-        self.assertIn('--watch poster.tex', record['session'])
+        self.assertIn('build --watch', record['session'])
         self.assertFalse((self.project / 'INJECTED').exists())
 
     def test_project_name_survives_reinitialization(self):
@@ -392,7 +392,7 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
         self.assertIn('Reused editor', self.launch('--terminal', '--no-reader'))
         command = json.loads(log.read_text())
         self.assertEqual(command[command.index('--workspace') + 1], 'paired')
-        self.assertEqual(command[-3:], ['build', '--watch', 'main.tex'])
+        self.assertEqual(command[-2:], ['build', '--watch'])
         self.assertFalse(self.log.exists())  # No duplicate desktop editor.
         log.unlink()
         (self.project / 'output/.latex').mkdir(parents=True)

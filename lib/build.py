@@ -53,7 +53,8 @@ def dependencies(source, out):
     for path in (tex_environment.MANIFEST, source, '.latexmkrc', 'latexmkrc'):
         add_path(path)
     aux = auxiliary_directory(source)
-    jobname = 'output' if tex_environment.MANIFEST.exists() and tex_environment.load().get('jobname') == 'output' else source.stem
+    is_main_overleaf = tex_environment.MANIFEST.exists() and source == Path(tex_environment.load().get('main', 'main.tex'))
+    jobname = 'output' if is_main_overleaf and tex_environment.load().get('jobname') == 'output' else source.stem
     recorder = aux / (jobname + '.fls')
     database = aux / (jobname + '.fdb_latexmk')
     # Capture before parsing: a concurrent compiler update must invalidate the
@@ -140,14 +141,16 @@ def compile_locked(command, out):
             active = list(command)
             if env is not None:
                 config = tex_environment.load()
-                env = tex_environment.configure_job_environment(env, source, aux, config)
+                is_main_overleaf = source == Path(config.get('main', 'main.tex'))
+                if is_main_overleaf:
+                    env = tex_environment.configure_job_environment(env, source, aux, config)
                 active[0] = str(tex_environment.installation_root(config['recipe'])/'bin/x86_64-linux/latexmk')
                 active[1] = tex_environment.COMPILERS[config['compiler']]
                 if config.get('shell_escape') == 'enabled':
                     active.insert(-1, '-shell-escape')
                 elif config.get('shell_escape') == 'disabled':
                     active.insert(-1, '-no-shell-escape')
-                if config.get('jobname') == 'output':
+                if is_main_overleaf and config.get('jobname') == 'output':
                     active.insert(-1, '-jobname=output')
                 requested_signature = hashlib.sha256(json.dumps(dict(command=active, config=config), sort_keys=True).encode()).hexdigest()
                 if not clean and requested_signature != build_signature:
@@ -159,7 +162,7 @@ def compile_locked(command, out):
                 compiled_log = aux/'output.log'
                 if compiled_log.is_file():
                     shutil.copyfile(compiled_log, aux/(source.stem+'.log'))
-            if not status and not clean and tex_environment.MANIFEST.exists():
+            if not status and not clean and tex_environment.MANIFEST.exists() and is_main_overleaf:
                 drift = tex_environment.differences(aux / (source.stem + '.log'), strict=False)
                 if drift:
                     print('Overleaf environment drift:\n'+'\n'.join(drift), file=sys.stderr)
@@ -212,6 +215,167 @@ def compile_locked(command, out):
             build_signature = requested_signature
             report('success')
         return status
+
+
+def make_command(source, aux, clean=False):
+    command = ['latexmk', '-pdf', '-interaction=nonstopmode', '-file-line-error',
+               '-halt-on-error', '-synctex=1', f'-outdir={aux}', f'-auxdir={aux}']
+    if clean:
+        command.append('-C')
+    command.append(str(source))
+    return command
+
+
+def is_root_document(path):
+    """Check if a .tex file declares \\documentclass or \\documentstyle (standalone document)."""
+    try:
+        with open(path, 'r', encoding='utf-8', errors='replace') as f:
+            for line in f:
+                clean_line = re.sub(r'(?<!\\)(?:\\\\)*%.*$', '', line).strip()
+                if not clean_line:
+                    continue
+                if re.search(r'\\(documentclass|documentstyle)\b', clean_line):
+                    return True
+                if r'\begin{document}' in clean_line:
+                    break
+    except OSError:
+        return False
+    return False
+
+
+def find_project_roots(root):
+    """Find all compilable LaTeX root documents inside the project."""
+    roots = []
+    default_main = 'main.tex'
+    if tex_environment.MANIFEST.exists():
+        try:
+            default_main = tex_environment.load().get('main', default_main)
+        except (OSError, ValueError):
+            pass
+    main_path = root / default_main
+    if main_path.is_file() and main_path.suffix == '.tex':
+        roots.append(Path(default_main))
+
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if not d.startswith('.') and d not in ('output', 'tasks', 'references', 'tools')]
+        rel_dir = Path(dirpath).relative_to(root)
+        for name in filenames:
+            if not name.endswith('.tex') or name.startswith('.'):
+                continue
+            rel_file = rel_dir / name if str(rel_dir) != '.' else Path(name)
+            if rel_file in roots:
+                continue
+            full_path = root / rel_file
+            if full_path.is_file() and is_root_document(full_path):
+                roots.append(rel_file)
+    return sorted(roots)
+
+
+def watch_project(root):
+    output_latex = Path('output/.latex')
+    output_latex.mkdir(parents=True, exist_ok=True)
+    with ExitStack() as locks:
+        try:
+            paths = [Path('output/.project.watch.lock'), output_latex / '.project.watch.lock']
+            for path in paths:
+                if path == paths[0] and not path.exists():
+                    continue
+                lock = locks.enter_context(path.open('a'))
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print('A continuous builder is already watching the project.', flush=True)
+            return 0
+
+        source_locks = {}
+
+        def close_source_locks():
+            for f in source_locks.values():
+                try:
+                    f.close()
+                except OSError:
+                    pass
+            source_locks.clear()
+
+        locks.callback(close_source_locks)
+
+        runtime_files = (Path(__file__).resolve(), Path(tex_environment.__file__).resolve(), Path(overleaf_build.__file__).resolve())
+        runtime_stamps = {path: file_stamp(path) for path in runtime_files}
+
+        tracked_roots = {}
+        print('Watching project for document changes. Stop with Ctrl+C.', flush=True)
+
+        while True:
+            current_runtime = {path: file_stamp(path) for path in runtime_files}
+            if current_runtime != runtime_stamps:
+                time.sleep(.2)
+                if current_runtime != {path: file_stamp(path) for path in runtime_files}:
+                    continue
+                try:
+                    for path in runtime_files:
+                        compile(path.read_bytes(), str(path), 'exec')
+                except (OSError, SyntaxError):
+                    continue
+                print('Build runtime updated; reloading watcher.', flush=True)
+                close_source_locks()
+                os.execv(sys.executable, [sys.executable, str(runtime_files[0]), 'build', '--watch'])
+
+            overleaf_build.refresh_async()
+
+            current_roots = set(find_project_roots(root))
+
+            for src in list(tracked_roots.keys()):
+                if src not in current_roots:
+                    del tracked_roots[src]
+                    if src in source_locks:
+                        try:
+                            source_locks[src].close()
+                        except OSError:
+                            pass
+                        del source_locks[src]
+
+            for src in current_roots:
+                if src not in tracked_roots:
+                    out = Path('output') / src.parent
+                    aux = auxiliary_directory(src)
+                    out.mkdir(parents=True, exist_ok=True)
+                    aux.mkdir(parents=True, exist_ok=True)
+                    tex_environment.prepare_auxiliary_tree(aux)
+
+                    lock_file_path = aux / f'.{src.stem}.watch.lock'
+                    try:
+                        fl = lock_file_path.open('a')
+                        fcntl.flock(fl, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        source_locks[src] = fl
+                    except BlockingIOError:
+                        print(f'Another watcher is already watching {src}; skipping.', flush=True)
+                        continue
+
+                    cmd = make_command(src, aux)
+                    pdf = (out / (src.stem + '.pdf')).resolve()
+                    print(f'Watching {src}; PDF: {out / (src.stem + ".pdf")}. Stop with Ctrl+C.', flush=True)
+                    tracked_roots[src] = {
+                        'out': out,
+                        'aux': aux,
+                        'command': cmd,
+                        'pdf': pdf,
+                        'previous': None
+                    }
+
+            for src, info in list(tracked_roots.items()):
+                out = info['out']
+                cmd = info['command']
+                pdf = info['pdf']
+                tracked = dependencies(src, out)
+                tracked.add(pdf)
+                current = {p: file_stamp(p) for p in tracked}
+                if current != info['previous']:
+                    before = current
+                    compile_locked(cmd, out)
+                    tracked = dependencies(src, out)
+                    info['previous'] = {p: before.get(p) for p in tracked}
+                    info['previous'][pdf] = file_stamp(pdf)
+
+            time.sleep(.5)
 
 
 def watch(command, source, out):
@@ -275,6 +439,10 @@ def run(argv=None):
         parser.error('Not inside a Git repository.')
     root = Path(result.stdout.removesuffix('\n'))
     os.chdir(root)
+    if not tex_environment.MANIFEST.exists() and not shutil.which('latexmk'):
+        parser.error("Required command 'latexmk' is not installed.")
+    if args.watch and not args.source:
+        return watch_project(root)
     try:
         default_source = tex_environment.load()['main'] if tex_environment.MANIFEST.exists() else 'main.tex'
     except (OSError, ValueError, KeyError) as error:
@@ -297,13 +465,7 @@ def run(argv=None):
     pdf = out / (source.stem + '.pdf')
     if pdf.is_symlink():
         parser.error('Refusing a symlinked PDF output.')
-    if not tex_environment.MANIFEST.exists() and not shutil.which('latexmk'):
-        parser.error("Required command 'latexmk' is not installed.")
-    command = ['latexmk', '-pdf', '-interaction=nonstopmode', '-file-line-error',
-               '-halt-on-error', '-synctex=1', f'-outdir={aux}', f'-auxdir={aux}']
-    if args.action == 'clean':
-        command.append('-C')
-    command.append(str(source))
+    command = make_command(source, aux, clean=(args.action == 'clean'))
     if args.watch:
         return watch(command, source, out)
     status = compile_locked(command, out)

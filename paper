@@ -644,7 +644,9 @@ COMMANDS
 
   paper build [--watch] [ROOT.tex]
       Compile with latexmk into output/; defaults to main.tex.
-      --watch rebuilds after saved source changes. Stop with Ctrl+C.
+      --watch without arguments watches all project documents and notes into output/.
+      --watch with an explicit ROOT.tex watches that single document.
+      Stop with Ctrl+C.
 
   paper view [ROOT.tex]
       Build and open output/ROOT.pdf in Evince (or the system PDF viewer).

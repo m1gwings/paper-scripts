@@ -111,17 +111,18 @@ def ensure_watcher(directory, source, identifier):
     """Restore Build when paper open reuses an editor opened standalone."""
     # A pinned runtime may still be watching with the previous visible layout.
     for output in ('output/.latex', 'output'):
-        lock_path = directory / output / source.parent / f'.{source.stem}.watch.lock'
-        if lock_path.exists():
-            with lock_path.open('a') as lock:
-                try:
-                    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                except BlockingIOError:
-                    return
-                fcntl.flock(lock, fcntl.LOCK_UN)
+        for lock_name in ('.project.watch.lock', source.parent / f'.{source.stem}.watch.lock'):
+            lock_path = directory / output / lock_name
+            if lock_path.exists():
+                with lock_path.open('a') as lock:
+                    try:
+                        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    except BlockingIOError:
+                        return
+                    fcntl.flock(lock, fcntl.LOCK_UN)
     subprocess.run(['project-terminal', 'run', '--workspace', identifier, '--title', 'Build',
                     '--cwd', str(directory), '--keep-focus', '--', sys.executable,
-                    str(Path(__file__).with_name('build.py')), 'build', '--watch', str(source)],
+                    str(Path(__file__).with_name('build.py')), 'build', '--watch'],
                    check=True, capture_output=True, text=True, timeout=10)
 
 
@@ -380,7 +381,7 @@ def run(argv=None):
     if paper:
         # Keep the source watcher in its own tab, leaving the project shell free.
         build_command = shlex.join(['python3', str(Path(__file__).with_name('build.py')),
-                                    'build', '--watch', info['root_tex']])
+                                    'build', '--watch'])
         session += f'new_tab Build\nlaunch --title "PDF build" {build_command}\n'
     workspace = prepare(directory, info['project_name'], args.session)
     cosmic = 'COSMIC' in os.environ.get('XDG_CURRENT_DESKTOP', '').upper().split(':')

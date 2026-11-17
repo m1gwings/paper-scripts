@@ -305,6 +305,98 @@ while not (out/'continue').exists(): time.sleep(.02)
                 os.killpg(watcher.pid, signal.SIGINT)
                 watcher.wait(timeout=5)
 
+    def test_watch_entire_project_builds_top_level_and_notes_and_ignores_fragments(self):
+        (self.root / 'macros.tex').write_text(r'\newcommand{\greeting}{Hello}' + '\n')
+        (self.root / 'body.tex').write_text(r'\greeting\ world.' + '\n')
+        (self.root / 'main.tex').write_text(r'\documentclass{article}\input{macros}\begin{document}\input{body}\end{document}' + '\n')
+        (self.root / 'coverletter.tex').write_text(r'\documentclass{article}\begin{document}Cover letter text.\end{document}' + '\n')
+        notes_dir = self.root / 'notes'
+        notes_dir.mkdir()
+        (notes_dir / 'idea.tex').write_text(r'\documentclass{article}\begin{document}Note text.\end{document}' + '\n')
+
+        with (self.root / 'watch.log').open('w') as log:
+            watcher = subprocess.Popen(['bash', str(SCRIPT), 'build', '--watch'], cwd=self.root,
+                                       env=self.env, stdout=log, stderr=log, start_new_session=True)
+            def wait_for(relative_pdf, text):
+                deadline = time.monotonic() + 20
+                pdf = self.root / relative_pdf
+                while time.monotonic() < deadline:
+                    self.assertIsNone(watcher.poll(), (self.root / 'watch.log').read_text())
+                    if pdf.exists():
+                        result = subprocess.run(['pdftotext', str(pdf), '-'], capture_output=True, text=True)
+                        if text in result.stdout:
+                            return
+                    time.sleep(.1)
+                self.fail(f'Timed out waiting for {text} in {relative_pdf}:\n' + (self.root / 'watch.log').read_text())
+
+            try:
+                wait_for('output/main.pdf', 'Hello world')
+                wait_for('output/coverletter.pdf', 'Cover letter text')
+                wait_for('output/notes/idea.pdf', 'Note text')
+                self.assertFalse((self.root / 'output/macros.pdf').exists())
+                self.assertFalse((self.root / 'output/body.pdf').exists())
+
+                # Granular rebuild: update notes/idea.tex
+                cover_mtime = (self.root / 'output/coverletter.pdf').stat().st_mtime_ns
+                time.sleep(0.1)
+                (notes_dir / 'idea.tex').write_text(r'\documentclass{article}\begin{document}Updated note text.\end{document}' + '\n')
+                wait_for('output/notes/idea.pdf', 'Updated note text')
+                self.assertEqual((self.root / 'output/coverletter.pdf').stat().st_mtime_ns, cover_mtime)
+
+                # Shared dependency update: update macros.tex
+                idea_mtime = (self.root / 'output/notes/idea.pdf').stat().st_mtime_ns
+                time.sleep(0.1)
+                (self.root / 'macros.tex').write_text(r'\newcommand{\greeting}{Greetings}' + '\n')
+                wait_for('output/main.pdf', 'Greetings world')
+                self.assertEqual((self.root / 'output/notes/idea.pdf').stat().st_mtime_ns, idea_mtime)
+            finally:
+                os.killpg(watcher.pid, signal.SIGINT)
+                watcher.wait(timeout=5)
+
+    def test_watch_project_dynamically_discovers_new_note(self):
+        with (self.root / 'watch.log').open('w') as log:
+            watcher = subprocess.Popen(['bash', str(SCRIPT), 'build', '--watch'], cwd=self.root,
+                                       env=self.env, stdout=log, stderr=log, start_new_session=True)
+            def wait_for(relative_pdf, text):
+                deadline = time.monotonic() + 20
+                pdf = self.root / relative_pdf
+                while time.monotonic() < deadline:
+                    self.assertIsNone(watcher.poll(), (self.root / 'watch.log').read_text())
+                    if pdf.exists():
+                        result = subprocess.run(['pdftotext', str(pdf), '-'], capture_output=True, text=True)
+                        if text in result.stdout:
+                            return
+                    time.sleep(.1)
+                self.fail(f'Timed out waiting for {text} in {relative_pdf}:\n' + (self.root / 'watch.log').read_text())
+
+            try:
+                wait_for('output/main.pdf', 'First version')
+                notes = self.root / 'notes'
+                notes.mkdir()
+                (notes / 'draft.tex').write_text(r'\documentclass{article}\begin{document}Dynamic note content.\end{document}' + '\n')
+                wait_for('output/notes/draft.pdf', 'Dynamic note content')
+            finally:
+                os.killpg(watcher.pid, signal.SIGINT)
+                watcher.wait(timeout=5)
+
+    def test_watch_project_locking_prevents_duplicate_project_watchers(self):
+        with (self.root / 'watch.log').open('w') as log:
+            watcher = subprocess.Popen(['bash', str(SCRIPT), 'build', '--watch'], cwd=self.root,
+                                       env=self.env, stdout=log, stderr=log, start_new_session=True)
+            try:
+                deadline = time.monotonic() + 15
+                while not (self.root / 'output/main.pdf').exists():
+                    self.assertIsNone(watcher.poll())
+                    self.assertLess(time.monotonic(), deadline)
+                    time.sleep(.1)
+                second = subprocess.run(['bash', str(SCRIPT), 'build', '--watch'], cwd=self.root,
+                                        env=self.env, capture_output=True, text=True, timeout=10)
+                self.assertEqual(second.returncode, 0)
+                self.assertIn('already watching the project', second.stdout)
+            finally:
+                os.killpg(watcher.pid, signal.SIGINT)
+                watcher.wait(timeout=5)
+
 
 if __name__ == '__main__':
     unittest.main()

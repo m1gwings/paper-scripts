@@ -91,7 +91,7 @@ paper; each paper is upgraded with `paper init`, reviewed, and committed.
 | `paper notify-test` | Test the configured provider through GitHub Actions. |
 | `paper configure-ci [--environments-only]` | Create/verify protected environments and privately install the Overleaf credential. |
 | `paper configure-notifications [--provider PROVIDER] [OWNER/REPO ...]` | Configure this paper from its `github` remote, or explicitly configure multiple papers. Discord is the default. |
-| `paper build [--watch] [ROOT.tex]` / `paper clean [ROOT.tex]` | Build or clean in `output/`; default `main.tex`. Watch mode rebuilds after saves. |
+| `paper build [--watch] [ROOT.tex]` / `paper clean [ROOT.tex]` | Build or clean in `output/`; default `main.tex`. Without a root, watch mode watches all project documents and notes into mirrored output paths. |
 | `paper view [ROOT.tex]` | Build and open the current PDF in Reader, Evince, or the system viewer. |
 | `paper status [--verbose]` / `paper doctor` | Inspect manuscript synchronization, GitHub backup, configuration, and tools. Verbose status adds raw history counts. |
 | `paper abort` | Confirm and delete the current feature locally and on GitHub. Never touch the base or Overleaf. |
@@ -318,10 +318,15 @@ commands require Git but no remotes. Keep `/output/` in the project's `.gitignor
 do not ignore all PDFs, since reference papers and source graphics may be tracked.
 
 Use `paper build --watch [ROOT.tex]` to rebuild after saved source/dependency
-changes. Watchers, manual builds, previews, and clean commands serialize complete
+changes. Without an explicit root, `paper build --watch` watches the entire project:
+all top-level standalone documents (e.g. `main.tex`, `coverletter.tex`) are built into `output/`,
+and documents inside subdirectories (e.g. `notes/*.tex`) are built into their mirrored
+folder structure under `output/` (such as `output/notes/*.pdf`). New documents are discovered
+dynamically while the watcher runs. Watchers, manual builds, previews, and clean commands serialize complete
 latexmk runs using a shared lock in their output directory. Watch mode runs
 one-shot latexmk builds when recorded TeX/BibTeX inputs change; it releases the
 build lock between runs, so manual commands never compete with an active build.
+Editor sessions (`paper open`) spawn the project-wide watcher by default.
 `paper view [ROOT.tex]` builds first, then opens `workspace-read` when
 installed, falling back to Evince and the system viewer. Reader reloads changed
 PDFs and keeps the last valid version during a rebuild. Set
