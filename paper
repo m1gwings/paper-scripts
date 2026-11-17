@@ -306,7 +306,7 @@ init_paper() {
         [[ ! -L "$path" && ( ! -e "$path" || -d "$path" ) ]] \
             || die "Cannot initialize: '$path' must be a directory, not a file or symlink."
     done
-    for path in AGENTS.md notes/README.md tasks/index.md tasks/template.md notes/template.tex; do
+    for path in AGENTS.md notes/README.md tasks/index.md tasks/template.md; do
         [[ ! -d "$path" ]] \
             || die "Cannot initialize: '$path' is a directory."
     done
@@ -323,8 +323,6 @@ Create new notes with:
 
 Keep assignments, progress tracking, handoffs, and revision-specific verification in `../tasks/`. Link to the relevant task when useful; avoid duplicating mathematical content.
 NOTES
-
-    create_init_file notes/template.tex < "$SCRIPT_DIR/templates/latex/note.tex"
 
     create_init_file tasks/index.md <<'INDEX'
 # Task queue

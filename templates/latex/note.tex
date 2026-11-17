@@ -1,7 +1,7 @@
 \documentclass[11pt,a4paper]{article}
 \usepackage[margin=25mm]{geometry}
 \usepackage{microtype}
-\usepackage{amsmath,amssymb,mathtools,bm}
+\usepackage{amsmath,amssymb,amsthm,mathtools,bm}
 \usepackage{bbm}
 \usepackage{enumitem}
 \usepackage{booktabs}
@@ -9,37 +9,42 @@
 \usepackage[colorlinks=true,linkcolor=blue!50!black,citecolor=blue!50!black,urlcolor=blue!50!black]{hyperref}
 \hypersetup{pdftitle={@@TITLE@@}}
 
-\IfFileExists{papermacros.sty}{%
-  \usepackage[profile=paper,theorems=standard,algorithms=false]{papermacros}%
+% Optional: import project-specific macros if compiling within a paper repository
+\IfFileExists{projectmacros.tex}{%
   \input{projectmacros}%
 }{%
-  \IfFileExists{../papermacros.sty}{%
-    \usepackage[profile=paper,theorems=standard,algorithms=false]{../papermacros}%
+  \IfFileExists{../projectmacros.tex}{%
     \input{../projectmacros}%
-  }{%
-    \usepackage{amsthm}%
-    \theoremstyle{plain}%
-    \newtheorem{theorem}{Theorem}%
-    \newtheorem{lemma}[theorem]{Lemma}%
-    \newtheorem{proposition}[theorem]{Proposition}%
-    \newtheorem{corollary}[theorem]{Corollary}%
-    \theoremstyle{definition}%
-    \newtheorem{definition}{Definition}%
-    \newtheorem{assumption}{Assumption}%
-    \newtheorem{example}{Example}%
-    \theoremstyle{remark}%
-    \newtheorem{remark}{Remark}%
-    \newenvironment{proofsketch}{\begin{proof}[Proof sketch]}{\end{proof}}%
-  }%
+  }{}%
 }
 
-\ifdefined\CommentsVisible
-  \CommentsVisible
-\fi
+% Standard theorem environments (defined if not already provided by project macros)
+\theoremstyle{plain}
+\ifdefined\theorem\else\newtheorem{theorem}{Theorem}\fi
+\ifdefined\lemma\else\newtheorem{lemma}[theorem]{Lemma}\fi
+\ifdefined\proposition\else\newtheorem{proposition}[theorem]{Proposition}\fi
+\ifdefined\corollary\else\newtheorem{corollary}[theorem]{Corollary}\fi
+\theoremstyle{definition}
+\ifdefined\definition\else\newtheorem{definition}{Definition}\fi
+\ifdefined\assumption\else\newtheorem{assumption}{Assumption}\fi
+\ifdefined\example\else\newtheorem{example}{Example}\fi
+\theoremstyle{remark}
+\ifdefined\remark\else\newtheorem{remark}{Remark}\fi
+\ifdefined\proofsketch\else\newenvironment{proofsketch}{\begin{proof}[Proof sketch]}{\end{proof}}\fi
 
+% Cleveref loaded after theorem environments
 \usepackage[capitalize,noabbrev]{cleveref}
 \crefname{assumption}{Assumption}{Assumptions}
 \Crefname{assumption}{Assumption}{Assumptions}
+
+% Standard mathematical notation shortcuts
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\E}{\mathbb{E}}
+\DeclareMathOperator*{\Prob}{\mathbb{P}}
+\DeclareMathOperator{\Var}{Var}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\DeclareMathOperator*{\argmax}{arg\,max}
 
 \setlength{\parindent}{0pt}
 \setlength{\parskip}{5pt}

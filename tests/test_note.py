@@ -22,19 +22,18 @@ class PaperNoteTest(unittest.TestCase):
         self.assertEqual(result.returncode == 0, ok, result.stdout + result.stderr)
         return result.stdout + result.stderr
 
-    def test_init_creates_template_and_preserves_existing(self):
+    def test_init_does_not_create_template_tex_and_preserves_clean_notes(self):
         self.run_paper('init')
         template_path = self.root / 'notes' / 'template.tex'
-        self.assertTrue(template_path.is_file())
-        text = template_path.read_text(encoding='utf-8')
-        self.assertIn('@@TITLE@@', text)
-        self.assertIn('Research Notes', text)
-        self.assertIn('papermacros', text)
+        self.assertFalse(template_path.exists())
+        self.assertTrue((self.root / 'notes' / 'README.md').is_file())
 
-        # Custom edits must be preserved
-        template_path.write_text('Custom local template\n', encoding='utf-8')
-        self.run_paper('init')
-        self.assertEqual(template_path.read_text(encoding='utf-8'), 'Custom local template\n')
+        # An optional local override _template.tex can still be used if provided
+        (self.root / 'notes' / '_template.tex').write_text('Custom local template for @@TITLE@@\n', encoding='utf-8')
+        out = self.run_paper('note', 'new', 'custom_note')
+        self.assertIn('Created notes/custom_note.tex', out)
+        self.assertEqual((self.root / 'notes' / 'custom_note.tex').read_text(encoding='utf-8'),
+                         'Custom local template for Custom Note\n')
 
     def test_create_note_default_title_and_slug(self):
         self.run_paper('init')
@@ -95,6 +94,17 @@ class PaperNoteTest(unittest.TestCase):
         self.assertIn('Alpha Title', list_out)
         self.assertIn('beta_note.tex', list_out)
         self.assertIn('Beta Title', list_out)
+
+    def test_build_ignores_template_file(self):
+        import sys
+        sys.path.insert(0, str(SCRIPT.parent / 'lib'))
+        import build
+        (self.root / 'notes').mkdir(parents=True, exist_ok=True)
+        (self.root / 'notes' / 'template.tex').write_text('\\documentclass{article}\\begin{document}x\\end{document}')
+        (self.root / 'notes' / 'real_note.tex').write_text('\\documentclass{article}\\begin{document}x\\end{document}')
+        roots = build.find_project_roots(self.root)
+        self.assertIn(Path('notes/real_note.tex'), roots)
+        self.assertNotIn(Path('notes/template.tex'), roots)
 
 
 if __name__ == '__main__':

@@ -62,10 +62,10 @@ def sanitize_note_name(name):
 
 
 def read_template(root):
-    """Locate and read the note template (local project template preferred)."""
-    local_tpl = root / 'notes' / 'template.tex'
-    if local_tpl.is_file():
-        return local_tpl.read_text(encoding='utf-8')
+    """Locate and read the note template (centralized template by default, optional local _template.tex)."""
+    local_override = root / 'notes' / '_template.tex'
+    if local_override.is_file():
+        return local_override.read_text(encoding='utf-8')
     builtin_tpl = Path(__file__).resolve().parents[1] / 'templates' / 'latex' / 'note.tex'
     if builtin_tpl.is_file():
         return builtin_tpl.read_text(encoding='utf-8')

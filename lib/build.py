@@ -260,7 +260,7 @@ def find_project_roots(root):
         dirnames[:] = [d for d in dirnames if not d.startswith('.') and d not in ('output', 'tasks', 'references', 'tools')]
         rel_dir = Path(dirpath).relative_to(root)
         for name in filenames:
-            if not name.endswith('.tex') or name.startswith('.'):
+            if not name.endswith('.tex') or name.startswith('.') or name.startswith('_') or name in ('template.tex', 'sample.tex'):
                 continue
             rel_file = rel_dir / name if str(rel_dir) != '.' else Path(name)
             if rel_file in roots:
