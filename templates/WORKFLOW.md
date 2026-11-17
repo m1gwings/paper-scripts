@@ -38,6 +38,15 @@ Keep PDFs in ignored `output/`; build files stay in `output/.latex/`.
 EWS studies use sibling `output/<study_name>/` folders; clean each study separately. Report failures: the viewer
 may still show an older PDF. Documentation-only changes need no manuscript build.
 
+## Research notes
+
+Keep mathematical derivations, examples, conjectures, and proof arguments in `notes/`.
+Create a self-standing LaTeX note with `paper note new <name> [--title "TITLE"]`.
+Standalone notes import project macros (`papermacros.sty`, `projectmacros.tex`) and compile
+independently into `output/notes/<name>.pdf` using `paper build notes/<name>.tex`.
+List existing notes and their build status with `paper note list`.
+Research notes are excluded from Overleaf publication by default and stay in your Git and GitHub history.
+
 ## Notifications and cloud execution
 
 Cloud clients need GitHub access (Contents write and Actions read/write),

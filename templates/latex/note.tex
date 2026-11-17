@@ -1,0 +1,69 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=25mm]{geometry}
+\usepackage{microtype}
+\usepackage{amsmath,amssymb,mathtools,bm}
+\usepackage{bbm}
+\usepackage{enumitem}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage[colorlinks=true,linkcolor=blue!50!black,citecolor=blue!50!black,urlcolor=blue!50!black]{hyperref}
+\hypersetup{pdftitle={@@TITLE@@}}
+
+\IfFileExists{papermacros.sty}{%
+  \usepackage[profile=paper,theorems=standard,algorithms=false]{papermacros}%
+  \input{projectmacros}%
+}{%
+  \IfFileExists{../papermacros.sty}{%
+    \usepackage[profile=paper,theorems=standard,algorithms=false]{../papermacros}%
+    \input{../projectmacros}%
+  }{%
+    \usepackage{amsthm}%
+    \theoremstyle{plain}%
+    \newtheorem{theorem}{Theorem}%
+    \newtheorem{lemma}[theorem]{Lemma}%
+    \newtheorem{proposition}[theorem]{Proposition}%
+    \newtheorem{corollary}[theorem]{Corollary}%
+    \theoremstyle{definition}%
+    \newtheorem{definition}{Definition}%
+    \newtheorem{assumption}{Assumption}%
+    \newtheorem{example}{Example}%
+    \theoremstyle{remark}%
+    \newtheorem{remark}{Remark}%
+    \newenvironment{proofsketch}{\begin{proof}[Proof sketch]}{\end{proof}}%
+  }%
+}
+
+\ifdefined\CommentsVisible
+  \CommentsVisible
+\fi
+
+\usepackage[capitalize,noabbrev]{cleveref}
+\crefname{assumption}{Assumption}{Assumptions}
+\Crefname{assumption}{Assumption}{Assumptions}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5pt}
+\setlength{\abovedisplayskip}{7pt}
+\setlength{\belowdisplayskip}{7pt}
+
+\begin{document}
+
+\begin{center}
+  {\Large\bfseries @@TITLE@@}\\[4pt]
+  {\normalsize Research Notes}
+\end{center}
+
+\section{Overview and Motivation}
+
+\section{Problem Formulation and Assumptions}
+
+\section{Main Results and Conjectures}
+
+\section{Derivations and Proof Arguments}
+
+\section{Open Questions and Next Steps}
+
+% \bibliographystyle{plainnat}
+% \IfFileExists{references.bib}{\bibliography{references}}{\IfFileExists{../references.bib}{\bibliography{../references}}{}}
+
+\end{document}

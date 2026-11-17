@@ -85,3 +85,12 @@ LaTeX and be described precisely in the task checkpoint and change report.
 The package is not a drop-in replacement for old mymacros files: it deliberately
 removes paper-specific definitions and obsolete names. Migration requires
 explicitly replacing those dependencies and renaming existing source uses.
+
+## Research note template
+
+`templates/latex/note.tex` defines the canonical standalone research note template.
+It uses standard 11pt article formatting, 25mm margins, AMS mathematics, `bbm`, and `hyperref`.
+It dynamically resolves `papermacros.sty` and `projectmacros.tex` whether compiled from
+the project root or from inside `notes/`, and provides fallback theorem environments when
+used independently. Initialized automatically into `notes/template.tex` via `paper init`
+and instantiated with `paper note new <name>`.

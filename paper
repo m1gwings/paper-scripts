@@ -306,7 +306,7 @@ init_paper() {
         [[ ! -L "$path" && ( ! -e "$path" || -d "$path" ) ]] \
             || die "Cannot initialize: '$path' must be a directory, not a file or symlink."
     done
-    for path in AGENTS.md notes/README.md tasks/index.md tasks/template.md; do
+    for path in AGENTS.md notes/README.md tasks/index.md tasks/template.md notes/template.tex; do
         [[ ! -d "$path" ]] \
             || die "Cannot initialize: '$path' is a directory."
     done
@@ -318,8 +318,13 @@ init_paper() {
 
 Keep mathematical derivations, examples, conjectures, and reusable proof arguments here, including unfinished mathematics. State assumptions and distinguish proved results from open claims.
 
+Create new notes with:
+    paper note new <name>
+
 Keep assignments, progress tracking, handoffs, and revision-specific verification in `../tasks/`. Link to the relevant task when useful; avoid duplicating mathematical content.
 NOTES
+
+    create_init_file notes/template.tex < "$SCRIPT_DIR/templates/latex/note.tex"
 
     create_init_file tasks/index.md <<'INDEX'
 # Task queue
@@ -591,6 +596,13 @@ COMMANDS
       Research notes and manuscript files are preserved.
       Task commands require Python 3, but no configured remotes.
 
+  paper note new NAME [--title TITLE] [--open] [--force]
+      Create a self-standing LaTeX research note in notes/<name>.tex.
+      Derives titles, includes project macros, and configures standalone compilation.
+
+  paper note list
+      List research notes with titles and build status.
+
   paper sync
       While on the base branch, reconcile GitHub and Overleaf.
       Cloud mode asks CI to refresh the mirror first.
@@ -807,6 +819,13 @@ EXAMPLE WORKFLOWS
 
     # Type the displayed folder names to confirm. Recovery copies
     # are stored under tasks/.trash/ with the previous queue index.
+
+
+13. CREATE AND BUILD A STANDALONE RESEARCH NOTE
+
+    paper note new lower_bound --title "Lower Bound Derivation"
+    paper build notes/lower_bound.tex
+    paper note list
 EXAMPLES
 }
 
@@ -921,6 +940,20 @@ Use 'paper sync' to reconcile manuscript changes and 'paper publish' to publish 
             no_git_operation
         fi
         task_command "$@"
+        exit 0
+        ;;
+
+    note|notes)
+        for arg in "$@"; do
+            if [[ "$arg" == --help || "$arg" == -h ]]; then
+                helper note "$@"
+                exit 0
+            fi
+        done
+        need git
+        REPO_ROOT="$(root)"
+        cd "$REPO_ROOT"
+        helper note "$@"
         exit 0
         ;;
 esac
