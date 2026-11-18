@@ -105,6 +105,8 @@ class ExistingCreateTest(test_workflow.WorkflowTest):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertFalse((fresh / '.codex/config.toml').exists())
         self.assertEqual(self.git('status', '--porcelain', cwd=fresh), '')
+        self.assertEqual(self.git('check-ignore', 'output/.overleaf/status.json', cwd=fresh),
+                         'output/.overleaf/status.json')
         self.assertEqual(self.git('log', '-1', '--format=%s', cwd=fresh),
                          'Initialize paper workflow')
         agents = (fresh / 'AGENTS.md').read_text()

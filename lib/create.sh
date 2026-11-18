@@ -14,42 +14,6 @@ need() {
         || die "Required command '$1' is not installed."
 }
 
-write_standard_gitignore() {
-    cat > .gitignore <<'GITIGNORE'
-# VS Code local configuration
-.vscode/
-
-# LaTeX auxiliary files
-*.aux
-*.blg
-*.fdb_latexmk
-*.fls
-*.log
-*.out
-*.synctex.gz
-*.toc
-*.lof
-*.lot
-*.run.xml
-*.bcf
-*.nav
-*.snm
-*.vrb
-
-# Generated root-document outputs
-main.pdf
-main.bbl
-
-# Temporary editor files
-*~
-*.swp
-*.swo
-
-# OS metadata
-.DS_Store
-GITIGNORE
-}
-
 usage() {
     cat <<'HELP'
 paper create — create a local Overleaf + GitHub paper, poster, or slides repository
@@ -282,7 +246,7 @@ if [[ ! -e .gitignore ]]; then
     echo "No .gitignore found."
     echo "Creating the standard paper .gitignore..."
 
-    write_standard_gitignore
+    bash "$SCRIPT_DIR/paper" gitignore
 
     git add .gitignore
     git commit -m "Add standard paper gitignore"
@@ -299,7 +263,8 @@ bash "$SCRIPT_DIR/paper" init "${INIT_OPTIONS[@]}"
 echo "Capturing Overleaf settings and restoring its build environment..."
 bash "$SCRIPT_DIR/paper" tex sync || echo "Warning: automatic Overleaf verification is pending; see paper tex status." >&2
 
-git add -A -- .
+# Capture writes generated files under output/ even with a custom .gitignore.
+git add -A -- . ':(exclude,top)output/'
 if ! git diff --cached --quiet; then
     git commit -m "Initialize paper workflow"
 fi

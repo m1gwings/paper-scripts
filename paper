@@ -890,6 +890,24 @@ Use 'paper sync' to reconcile manuscript changes and 'paper publish' to publish 
         exit 0
         ;;
 
+    gitignore)
+        need git
+        cd "$(root)"
+        no_git_operation
+
+        [[ ! -e .gitignore && ! -L .gitignore ]] \
+            || die ".gitignore already exists; refusing to overwrite it."
+
+        write_gitignore
+
+        echo "Created .gitignore."
+        echo
+        echo "Review it, then:"
+        echo
+        echo '    paper commit "Add standard paper gitignore"'
+        exit 0
+        ;;
+
     init)
         if [[ $# -eq 1 && ( "$1" == --help || "$1" == -h ) ]]; then
             echo "Usage: paper init [--poster | --slides] [--force | --workflow-only]"
@@ -1194,21 +1212,6 @@ case "$CMD" in
         no_git_operation
         clean
         helper branches --base "$BASE" "$@"
-        ;;
-
-    gitignore)
-        no_git_operation
-
-        [[ ! -e .gitignore ]] \
-            || die ".gitignore already exists; refusing to overwrite it."
-
-        write_gitignore
-
-        echo "Created .gitignore."
-        echo
-        echo "Review it, then:"
-        echo
-        echo '    paper commit "Add standard paper gitignore"'
         ;;
 
     doctor)
