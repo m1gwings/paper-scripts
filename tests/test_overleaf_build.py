@@ -165,4 +165,12 @@ class OverleafBuildTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'previous environment'):
             overleaf.recipe_for({'image':'texlive-full:2099.1'},self.root/'unused.log')
 
+    def test_prepare_tikz_cache_creates_output_directories(self):
+        source = self.root / 'main.tex'
+        source.write_text(r'\documentclass{article}\usepackage{tikz}\usetikzlibrary{external}\tikzexternalize[prefix=visual/plots/cache/]\begin{document}Hi\end{document}')
+        overleaf.prepare_tikz_cache(self.root, 'main.tex')
+        self.assertTrue((self.root / 'output/.latex/visual/plots/cache').is_dir())
+        self.assertTrue((self.root / 'output/visual/plots/cache').is_dir())
+        self.assertTrue((self.root / 'visual/plots/cache').is_dir())
+
 if __name__=='__main__':unittest.main()

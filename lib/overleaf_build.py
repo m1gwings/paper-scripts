@@ -131,6 +131,54 @@ def verification_slot():
         yield
 
 
+def prepare_tikz_cache(root, main_source):
+    """Ensure TikZ externalization directories exist before isolated compilation."""
+    main = Path(main_source)
+    directories = set()
+    ignored = {'output', 'tasks', 'tools', 'references', 'experiments', 'data', 'node_modules', '.paper', '.git'}
+    prefix_patterns = (
+        re.compile(r'\\tikzexternalize\s*\[[^]]*?prefix\s*=\s*\{?([^,}\]\s]+)\}?', re.DOTALL),
+        re.compile(r'external/prefix\s*=\s*\{?([^,}\]\s]+)\}?', re.DOTALL),
+        re.compile(r'\\tikzsetexternalprefix\s*\{\s*([^}\s]+)\s*\}', re.DOTALL),
+    )
+    for folder, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if not d.startswith('.') and d not in ignored]
+        for name in filenames:
+            if name.endswith(('.tex', '.sty', '.cls', '.tikz')):
+                path = Path(folder) / name
+                try:
+                    text = path.read_text(errors='replace')
+                except OSError:
+                    continue
+                for pattern in prefix_patterns:
+                    for match in pattern.finditer(text):
+                        val = match.group(1).strip().strip('\'"')
+                        rel = Path(val.rstrip('/\\')) if val.endswith(('/', '\\')) else Path(val).parent
+                        if str(rel) not in ('.', '') and not rel.is_absolute() and '..' not in rel.parts:
+                            directories.add(rel)
+            elif name.endswith(('.md5', '.dpth')):
+                try:
+                    rel = Path(folder).resolve().relative_to(Path(root).resolve())
+                    if str(rel) not in ('.', ''):
+                        directories.add(rel)
+                except ValueError:
+                    pass
+        for d in dirnames:
+            if d == 'cache':
+                try:
+                    rel = (Path(folder) / d).resolve().relative_to(Path(root).resolve())
+                    if str(rel) not in ('.', ''):
+                        directories.add(rel)
+                except ValueError:
+                    pass
+    for rel in directories:
+        (root / rel).mkdir(parents=True, exist_ok=True)
+        (root / 'output/.latex' / main.parent / rel).mkdir(parents=True, exist_ok=True)
+        (root / 'output/.latex' / rel).mkdir(parents=True, exist_ok=True)
+        (root / 'output' / main.parent / rel).mkdir(parents=True, exist_ok=True)
+        (root / 'output' / rel).mkdir(parents=True, exist_ok=True)
+
+
 def verify_snapshot(candidate):
     with verification_slot():
         return _verify_snapshot(candidate)
@@ -154,6 +202,7 @@ def _verify_snapshot(candidate):
             archive.extractall(temporary)
         write(temporary/tex_environment.MANIFEST, candidate)
         subprocess.run(['git', 'init', '-q', str(temporary)], check=True, capture_output=True)
+        prepare_tikz_cache(temporary, candidate.get('main', 'main.tex'))
         env = dict(os.environ, PAPER_OVERLEAF_AUTO='0')
         verification_log = root/CACHE/'verification.log'
         with verification_log.open('w') as output:
