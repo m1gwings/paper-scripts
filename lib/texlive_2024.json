@@ -1,0 +1,13 @@
+{
+  "repository": "https://texlive.info/tlnet-archive/2024/03/15/tlnet",
+  "installer_sha256": "7940bfaba0726e0ff917e29382ab69b269c0eb9cfed25e4b31ad733c954c0b67",
+  "catalogue_sha256": "ee439339d245db628b97d5752f3e5293a8ec0e00fa58b4f978d1b1c670447f74",
+  "packages": [
+    "bibtex",
+    "collection-fontsrecommended",
+    "collection-latexrecommended",
+    "latexmk",
+    "pdftex"
+  ],
+  "engine_version": "pdfTeX 3.141592653-2.6-1.40.26 (TeX Live 2024)"
+}

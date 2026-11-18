@@ -8,6 +8,10 @@ rendered page at 72 dpi. Current Editor buffers are never used for this check.
 No manual log download, recipe editing, agent, MCP call or GUI automation is part
 of the routine workflow. Website creation itself is a separate operation.
 
+The frozen TeX Live 2024 profile supports pdfLaTeX projects using Overleaf's
+`texlive-full:2024.1` image. It uses the 15 March 2024 package catalogue and
+resolves each project's package set from the captured compile log.
+
 `paper sync` and `paper publish` refresh this verification. `paper build --watch`
 schedules background refreshes at most every five minutes; one-shot builds also
 schedule a refresh when due. Network access, installation and comparison stay off
