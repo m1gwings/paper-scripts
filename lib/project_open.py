@@ -375,9 +375,12 @@ def run(argv=None):
             print(f'Reused editor workspace {matches[0]["session"]}.')
             mark('complete')
             return 0
-    session = 'new_tab ' + ('Paper' if paper else 'Editor') + '\n' + SESSION
+    tab_title = (component.capitalize() if component else ('Paper' if paper else 'Editor'))
+    session = f'new_tab {tab_title}\n' + SESSION
     if reading and not args.file:
         args.file = [str(reading)]
+    elif not args.file and (directory / source).is_file():
+        args.file = [str((directory / source).resolve())]
     if args.file:
         files = [str(Path(file).expanduser().resolve()) for file in args.file]
         location = f'+{max(1, args.line)}:{max(1, args.column)}'
@@ -388,7 +391,7 @@ def run(argv=None):
         build_command = shlex.join(['python3', str(Path(__file__).with_name('build.py')),
                                     'build', '--watch'])
         session += f'new_tab Build\nlaunch --title "PDF build" {build_command}\n'
-    workspace = prepare(directory, info['project_name'], args.session)
+    workspace = prepare(directory, label, args.session)
     cosmic = 'COSMIC' in os.environ.get('XDG_CURRENT_DESKTOP', '').upper().split(':')
     # On COSMIC, stage the window without activation so the placement hook can
     # move it to its intended monitor. Explicit activation happens last.
@@ -411,7 +414,7 @@ def run(argv=None):
     if staged:
         env.pop('XDG_ACTIVATION_TOKEN', None)
         env.pop('DESKTOP_STARTUP_ID', None)
-    env['PROJECT_WORKSPACE_NAME'] = info['project_name']
+    env['PROJECT_WORKSPACE_NAME'] = label
     env['PROJECT_WORKSPACE_ROOT'] = str(directory)
     env['PROJECT_WORKSPACE_ID'] = workspace['id']
     for name in ('NO_COLOR', 'CODEX_CI'):

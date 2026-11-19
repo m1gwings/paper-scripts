@@ -244,10 +244,14 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
         (self.project / '.paper/config.json').write_text(json.dumps({
             'project_name': 'CMABs with Ranking Feedback',
             'document_type': 'poster', 'root_tex': 'poster.tex'}))
+        (self.project / 'poster.tex').write_text('Poster source.\n')
         self.launch('--terminal')
         record = self.record()
-        self.assertEqual(record['project_name'], 'CMABs with Ranking Feedback')
+        self.assertEqual(record['project_name'], 'CMABs with Ranking Feedback · Poster')
         self.assertIn('Editor — CMABs with Ranking Feedback · Poster', record['args'])
+        self.assertIn('new_tab Poster', record['session'])
+        import shlex
+        self.assertIn('micro +1:1 ' + shlex.quote(str(self.project / 'poster.tex')), record['session'])
         self.assertIn('build --watch', record['session'])
         self.assertFalse((self.project / 'INJECTED').exists())
 
