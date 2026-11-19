@@ -60,12 +60,15 @@ class PassiveLaunchTest(unittest.TestCase):
                 DESKTOP.reveal(set(), 'workspace-editor', 'Editor', focus=True)
         self.assertEqual(call.call_count, 2)
 
-    def test_slow_editor_can_map_after_the_old_three_second_budget(self):
+    def test_slow_editor_can_map_after_desktop_services_time_out(self):
         windows = [{'id': 'late', 'app_id': 'workspace-editor', 'title': 'Editor'}]
-        with patch.object(DESKTOP.time, 'monotonic', side_effect=[0, 4]), \
+        unaddressable = [dict(windows[0], id='')]
+        with patch.object(DESKTOP.time, 'monotonic', side_effect=[0, 12]), \
                 patch.object(DESKTOP.time, 'sleep'), \
-                patch.object(DESKTOP, 'desktop', side_effect=[{'windows': []}, {'windows': windows}, {'ok': True}]):
+                patch.object(DESKTOP, 'desktop', side_effect=[{'windows': unaddressable},
+                                                             {'windows': windows}, {'ok': True}]) as call:
             self.assertTrue(DESKTOP.reveal(set(), 'workspace-editor', 'Editor'))
+        self.assertEqual(call.call_args.args, ('reveal', '--window', 'late'))
 
     def test_initial_minimized_hint_preserves_input_and_icon_settings(self):
         hints = KITTY.WMHints(flags=1 | 4, input=1, initial_state=1, icon_pixmap=99)

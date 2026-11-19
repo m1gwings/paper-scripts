@@ -5,6 +5,9 @@ import subprocess
 import time
 
 
+WINDOW_MAP_TIMEOUT = 20
+
+
 def desktop(*args):
     result = subprocess.run(['workspace-desktop', *args], capture_output=True,
                             text=True, check=True, timeout=7)
@@ -35,9 +38,9 @@ def wait_new(existing, app_id, title):
     """Wait for an exact newly mapped window without revealing or activating it."""
     if existing is None:
         return None
-    deadline = time.monotonic() + 10
+    deadline = time.monotonic() + WINDOW_MAP_TIMEOUT
     while True:
-        windows = [w for w in desktop('info', '--no-focus')['windows'] if w['id'] not in existing
+        windows = [w for w in desktop('info', '--no-focus')['windows'] if w.get('id') and w['id'] not in existing
                    and w['app_id'] == app_id and w['title'] == title]
         if len(windows) > 1:
             raise ValueError('Multiple new windows match; leave them minimized rather than reveal an unrelated window.')

@@ -228,7 +228,7 @@ explicit opens are also staged until placement completes, so the active window
 does not prevent its move to the intended monitor. A Kitty pre-show callback sets the initial
 minimized hint on XWayland before mapping, then `workspace-desktop reveal`
 unminimizes the exact window, followed by activation only with `--focus`.
-The reveal waits up to ten seconds for a slow initial map and reports failure.
+The reveal waits up to twenty seconds for a slow initial map and reports failure.
 Startup proceeds as soon as Kitty's control socket is ready, without a fixed
 one-second delay; Reader can initialize while the Editor finishes mapping.
 Without a placement hook, or with a phase-aware hook, Editor is revealed as soon
