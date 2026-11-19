@@ -37,6 +37,26 @@ def auxiliary_directory(source):
     return Path("output/.latex") / source.parent
 
 
+def publish_synctex(compiled, pdf, directory, stem):
+    """Retain the completed map under the identity of the PDF it describes."""
+    info = pdf.stat()
+    generation = directory / f'{info.st_mtime_ns}-{info.st_size}'
+    generation.mkdir(parents=True, exist_ok=True)
+    for suffix in ('.synctex.gz', '.synctex'):
+        raw_map = compiled.with_suffix(suffix)
+        published = generation / (stem + suffix)
+        if raw_map.is_file():
+            data = raw_map.read_bytes()
+            if published.is_file() and published.read_bytes() == data:
+                continue
+            pending = published.with_suffix(published.suffix + '.tmp')
+            pending.write_bytes(data)
+            pending.replace(published)
+        else:
+            published.unlink(missing_ok=True)
+    return generation
+
+
 def clean_output_clutter(root=None):
     """Ensure output/ contains only deliverables; move compiler/check artifacts to output/.latex/."""
     root = Path(root) if root else Path.cwd()
@@ -227,6 +247,7 @@ def compile_locked(command, out):
         pdf = out / (source.stem + '.pdf')
         state_file = aux / (source.stem + '.build.json')
         last_good = aux / (source.stem + '.pdf.last-good')
+        published_maps = aux / '.synctex' / source.stem
         clean = '-C' in command
         old_pdf = pdf.read_bytes() if pdf.is_file() else None
         old_mtime = pdf.stat().st_mtime_ns if pdf.is_file() else None
@@ -240,7 +261,7 @@ def compile_locked(command, out):
         elif old_pdf and is_valid_pdf(old_pdf):
             try:
                 pending_lg = last_good.with_suffix('.tmp')
-                pending_lg.write_bytes(old_pdf)
+                shutil.copy2(pdf, pending_lg)
                 pending_lg.replace(last_good)
             except OSError:
                 pass
@@ -299,34 +320,45 @@ def compile_locked(command, out):
             report('failed', error='Compilation interrupted')
             raise
         compiled = aux / ('output.pdf' if '-jobname=output' in active else pdf.name)
-        if not status and not clean and (not compiled.is_file() or not is_valid_pdf(compiled.read_bytes())):
-            status = 1
-        if status and not clean and old_pdf is not None:
-            pending = aux / (source.stem + '.publish.tmp')
-            pending.write_bytes(old_pdf)
-            pending.replace(pdf)
-            if old_mtime is not None:
-                try:
-                    os.utime(pdf, ns=(old_mtime, old_mtime))
-                except OSError:
-                    pass
-        elif not status and not clean and compiled.is_file():
-            new_data = compiled.read_bytes()
-            if is_valid_pdf(new_data):
+        if not status and not clean:
+            try:
+                new_data = compiled.read_bytes()
+                if not is_valid_pdf(new_data):
+                    raise ValueError(f'Invalid compiled PDF: {compiled}')
+                pending = pdf
                 if not pdf.is_file() or new_data != pdf.read_bytes():
                     pending = aux / (source.stem + '.publish.tmp')
                     pending.write_bytes(new_data)
+                generation = publish_synctex(compiled, pending, published_maps, source.stem)
+                if pending != pdf:
+                    out.mkdir(parents=True, exist_ok=True)
                     pending.replace(pdf)
+            except (OSError, ValueError) as error:
+                print(f'paper: could not publish the build: {error}', file=sys.stderr)
+                status = 1
+            else:
+                for older in published_maps.iterdir():
+                    if older != generation and older.is_dir():
+                        shutil.rmtree(older, ignore_errors=True)
                 try:
                     pending_lg = last_good.with_suffix('.tmp')
-                    pending_lg.write_bytes(new_data)
+                    shutil.copy2(pdf, pending_lg)
                     pending_lg.replace(last_good)
                 except OSError:
                     pass
+        if status and not clean and old_pdf is not None and (not pdf.is_file() or pdf.read_bytes() != old_pdf):
+            pending = aux / (source.stem + '.publish.tmp')
+            pending.write_bytes(old_pdf)
+            if old_mtime is not None:
+                os.utime(pending, ns=(old_mtime, old_mtime))
+            out.mkdir(parents=True, exist_ok=True)
+            pending.replace(pdf)
         if clean:
             if not status:
                 pdf.unlink(missing_ok=True)
                 last_good.unlink(missing_ok=True)
+                if published_maps.is_dir():
+                    shutil.rmtree(published_maps)
             report('idle' if not status else 'failed')
         elif status:
             log = aux / (source.stem + '.log')

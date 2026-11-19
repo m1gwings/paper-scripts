@@ -37,9 +37,20 @@ class BuildTest(unittest.TestCase):
         self.paper('build')
         pdf = self.root / 'output/main.pdf'
         previous = pdf.read_bytes()
+        aux = self.root / 'output/.latex'
+        def published_map():
+            info = pdf.stat()
+            return aux / '.synctex/main' / f'{info.st_mtime_ns}-{info.st_size}' / 'main.synctex.gz'
+
+        old_map = published_map()
+        map_data = old_map.read_bytes()
+        self.assertEqual(map_data, (aux / 'main.synctex.gz').read_bytes())
+        (aux / 'main.synctex.gz').write_bytes(b'overwritten compiler map')
         (self.root / 'body.tex').write_text(r'Broken \undefinedcommand' + '\n')
         self.paper('build', ok=False)
         self.assertEqual(pdf.read_bytes(), previous)
+        self.assertEqual(published_map(), old_map)
+        self.assertEqual(old_map.read_bytes(), map_data)
         state = json.loads((self.root / 'output/.latex/main.build.json').read_text())
         self.assertEqual(state['state'], 'failed')
         self.assertIn('Undefined control', state['error'])
@@ -48,6 +59,8 @@ class BuildTest(unittest.TestCase):
         (self.root / 'body.tex').write_text('Recovered.\n')
         self.paper('build')
         self.assertIn('Recovered', self.pdf_text())
+        self.assertEqual(published_map().read_bytes(), (aux / 'main.synctex.gz').read_bytes())
+        self.assertFalse(old_map.exists())
         self.assertEqual(json.loads((self.root / 'output/.latex/main.build.json').read_text())['state'], 'success')
 
     def test_corrupt_pdf_is_not_retained_as_last_good(self):
@@ -87,6 +100,8 @@ class BuildTest(unittest.TestCase):
         self.assertIn('Different root', self.pdf_text('output/variants/draft.pdf'))
         self.paper('clean')
         self.assertFalse((self.root / 'output/main.pdf').exists())
+        self.assertFalse((self.root / 'output/.latex/.synctex/main').exists())
+        self.assertTrue((self.root / 'output/.latex/variants/.synctex/draft').exists())
         self.assertTrue((self.root / 'output/variants/draft.pdf').exists())
         self.assertTrue((self.root / 'main.tex').exists())
         self.assertEqual((study / 'metadata.json').read_text(), 'preserve study')

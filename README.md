@@ -311,6 +311,9 @@ required. Use `paper open --vscode` for a one-off VS Code window.
 `paper build` writes `output/main.pdf`; compiler files, logs, build status,
 SyncTeX data, and last-good backups stay hidden in `output/.latex/`. An explicit root,
 such as `paper build variants/draft.tex`, writes `output/variants/draft.pdf`, with compiler files in `output/.latex/variants/`.
+Each successful build keeps a completed SyncTeX map with the published PDF's
+modification time and size. Reader can use this map throughout the next build,
+including when it opens after compilation has started.
 EWS studies can share the parent as `output/<study_name>/`; recorded figure
 inputs there are watched for changes, and document cleanup leaves studies alone.
 `paper clean` removes only the selected document's generated output. These local
