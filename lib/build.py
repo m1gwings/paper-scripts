@@ -336,6 +336,19 @@ def compile_locked(command, out):
                 if pending != pdf:
                     out.mkdir(parents=True, exist_ok=True)
                     pending.replace(pdf)
+                if compiled.stem != source.stem:
+                    for suffix in ('.synctex.gz', '.synctex'):
+                        raw = compiled.with_suffix(suffix)
+                        alias = aux / (source.stem + suffix)
+                        if raw.is_file():
+                            try:
+                                if alias.is_symlink() or alias.is_file():
+                                    alias.unlink()
+                                alias.symlink_to(raw.name)
+                            except OSError:
+                                shutil.copyfile(raw, alias)
+                        elif alias.is_symlink() or alias.is_file():
+                            alias.unlink(missing_ok=True)
             except (OSError, ValueError) as error:
                 print(f'paper: could not publish the build: {error}', file=sys.stderr)
                 status = 1
@@ -362,6 +375,9 @@ def compile_locked(command, out):
                 last_good.unlink(missing_ok=True)
                 if published_maps.is_dir():
                     shutil.rmtree(published_maps)
+                if compiled.stem != source.stem:
+                    for suffix in ('.synctex.gz', '.synctex'):
+                        (aux / (source.stem + suffix)).unlink(missing_ok=True)
             report('idle' if not status else 'failed')
         elif status:
             log = aux / (source.stem + '.log')

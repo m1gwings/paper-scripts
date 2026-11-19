@@ -61,6 +61,8 @@ class OverleafBuildTest(unittest.TestCase):
         result=subprocess.run(['bash',str(SCRIPT),'build'],env=dict(base_env,PAPER_TEXLIVE_ROOT=str(self.root/'toolchain')),capture_output=True,text=True)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
         self.assertTrue((self.root/'output/.latex/output.tex').is_symlink())
+        self.assertTrue((self.root/'output/.latex/main.synctex.gz').is_symlink())
+        self.assertTrue((self.root/'output/.latex/main.synctex.gz').is_file())
 
     @unittest.skipUnless(shutil.which('latexmk') and shutil.which('pdflatex'),'TeX unavailable')
     def test_changed_shell_mode_invalidates_old_outputs_only_once(self):
