@@ -42,10 +42,13 @@ def publish_synctex(compiled, pdf, directory, stem):
     info = pdf.stat()
     generation = directory / f'{info.st_mtime_ns}-{info.st_size}'
     generation.mkdir(parents=True, exist_ok=True)
-    for suffix in ('.synctex.gz', '.synctex'):
-        raw_map = compiled.with_suffix(suffix)
+    suffixes = ('.synctex.gz', '.synctex')
+    candidates = [compiled.with_suffix(suffix) for suffix in suffixes]
+    raw_map = max((path for path in candidates if path.is_file()),
+                  key=lambda path: path.stat().st_mtime_ns, default=None)
+    for suffix in suffixes:
         published = generation / (stem + suffix)
-        if raw_map.is_file():
+        if raw_map == compiled.with_suffix(suffix):
             data = raw_map.read_bytes()
             if published.is_file() and published.read_bytes() == data:
                 continue

@@ -45,6 +45,12 @@ class BuildTest(unittest.TestCase):
         old_map = published_map()
         map_data = old_map.read_bytes()
         self.assertEqual(map_data, (aux / 'main.synctex.gz').read_bytes())
+        stale_map = aux / 'main.synctex'
+        stale_map.write_bytes(b'old uncompressed map')
+        os.utime(stale_map, ns=(1, 1))
+        self.paper('build')
+        self.assertEqual(published_map(), old_map)
+        self.assertFalse(old_map.with_suffix('').exists())
         (aux / 'main.synctex.gz').write_bytes(b'overwritten compiler map')
         (self.root / 'body.tex').write_text(r'Broken \undefinedcommand' + '\n')
         self.paper('build', ok=False)
