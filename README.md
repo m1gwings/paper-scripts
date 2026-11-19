@@ -263,6 +263,7 @@ project-terminal run --project /path/to/paper --title Experiments \
   --cwd /path/to/experiment -- /path/to/experiment/.venv/bin/ews run experiment.yml --output outputs
 project-terminal run --project /path/to/paper --title 'SSH · server' -- ssh server
 project-terminal run --project /path/to/paper --title Shell
+project-terminal run --project /path/to/paper --dock --title Shell
 ```
 
 The default is a new tab in that existing desktop window. Use `--split` to add
@@ -272,6 +273,9 @@ and leaves an interactive Bash shell when it exits. For a pipeline or other shel
 syntax, explicitly pass `-- bash -lc 'YOUR COMMAND'`. Choose the appropriate
 environment/executable for the task. Focus is preserved by default;
 `--keep-focus` remains an explicit alias and `--focus` requests a switch.
+On Kitty 0.51 and later, `--dock` opens a resizable bottom terminal shared by all
+tabs in the selected window. The Editor terminal toggle controls the regular
+split. Close the dock from Kitty when you are done with it.
 
 The helper selects by project root, independently of the command's working
 directory. If several windows match, use `--workspace ID` from `list` to choose

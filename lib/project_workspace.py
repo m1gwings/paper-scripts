@@ -88,12 +88,19 @@ def live_workspaces(session=None, *, inspect_tabs=True):
             tabs = []
             for window in windows:
                 for tab in window.get('tabs', []):
+                    docks = {pane_id: group['dock']['scope'] for group in tab.get('groups', [])
+                             if group.get('dock') for pane_id in group['windows']}
+                    panes = []
+                    for pane in tab.get('windows', []):
+                        entry = {'id': pane['id'], 'title': pane['title']}
+                        if pane['id'] in docks:
+                            entry['dock'] = docks[pane['id']]
+                        panes.append(entry)
                     tabs.append({'id': tab['id'], 'title': tab['title'],
                                  'layout': tab.get('layout', 'fat'),
                                  'enabled_layouts': tab.get('enabled_layouts', ['fat:bias=74', 'stack']),
                                  'active_window': next((p['id'] for p in tab.get('windows', []) if p.get('is_active')), None),
-                                 'panes': [{'id': pane['id'], 'title': pane['title']}
-                                           for pane in tab.get('windows', [])]})
+                                 'panes': panes})
             if tabs:
                 result.append(dict(record, tabs=tabs))
         except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
@@ -121,7 +128,7 @@ def choose(records, project=None, identifier=None):
     return records[0]
 
 
-def launch(record, *, title, cwd=None, command=(), split=False, tab=None, keep_focus=True):
+def launch(record, *, title, cwd=None, command=(), split=False, dock=False, tab=None, keep_focus=True):
     if not title.strip() or any(ord(c) < 32 or ord(c) == 127 for c in title):
         raise ValueError('The terminal title must be a nonempty, single-line name.')
     directory = Path(cwd or record['root']).expanduser().resolve()
@@ -130,10 +137,13 @@ def launch(record, *, title, cwd=None, command=(), split=False, tab=None, keep_f
     selected = next((item for item in record['tabs'] if item['id'] == tab), None) if tab is not None else record['tabs'][0]
     if selected is None:
         raise ValueError('That tab does not belong to the selected workspace.')
-    args = ['launch', '--match', f'id:{selected["id"]}', '--type', 'window' if split else 'tab',
-            '--title', title, '--cwd', str(directory)]
-    if not split:
-        args.extend(['--tab-title', title])
+    args = ['launch', '--match', f'id:{selected["id"]}', '--title', title, '--cwd', str(directory)]
+    if dock:
+        args.extend(['--type', 'os-window-dock', '--dock-edge', 'bottom', '--dock-size', '25%'])
+    elif split:
+        args.extend(['--type', 'window'])
+    else:
+        args.extend(['--type', 'tab', '--tab-title', title])
     if keep_focus:
         args.append('--keep-focus')
     for key, value in [('PROJECT_WORKSPACE_ID', record['id']), ('PROJECT_WORKSPACE_ROOT', record['root']),
@@ -147,19 +157,23 @@ def launch(record, *, title, cwd=None, command=(), split=False, tab=None, keep_f
     else:
         args.extend(['bash', '-i'])
     pane = remote(record, *args).strip()
-    return {'workspace': record['id'], 'project': record['root'], 'title': title,
-            'window_id': int(pane), 'split': split}
+    result = {'workspace': record['id'], 'project': record['root'], 'title': title,
+              'window_id': int(pane), 'split': split}
+    if dock:
+        result['dock'] = True
+    return result
 
 
 def toggle_terminal(record, mode='toggle', tab_id=None):
     """Hide/reveal terminal panes without closing them or touching their input."""
     tabs = [t for t in record['tabs'] if tab_id is None or t['id'] == tab_id]
-    editors = [(t, p) for t in tabs for p in t['panes'] if p['title'] == 'Editor']
+    editors = [(t, p) for t in tabs for p in t['panes'] if p['title'] == 'Editor' and not p.get('dock')]
     if len(editors) != 1:
         raise ValueError('Select the unique Editor tab with --tab; no panes were changed.')
     tab, editor = editors[0]
-    terminals = [p for p in tab['panes'] if p['id'] != editor['id']]
-    visible = bool(terminals) and (tab.get('layout') != 'stack' or tab.get('active_window', editor['id']) != editor['id'])
+    terminals = [p for p in tab['panes'] if p['id'] != editor['id'] and not p.get('dock')]
+    terminal_active = any(p['id'] == tab.get('active_window') for p in terminals)
+    visible = bool(terminals) and (tab.get('layout') != 'stack' or terminal_active)
     show = not visible if mode == 'toggle' else mode == 'show'
     if show:
         layout = next((value for value in tab.get('enabled_layouts', ['fat:bias=74']) if value.split(':')[0] != 'stack'), None)
@@ -189,12 +203,14 @@ def run(argv=None):
     modes.add_argument('--show', action='store_const', const='show', dest='mode')
     modes.add_argument('--hide', action='store_const', const='hide', dest='mode')
     toggle.add_argument('--json', action='store_true')
-    add = commands.add_parser('run', help='open a task tab (or split), optionally running a command')
+    add = commands.add_parser('run', help='open a task tab, split or dock, optionally running a command')
     add.add_argument('--project', help='project root of the target editor window')
     add.add_argument('--workspace', help='explicit workspace ID when several windows match')
     add.add_argument('--cwd', help='command directory, which may be a sibling experiment repository')
     add.add_argument('--title', default='Terminal')
-    add.add_argument('--split', action='store_true', help='add a split instead of a new tab')
+    placement = add.add_mutually_exclusive_group()
+    placement.add_argument('--split', action='store_true', help='add a split in the selected tab')
+    placement.add_argument('--dock', action='store_true', help='dock a terminal below all tabs (Kitty 0.51+)')
     add.add_argument('--tab', type=int, help='target an existing Kitty tab ID (default: editor tab)')
     focus = add.add_mutually_exclusive_group()
     focus.add_argument('--keep-focus', action='store_true', default=True, help='preserve keyboard focus (default)')
@@ -222,7 +238,7 @@ def run(argv=None):
         return 0
     command = args.command[1:] if args.command[:1] == ['--'] else args.command
     result = launch(record, title=args.title, cwd=args.cwd, command=command,
-                    split=args.split, tab=args.tab, keep_focus=args.keep_focus)
+                    split=args.split, dock=args.dock, tab=args.tab, keep_focus=args.keep_focus)
     if args.json:
         print(json.dumps(result))
     else:

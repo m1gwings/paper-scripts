@@ -173,6 +173,15 @@ class WorkspaceTest(unittest.TestCase):
             self.assertEqual(remote.call_args_list[1].args[-1], 'id:3')
         self.assertEqual([p['id'] for p in tab['panes']], [2, 3])
 
+    def test_terminal_toggle_keeps_the_dock_out_of_the_editor_split(self):
+        tab = self.record['tabs'][0]
+        tab.update(layout='stack', active_window=2, enabled_layouts=['fat:bias=74', 'stack'])
+        tab['panes'].append({'id': 7, 'title': 'Editor', 'dock': 'os-window'})
+        with patch.object(WORKSPACE, 'remote', return_value='8') as remote:
+            self.assertTrue(WORKSPACE.toggle_terminal(self.record)['terminal_visible'])
+            self.assertIn('window', remote.call_args_list[0].args)
+            self.assertEqual(remote.call_args.args[-1], 'id:8')
+
     def test_terminal_toggle_refuses_ambiguous_editors(self):
         self.record['tabs'].append(dict(self.record['tabs'][0], id=6))
         with patch.object(WORKSPACE, 'remote') as remote:
@@ -189,7 +198,10 @@ class WorkspaceTest(unittest.TestCase):
         with socket.socket(socket.AF_UNIX) as endpoint:
             endpoint.bind(self.record['socket'])
             response = [{'tabs': [{'id': 5, 'title': 'Paper', 'windows': [
-                {'id': 2, 'title': 'Editor', 'env': {'PRIVATE_VALUE': 'do-not-return'}}]}]}]
+                {'id': 2, 'title': 'Editor', 'env': {'PRIVATE_VALUE': 'do-not-return'}},
+                {'id': 7, 'title': 'Shell'}],
+                'groups': [{'id': 1, 'windows': [2]},
+                           {'id': 2, 'windows': [7], 'dock': {'scope': 'os-window'}}]}]}]
             with patch.object(WORKSPACE, 'remote', return_value=json.dumps(response)):
                 records = WORKSPACE.live_workspaces()
             with patch.object(WORKSPACE, 'remote') as remote:
@@ -198,7 +210,8 @@ class WorkspaceTest(unittest.TestCase):
                 self.assertEqual([r['id'] for r in targeted], [self.record['id']])
                 remote.assert_not_called()
         self.assertEqual(len(records), 1)
-        self.assertEqual(records[0]['tabs'][0]['panes'], [{'id': 2, 'title': 'Editor'}])
+        self.assertEqual(records[0]['tabs'][0]['panes'],
+                         [{'id': 2, 'title': 'Editor'}, {'id': 7, 'title': 'Shell', 'dock': 'os-window'}])
         self.assertNotIn('PRIVATE_VALUE', json.dumps(records))
         self.assertNotIn('do-not-return', path.read_text())
 
@@ -236,6 +249,17 @@ class WorkspaceTest(unittest.TestCase):
             self.assertNotIn('--tab-title', args)
         with self.assertRaisesRegex(ValueError, 'does not belong'):
             WORKSPACE.launch(self.record, title='SSH', tab=999)
+
+    def test_cli_dock_uses_the_os_window_scope_and_preserves_focus(self):
+        with patch.object(WORKSPACE, 'live_workspaces', return_value=[self.record]), \
+                patch.object(WORKSPACE, 'remote', return_value='43') as remote, \
+                contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(WORKSPACE.run(['run', '--workspace', self.record['id'], '--dock', '--json']), 0)
+        args = remote.call_args.args
+        self.assertEqual(args[args.index('--type') + 1], 'os-window-dock')
+        self.assertIn('--keep-focus', args)
+        self.assertNotIn('--tab-title', args)
+        self.assertTrue(json.loads(output.getvalue())['dock'])
 
     def test_runtime_symlink_and_invalid_input_are_rejected(self):
         runtime = WORKSPACE.runtime_directory()
