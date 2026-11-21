@@ -17,6 +17,9 @@ import sys
 import time
 
 
+MAX_EDIT_BYTES = 16 * 1024 * 1024
+
+
 def runtime():
     base = Path(os.environ.get('XDG_RUNTIME_DIR') or f'/tmp/workspace-{os.getuid()}')
     directory = base / 'workspace-editors'
@@ -80,12 +83,14 @@ def send(record, path, line=0, column=1, *, action="open", end_line=0, top_line=
     fields = [action, path, line, column, end_line, top_line, int(highlight), int(if_open),
               int(if_clean), int(discard), expected_version]
     fields += [int(time.time() * 1000) + (700 if navigation else 4500), len(edits or [])]
-    payload = ('\n'.join(map(str, fields)) + '\n').encode()
+    payload = bytearray(('\n'.join(map(str, fields)) + '\n').encode())
     for edit in edits or []:
         text = edit['text'].encode()
         points = [edit['start']['line'], edit['start']['column'], edit['end']['line'], edit['end']['column'], len(text)]
-        payload += ('\n'.join(map(str, points)) + '\n').encode() + text + b'\n'
-    payload += f"{select_end_line}\n{select_end_column}\n{int(navigation)}\n".encode()
+        payload.extend(('\n'.join(map(str, points)) + '\n').encode())
+        payload.extend(text)
+        payload.append(10)
+    payload.extend(f"{select_end_line}\n{select_end_column}\n{int(navigation)}\n".encode())
     pending.write_bytes(payload)
     pending.chmod(0o600)
     pending.rename(endpoint / (name + '.request'))
@@ -108,10 +113,14 @@ def send(record, path, line=0, column=1, *, action="open", end_line=0, top_line=
 
 
 def load_edits(path):
-    raw = sys.stdin.read(16 * 1024 * 1024 + 1) if path == '-' else Path(path).read_text()
-    if len(raw.encode()) > 16 * 1024 * 1024:
+    if path == '-':
+        raw = sys.stdin.buffer.read(MAX_EDIT_BYTES + 1)
+    else:
+        with Path(path).open('rb') as source:
+            raw = source.read(MAX_EDIT_BYTES + 1)
+    if len(raw) > MAX_EDIT_BYTES:
         raise ValueError('Edits are limited to 16 MiB.')
-    edits = json.loads(raw)
+    edits = json.loads(raw.decode('utf-8'))
     if not isinstance(edits, list) or not 1 <= len(edits) <= 1000:
         raise ValueError('Pass a JSON array of 1–1000 edits.')
     previous = None
@@ -182,8 +191,8 @@ def run(argv=None, _locked=False):
         parser.error('reload-ui takes no document path.')
     if action in ('reload', 'view', 'read', 'apply', 'save') and len(args.paths) != 1:
         parser.error(f'{action} requires exactly one file.')
-    records = live()
     if args.paths == ['list']:
+        records = live()
         print(json.dumps(records, indent=2) if args.json else '\n'.join(
             f'{r["session"]}  {r["project"]}  {r.get("path", "")}' for r in records))
         return 0
