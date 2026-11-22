@@ -85,7 +85,7 @@ record_sync_base() {
 }
 
 known_sync_base() {
-    local remote="$1" exported source
+    local remote="$1" exported source imported parent1 parent2 rest
     SYNC_SOURCE="$(git rev-parse --verify "refs/paper-sync/$BASE/source" 2>/dev/null || true)"
     SYNC_OVERLEAF="$(git rev-parse --verify "refs/paper-sync/$BASE/overleaf" 2>/dev/null || true)"
     if ! { [[ -n "$SYNC_SOURCE" && -n "$SYNC_OVERLEAF" ]] \
@@ -112,6 +112,20 @@ known_sync_base() {
             break
         fi
     done < <(git log --first-parent --format='%H' --grep='^Paper-source: ' "$remote")
+    # Local refs can also lag behind previous Overleaf imports (for example,
+    # after manual conflict resolution or in a fresh clone that pulled an
+    # imported commit from GitHub). Prefer any newer verified import commit.
+    while IFS=' ' read -r imported parent1 parent2 rest; do
+        if [[ -n "${parent2:-}" && -z "${rest:-}" ]] \
+            && git cat-file -e "$parent2^{commit}" 2>/dev/null \
+            && git merge-base --is-ancestor "$parent2" "$remote" \
+            && { [[ -z "$SYNC_OVERLEAF" ]] \
+                || ! git merge-base --is-ancestor "$parent2" "$SYNC_OVERLEAF"; } \
+            && helper overleaf_content equal "$imported" "$parent2"; then
+            SYNC_SOURCE="$imported"
+            SYNC_OVERLEAF="$parent2"
+        fi
+    done < <(git log --merges --format='%H %P' --grep='^Import Overleaf ' "$BASE")
     if [[ -n "$SYNC_SOURCE" && -n "$SYNC_OVERLEAF" ]] \
         && git cat-file -e "$SYNC_SOURCE^{commit}" 2>/dev/null \
         && git merge-base --is-ancestor "$SYNC_SOURCE" "$BASE" \
@@ -165,6 +179,11 @@ sync_collaborative_base() {
                 git commit-tree "$(helper overleaf_content import-tree "$SYNC_SOURCE" "$remote")" \
                     -p "$SYNC_SOURCE" -p "$remote")"
             git merge --no-edit "$imported"
+            if helper overleaf_content equal "$BASE" "$remote"; then
+                record_sync_base "$(git rev-parse "$BASE")" "$remote"
+            else
+                record_sync_base "$imported" "$remote"
+            fi
         fi
     else
         if helper overleaf_content enabled; then
@@ -175,6 +194,11 @@ sync_collaborative_base() {
                 git commit-tree "$(helper overleaf_content import-tree "$ancestor" "$remote")" \
                     -p "$ancestor" -p "$remote")"
             git merge --no-edit "$imported"
+            if helper overleaf_content equal "$BASE" "$remote"; then
+                record_sync_base "$(git rev-parse "$BASE")" "$remote"
+            else
+                record_sync_base "$imported" "$remote"
+            fi
         else
             git merge --no-edit "$remote"
         fi

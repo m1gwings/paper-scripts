@@ -50,7 +50,10 @@ class WorkflowTest(unittest.TestCase):
 
     def remote_commit(self, remote, name, text):
         clone = self.root / ('writer-' + remote)
-        self.git('clone', '-q', str(self.root / remote), str(clone))
+        if clone.exists():
+            self.git('pull', '-q', '--ff-only', 'origin', 'master', cwd=clone)
+        else:
+            self.git('clone', '-q', str(self.root / remote), str(clone))
         oid = self.commit(clone, name, text)
         self.git('push', '-q', 'origin', 'master', cwd=clone)
         return oid
