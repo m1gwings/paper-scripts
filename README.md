@@ -1,711 +1,350 @@
 # paper-scripts
 
-`paper` is a small command layer for writing LaTeX papers across a laptop,
-Codex, GitHub, and Overleaf. You work in terms of **start**, **commit**,
-**backup**, **sync**, **preview**, **notify**, and **publish**. Git branches,
-remotes, CI jobs, credentials, and reconciliation rules stay implementation
-details until they need attention.
+`paper-scripts` provides a single command layer (`paper`) for writing LaTeX papers, posters, and slides across local machines, cloud coding agents, GitHub, and Overleaf.
 
-The core promise is simple:
+The core workflow revolves around three explicit boundaries:
 
-- `paper commit` makes a local checkpoint.
-- `paper backup` copies committed work to GitHub and never touches Overleaf.
-- `paper publish` is the explicit boundary that makes work collaborative on
-  Overleaf.
-
-## Architecture
+- **`paper commit`** creates a local checkpoint without pushing anywhere.
+- **`paper backup`** pushes committed work to your private GitHub repository and never touches Overleaf.
+- **`paper publish`** reconciles fresh remote state and publishes verified manuscript changes to Overleaf.
 
 ```mermaid
 flowchart LR
-    U[User or coding agent] -->|paper commands| P[paper CLI]
-    P -->|backup / cloud branch| G[Private GitHub repository]
+    U[Author or coding agent] -->|paper commands| P[paper CLI]
+    P -->|backup & feature branches| G[Private GitHub repo]
     P -->|local publish| O[Overleaf]
-    P -->|cloud sync or publish request| A[Trusted GitHub Actions]
-    A -->|fresh reconciliation and publish| O
+    P -->|cloud sync or publish| A[Trusted GitHub Actions]
+    A -->|reconcile & publish| O
     G --> V[Unprivileged PDF preview]
     V --> R[Private PDF artifact]
     R --> N[Trusted notification workflow]
-    N --> D[Discord by default]
-    N -. optional legacy adapters .-> L[Pushover or generic webhook]
+    N --> D[Discord / webhook / Pushover]
 ```
 
-The system is designed around five goals:
+## Installation
 
-1. **One user-facing interface.** Local users and agents use `paper`; they do
-   not improvise lifecycle Git commands.
-2. **Explicit publication.** GitHub backup and PDF preview cannot publish to
-   Overleaf.
-3. **Fresh reconciliation.** Sync and publish fetch both remotes and refuse
-   unsafe divergence.
-4. **Narrow secrets.** Cloud agents never receive the Overleaf token or a
-   notification webhook.
-5. **Reviewable upgrades.** Every paper vendors a versioned runtime and
-   generated workflows. `paper init` updates them conservatively.
-
-## Repository model
-
-A normal paper has a collaborative base branch—usually `main` or `master`—and
-short-lived feature branches:
-
-```text
-overleaf/<base>    collaborative source of the paper
-github/<base>      private mirror and trusted workflow source
-github/<feature>   isolated work and backup
-```
-
-The base branch is discovered or configured; it is not hard-coded. A local
-checkout normally has `github` and `overleaf` remotes. A cloud checkout needs
-only GitHub access because privileged GitHub Actions owns Overleaf access.
-
-Generated infrastructure inside a paper looks like this:
-
-```text
-AGENTS.md                              paper and agent instructions
-.paper/config.json                    non-secret paper settings
-.paper/manifest.json                  generated-file version and hashes
-.paper/WORKFLOW.md                     concise lifecycle contract
-.paper/runtime/                        pinned paper-scripts runtime
-.github/workflows/paper-preview.yml    unprivileged PDF build
-.github/workflows/paper-notify.yml     trusted notifications
-.github/workflows/paper-publish.yml    trusted sync/publication
-notes/                                 reusable research knowledge
-tasks/                                 resumable task records
-```
-
-The runtime is vendored so a CI run never downloads a moving copy of
-`paper-scripts`. Updating this tooling repository does not silently change any
-paper; each paper is upgraded with `paper init`, reviewed, and committed.
-
-## Command model
-
-| Command | Meaning |
-| --- | --- |
-| `paper start NAME` | Synchronize the base, create `NAME`, and immediately back it up to GitHub. |
-| `paper commit "MESSAGE"` | Stage the paper repository and create a local checkpoint. Push nowhere. |
-| `paper backup` | Push the current committed branch to GitHub. Never touch Overleaf. |
-| `paper sync` | Reconcile GitHub and Overleaf into the local base. Run from a clean base branch. |
-| `paper publish` | Reconcile fresh state, integrate committed work, back it up, and publish to Overleaf. Requires explicit authorization. |
-| `paper init [--poster \| --slides] [--force \| --workflow-only]` | Initialize or upgrade conservatively; scaffold blank sources. Explicit --force reinstalls starter paths with backups. --workflow-only preserves manuscript macros and sources. |
-| `paper create [--poster \| --slides] [--force] OVERLEAF_ID OWNER/REPO [DIRECTORY]` | Create a new private GitHub/Overleaf paper, poster, or slides repository and then run `paper init`. |
-| `paper notify --title TITLE --message MESSAGE [--url HTTPS_URL]` | Dispatch the trusted notification workflow. The URL becomes a clickable Discord embed title. |
-| `paper notify-test` | Test the configured provider through GitHub Actions. |
-| `paper configure-ci [--environments-only]` | Create/verify protected environments and privately install the Overleaf credential. |
-| `paper configure-notifications [--provider PROVIDER] [OWNER/REPO ...]` | Configure this paper from its `github` remote, or explicitly configure multiple papers. Discord is the default. |
-| `paper build [--watch] [ROOT.tex]` / `paper clean [ROOT.tex]` | Build or clean in `output/`; default `main.tex`. Without a root, watch mode watches all project documents and notes into mirrored output paths. |
-| `paper view [ROOT.tex]` | Build and open the current PDF in Reader, Evince, or the system viewer. |
-| `paper status [--verbose]` / `paper doctor` | Inspect manuscript synchronization, GitHub backup, configuration, and tools. Verbose status adds raw history counts. |
-| `paper abort` | Confirm and delete the current feature locally and on GitHub. Never touch the base or Overleaf. |
-| `paper clear-feature-branches [NAME ... \| --all-merged] [--yes] [--dry-run]` | List by default; delete only the selected branches merged into both local/GitHub bases. |
-| `paper task status [--all]` / `paper task delete ID ...` | Inspect or recoverably remove task records. |
-| `paper open [DIRECTORY | ALIAS] [--terminal \| --vscode]` | Open a paper repository in Kitty/Micro or VS Code; supports directory paths, aliases, and `--hot`/`--list`. |
-
-Run `paper help` for the complete command reference and `paper examples` for
-compact workflows.
-
-### Local editor workspaces
-
-`paper open` uses the editor selected in Git configuration. The personal terminal
-profile sets `terminal`; installations without a selection fall back to VS Code.
-Select an editor explicitly, or change the personal default:
+Clone the repository and install command symlinks into `~/.local/bin` (or pass `--bin-dir DIRECTORY`):
 
 ```bash
-paper open --terminal                 # Editor + build watcher + external Reader
-paper open "journal extension"        # Resolves registered project alias directly
-paper open /path/to/paper             # Opens target paper repository from anywhere
-paper open --hot                      # Lists recent hot projects from LRU cache
-paper open --vscode                   # VS Code in a new window
-git config --global paper.editor terminal
-git config --global paper.editor vscode
+git clone https://github.com/m1gwings/paper-scripts.git ~/Projects/paper-scripts
+bash ~/Projects/paper-scripts/install.sh
 ```
 
-A repository-local `git config paper.editor terminal` overrides the global
-setting. `PAPER_EDITOR=terminal paper open` overrides both; explicit flags take
-precedence. No project files or remotes are changed when opening a repository.
-Terminal paper opens select and reveal the manuscript in Reader, including when
-reusing an existing workspace, while preserving desktop keyboard focus.
+This links four commands (`paper`, `project-open`, `project-terminal`, and `workspace-edit`) while keeping the source checkout in place. Ensure `~/.local/bin` is on your `PATH`.
 
-For any directory, including projects without Git, use `project-open [DIRECTORY | ALIAS]`.
-It defaults to the terminal workspace and also accepts `--vscode`, `--hot`, and `--list`.
-Terminal mode requires Kitty and Micro on `PATH`; VS Code mode requires `code`. Install these
-separately. Micro's optional Filemanager2 plugin provides a project file tree;
-enable `filemanager2.openonstart` in Micro's settings to show it at launch.
+**Core requirements:**
+- Bash, Git, GNU `readlink`, and Python 3.9+ (required for installation and all `paper` commands).
+- GitHub CLI (`gh`) for repository creation, CI setup, and cloud workflow dispatch.
+- `latexmk` and a TeX distribution for local builds.
+- VS Code (`code`) for `--vscode`, or Kitty and Micro for `--terminal`.
+- For native Overleaf TeX restoration and page-by-page PDF comparison (`paper tex`): Linux `x86_64`, Python 3.12+, Perl, `curl`, `tar`, `xz`, and Poppler's `pdftoppm`.
 
-### Reading Markdown libraries
+## Quickstart
 
-`project-open --read research_index.md DIRECTORY` opens an existing Markdown file
-in native Reader with a paired terminal Editor kept minimized. Reopening reuses
-the same pair and preserves Editor buffers. Reader source navigation restores
-Editor; saved Markdown changes refresh automatically without a build watcher.
-`--focus` activates Reader in this mode. Requires `workspace-read`; minimizing
-a reused Editor requires the desktop adapter’s `minimize` action. The ordinary
-project and paper opening behavior is unchanged.
-
-The project window inherits your Kitty theme. Click to focus either pane, use
-Ctrl+Alt+arrow to move between panes, Ctrl+Shift+Z to zoom/restore the active
-pane, Ctrl+Shift+R to resize, and Ctrl+Shift+Enter to add a shell split in the
-current directory. These overrides apply only to project windows. PDFs stay
-external: Reader is preferred when installed, with Evince/system-viewer fallback.
-
-Paper terminal workspaces also start a **Build** tab, which watches the configured
-`root_tex` (`main.tex` by default) and its dependencies. Save a document source to rebuild automatically; compilation
-errors appear in that tab. It leaves the editor and project shell available.
-Ctrl+C in Build stops the watcher. Opening another workspace for the same source
-reuses the existing watcher instead of starting a duplicate. Reopening an existing
-Editor also restores a missing watcher (for example, after opening the folder
-standalone with `workspace-edit`).
-
-Ctrl+` (backtick) toggles the bottom terminal from either pane, preserving its
-shell/jobs and the resized split. The same interface is available as
-`project-terminal toggle [--show | --hide] [--workspace ID]`; Micro also provides
-Ctrl+E then `terminal`. Drag the horizontal pane divider to adjust its height
-with a recent Kitty (native support); Ctrl+Shift+R remains the keyboard fallback.
-The optional pinned `workspace-kitty` supplied by the personal profile is used for
-Editor windows when installed. `PROJECT_KITTY=/path/to/kitty` overrides that choice;
-otherwise the regular `kitty` is used. Other Kitty applications are unaffected.
-Editor workspaces pass Shift-left-click through to Micro, allowing the personal
-profile to select document text between the cursor and the click without
-including Files/Git panes. Shells retain normal mouse selection.
-
-### Independent Editor and Reader
-
-`workspace-edit DIRECTORY` opens a normal project workspace; pass file paths to
-open those files, or `--line N --column N FILE` to navigate to a source location.
-An unambiguous existing editor is reused and preserves unsaved buffers. Use
-`workspace-edit list --json`, `--session ID`, or `--new` to select another window.
-`workspace-edit view FILE --line 42 --end-line 48 --top-line 36 --highlight`
-reveals a range without changing source text or creating a destructive selection.
-`--select-end-line` and `--select-end-column` set an exclusive source selection.
-`--navigation` expires interactive jumps after 700 ms and skips them during prompts.
-`--focus` explicitly activates the managed Kitty pane and desktop window; `--reveal` switches its terminal tab
-without taking desktop focus. Omit line coordinates to retain the file's cursor.
-
-Use `workspace-edit status FILE --json` for fresh open-buffer state: `modified`,
-`disk_changed`, read-only status, cursor/scroll position and a content `version`.
-
-`workspace-edit read FILE --json` reads the live buffer, including unsaved text,
-without selecting its tab. Add `--line N --end-line M` for an inclusive line range;
-the returned SHA256 `version` always covers the complete buffer.
-`workspace-edit apply FILE --expected-version HASH --edits-file edits.json` applies
-one atomic undoable change without saving or switching tabs. `--edits-file -`
-reads JSON from stdin. The array contains ordered, non-overlapping edits with
-one-based Unicode character positions and an exclusive end:
-
-```json
-[{"start":{"line":1,"column":1},"end":{"line":1,"column":4},"text":"Replacement"}]
-```
-
-The event-loop handler validates all ranges and the complete buffer version
-before changing anything. Changed versions, disk conflicts, read-only buffers
-and expired requests are rejected. Apply requires protocol 3 and native atomic
-undo support; old sessions remain intact and need a UI refresh/reopen first.
-Coordinate ownership with other users/agents before applying live edits.
-
-`workspace-edit save FILE --expected-version HASH` saves the inspected live
-buffer through Editor, clearing its modified indicator and preserving undo,
-cursor, tab and focus. It rejects a changed buffer, read-only file, expired
-request or conflicting disk contents. A disk copy identical to the buffer can
-be acknowledged safely. Use this after authorized edits instead of writing a
-live buffer to disk externally. Older sessions need `reload-ui` first.
-
-The personal Micro profile automatically reloads clean files after external edits,
-including inactive tabs. Unsaved buffers remain intact. `workspace-edit reload FILE`
-refuses to discard them; an explicitly authorized discard additionally requires
-`--discard --expected-version HASH` from a fresh status response. A changed hash
-rejects the discard. `--if-open` and `--if-clean` allow guarded source-link actions.
-The extended controls require protocol 2; older running editors stay untouched
-until reopened. `workspace-edit reload-ui --project ROOT --session ID` queues
-an in-place plugin/theme/syntax reload on the native editor event loop; document
-buffers and undo history remain in memory. The personal profile also reloads
-automatically when its installer publishes a complete runtime generation.
-Only explicit open/view/status/read/apply/reload/reload-ui messages are accepted.
-`project-open` and `paper open` also accept `--file`, `--line`, `--session`, and
-`--new`. `paper open --no-reader` leaves the reader launch disabled.
-New and reused Editor windows are revealed without taking desktop focus by
-default; `--focus` explicitly restores and activates the Editor after Reader
-startup and the optional placement hook. Reusing a workspace selects its existing
-Editor pane without opening files or changing buffers/cursors. On COSMIC,
-explicit opens are also staged until placement completes, so the active window
-does not prevent its move to the intended monitor. A Kitty pre-show callback sets the initial
-minimized hint on XWayland before mapping, then `workspace-desktop reveal`
-unminimizes the exact window, followed by activation only with `--focus`.
-The reveal waits up to twenty seconds for a slow initial map and reports failure.
-Startup proceeds as soon as Kitty's control socket is ready, without a fixed
-one-second delay; Reader can initialize while the Editor finishes mapping.
-Without a placement hook, or with a phase-aware hook, Editor is revealed as soon
-as its own mapping and placement finish; Reader startup does not gate it.
-Explicit `--focus` activation still happens after both apps finish.
-This uses the system `libX11.so.6`; without
-passive reveal support the Editor stays minimized and the launcher reports it.
-`--reveal` uses a no-UI Kitty helper because native `focus-tab` also activates
-the desktop window. These helpers are included in newly vendored runtimes.
-
-The optional standalone Reader lives in
-[workspace-reader](https://github.com/m1gwings/workspace-reader). Both apps have
-separate launchers/icons supplied by the personal profile. Reader and Editor
-share a project/session identity but can close independently. Personal Micro
-integration supplies F7 Preview/forward SyncTeX, F8 manuscript PDF, and PDF
-Ctrl+click for inverse SyncTeX; its implementation stays outside Paper Scripts.
-
-Project opening does not choose monitors or desktop tiling. Machine-specific
-placement is a separate operation, performed after opening or reusing a workspace
-by the user or agent through their local desktop adapter. The launchers preserve
-focus and reveal windows independently of that placement step.
-
-### Add terminals to an existing project window
-
-Project Kitty windows expose a private local Unix socket, with control accepted
-only through that socket. This applies only to windows opened by `paper open`
-or `project-open`; other Kitty windows keep their own configuration.
+Create a **Blank Project** on Overleaf, copy its project ID or full `https://www.overleaf.com/project/ID` URL, and run:
 
 ```bash
-project-terminal list
-project-terminal run --project /path/to/paper --title Experiments \
-  --cwd /path/to/experiment -- /path/to/experiment/.venv/bin/ews run experiment.yml --output outputs
-project-terminal run --project /path/to/paper --title 'SSH · server' -- ssh server
-project-terminal run --project /path/to/paper --title Shell
-project-terminal run --project /path/to/paper --dock --title Shell
+paper create OVERLEAF_ID OWNER/my-paper             # default directory: ./paper
+paper create --poster OVERLEAF_ID OWNER/my-poster   # default directory: ./poster
+paper create --slides OVERLEAF_ID OWNER/my-slides   # default directory: ./slides
 ```
 
-The default is a new tab in that existing desktop window. Use `--split` to add
-a split to its editor tab; `--tab ID` targets another listed Kitty tab. Tabs are
-named and remain manually usable. A command runs with its literal argument list
-and leaves an interactive Bash shell when it exits. For a pipeline or other shell
-syntax, explicitly pass `-- bash -lc 'YOUR COMMAND'`. Choose the appropriate
-environment/executable for the task. Focus is preserved by default;
-`--keep-focus` remains an explicit alias and `--focus` requests a switch.
-On Kitty 0.51 and later, `--dock` opens a resizable bottom terminal shared by all
-tabs in the selected window. The Editor terminal toggle controls the regular
-split. Close the dock from Kitty when you are done with it.
+`paper create` clones Overleaf (using username `git` and an Overleaf Git token generated in Overleaf account settings, separate from your website/SSO password), initializes project infrastructure, commits locally, and pushes to a new **private** GitHub repository. It does not push to Overleaf; inspect the starter and run `paper publish` when ready.
 
-The helper selects by project root, independently of the command's working
-directory. If several windows match, use `--workspace ID` from `list` to choose
-explicitly. Inside a project workspace, its root is the default target. Both
-commands accept `--json` for scripts. The helper always creates a fresh terminal;
-it never injects keystrokes into a busy editor or shell.
+## Everyday workflows
 
-Runtime records contain only project labels/paths, IDs, PID, and the endpoint.
-They live under the user's private `$XDG_RUNTIME_DIR/project-workspaces/`, or a
-private per-user temporary directory when that variable is unavailable. They are
-not backups or project files; commands, environment variables, and credentials
-are not recorded. Closed or unavailable endpoints are omitted from `list`.
-Windows opened before this feature need a one-time reopen to gain a listener;
-Kitty cannot add one through config reload. Existing pinned paper runtimes retain
-their version until explicitly upgraded; the installed `paper`/`project-open`
-launchers provide this capability immediately.
+Every paper repository has a collaborative **base branch** (usually `main` or `master`, detected automatically from Overleaf) alongside optional short-lived feature branches.
 
-### Project display name
-
-The existing `.paper/config.json` also holds user-editable project metadata:
-
-```json
-"project_name": "CMABs with Ranking Feedback"
-```
-
-`paper init` fills a readable default for new/existing projects and preserves a
-custom name on later runs. Edit this field to change the informal name; it is
-independent of the manuscript's scientific title. Kitty uses it for the window
-title, with Paper/Poster/Slides as appropriate. The personal shell profile uses
-the same name in the prompt, including a relative path when entering subfolders.
-The editor sits above a full-width shell (74% / 26% of the available height).
-All of this works when running `paper open` yourself; no agent/session setup is
-required. Use `paper open --vscode` for a one-off VS Code window.
-
-### PDF output
-
-`paper build` writes `output/main.pdf`; compiler files, logs, build status,
-SyncTeX data, and last-good backups stay hidden in `output/.latex/`. An explicit root,
-such as `paper build variants/draft.tex`, writes `output/variants/draft.pdf`, with compiler files in `output/.latex/variants/`.
-Each successful build keeps a completed SyncTeX map with the published PDF's
-modification time and size. Reader can use this map throughout the next build,
-including when it opens after compilation has started.
-EWS studies can share the parent as `output/<study_name>/`; recorded figure
-inputs there are watched for changes, and document cleanup leaves studies alone.
-`paper clean` removes only the selected document's generated output. These local
-commands require Git but no remotes. Keep `/output/` in the project's `.gitignore`;
-do not ignore all PDFs, since reference papers and source graphics may be tracked.
-
-Use `paper build --watch [ROOT.tex]` to rebuild after saved source/dependency
-changes. Without an explicit root, `paper build --watch` watches the entire project:
-all top-level standalone documents (e.g. `main.tex`, `coverletter.tex`) are built into `output/`,
-and documents inside subdirectories (e.g. `notes/*.tex`) are built into their mirrored
-folder structure under `output/` (such as `output/notes/*.pdf`). New documents are discovered
-dynamically while the watcher runs. Watchers, manual builds, previews, and clean commands serialize complete
-latexmk runs using a shared lock in their output directory. Watch mode runs
-one-shot latexmk builds when recorded TeX/BibTeX inputs change; it releases the
-build lock between runs, so manual commands never compete with an active build.
-Editor sessions (`paper open`) spawn the project-wide watcher by default.
-`paper view [ROOT.tex]` builds first, then opens `workspace-read` when
-installed, falling back to Evince and the system viewer. Reader reloads changed
-PDFs and keeps the last valid version during a rebuild. Set
-`PAPER_PDF_VIEWER=evince` or `PAPER_PDF_VIEWER=xdg-open` to override the choice. A build failure is visible in the build terminal;
-the viewer may retain the last successful PDF. Editor extensions are unnecessary.
-
-### Creation and initialization
-
-`paper create` replaces the former standalone `paper-init` executable with the
-same flags and positional arguments. Use it outside a repository to clone
-Overleaf and create its private GitHub mirror. `paper init` remains the local,
-non-committing initializer/upgrader for an existing Git repository.
-
-The first argument also accepts a full `https://www.overleaf.com/project/ID`
-or `https://git@git.overleaf.com/ID` URL. Query strings/fragments on website
-URLs are stripped; quote the URL in your shell. Read-only sharing links and
-URLs containing credentials are not project IDs.
-
-For a brand-new project, first create a **Blank Project** in Overleaf's website
-and copy its `/project/ID` URL, then run the same `paper create` command. An
-agent may orchestrate that supported browser UI before invoking this CLI.
-`paper-scripts` itself never invokes an AI model, agent runtime, MCP, or browser
-automation. Manual browser creation is always a supported fallback.
-
-Creation clones Overleaf, installs/commits the local infrastructure, and pushes
-to a new **private** GitHub repository. It does not push the starter to Overleaf;
-that requires a separately authorized `paper publish`. Website/SSO login does
-not authenticate Overleaf Git: Git uses username `git` and an Overleaf Git token
-managed outside version control.
-
-### Creation recovery
-
-Do not delete a partial checkout or rerun into a second directory to conceal a
-failure. Inspect `git status`, remotes, and `gh repo view OWNER/REPO` first.
-
-- If the checkout has matching `overleaf` and `github` remotes, rerunning the
-  same `paper create` only runs the conservative `paper init`. It does not
-  commit or push existing work. Review generated changes and checkpoint them
-  deliberately before `paper backup` when a GitHub backup is wanted.
-- If cloning completed but remote renaming did not, verify `origin` is the
-  intended Overleaf project before `git remote rename origin overleaf`.
-- If initialization stopped, run `paper init` with the original `--poster` or
-  `--slides` selection as needed. Review and commit only intended changes;
-  preserve existing staged/uncommitted work.
-- If GitHub creation failed, verify whether `OWNER/REPO` now exists and is private.
-  If absent, after reviewing/checkpointing the local initialization, run
-  `gh repo create OWNER/REPO --private --source=. --remote=github --push`.
-  If it exists, inspect its identity and history before connecting a missing
-  `github` remote with `git remote add github https://github.com/OWNER/REPO.git`.
-  Never repoint an unrelated remote, automatically adopt an unrelated repository,
-  or combine unrelated histories. Resolve an unavailable repository's network or
-  authentication error before assuming it does not exist.
-- If only the push failed, use `paper backup` after verification. Its ordinary
-  non-force push refuses to overwrite concurrent GitHub work; on divergence,
-  inspect/reconcile through the established workflow before retrying. On a clean,
-  reconciled base, use
-  `git branch --set-upstream-to=github/BASE BASE` if tracking is missing and
-  `git config remote.pushDefault github`. `BASE` is the actual Overleaf branch,
-  not an assumed `main` or `master`. Check with `paper doctor`.
-
-None of these recovery steps publishes to Overleaf. `--force` only controls
-starter replacement with backups; it never bypasses remote-identity or workflow
-safety checks.
-
-### Posters
-
-```bash
-paper create --poster OVERLEAF_ID OWNER/my-poster
-```
-
-This creates `./poster` instead of the usual `./paper`. An explicit final
-directory still overrides the default. Poster mode selects
-[`templates/AGENTS.poster.md`](templates/AGENTS.poster.md), which requires
-beamerposter complex blocks to use one fixed TikZ canvas, geometry derived from
-equations, centered anchors, explicit padding, a global debug overlay, and PDF
-visual inspection. Ordinary initialization uses
-[`templates/AGENTS.paper.md`](templates/AGENTS.paper.md).
-In an existing Git repository, use `paper init --poster`. The selection persists
-as `document_type: "poster"` in `.paper/config.json`.
-
-### Slides
-
-```bash
-paper create --slides OVERLEAF_ID OWNER/my-slides
-```
-
-This creates `./slides` instead of `./paper`; an explicit final directory
-overrides the default. Slides mode selects
-[`templates/AGENTS.slides.md`](templates/AGENTS.slides.md) for LaTeX Beamer.
-Simple slides may use normal Beamer constructs; complex slides use one full-slide
-TikZ picture with algebraic geometry and reusable debug guides. In an existing
-Git repository, use `paper init --slides`. The selection persists as
-`document_type: "slides"` in `.paper/config.json` across later plain `paper init`
-upgrades and recovery of a missing `AGENTS.md`.
-
-All three modes use the same `paper` commands, remotes, Cloud Codex instructions,
-notifications, and publication rules. Recognized blank projects also receive a minimal compilable LaTeX starter
-for the selected document type. Existing manuscripts retain their sources. Plain
-`paper init` retains the saved type and restores a missing `AGENTS.md`.
-Explicitly selecting `--poster` or `--slides` replaces an untouched built-in
-template, including when switching types. Customized `AGENTS.md` content is
-preserved; only the usual managed workflow sections are refreshed. Adapt any
-custom editing guidance explicitly using the selected template.
-
-### Instruction ownership
-
-`AGENTS.md` contains project-specific editing, scientific, and revision policy.
-The generated `.paper/WORKFLOW.md` owns build/publication, notifications/cloud,
-and task-checkpoint procedures. Its source is `templates/WORKFLOW.md`, also
-vendored so pinned runtimes remain self-contained. Marker-managed sections in
-`AGENTS.md` route to the relevant workflow section instead of repeating it.
-Personal launcher, desktop, and cross-project preferences belong in the user's
-global configuration, not in paper defaults. Upgrades preserve custom text
-outside managed sections; review project-specific additions before migration.
-
-### Editing the default AGENTS.md instructions
-
-Edit these ordinary Markdown files in your paper-scripts checkout (normally
-`~/.local/bin`):
-
-| Project type | Default instructions |
-| --- | --- |
-| Paper | [`templates/AGENTS.paper.md`](templates/AGENTS.paper.md) |
-| Poster | [`templates/AGENTS.poster.md`](templates/AGENTS.poster.md) |
-| Slides | [`templates/AGENTS.slides.md`](templates/AGENTS.slides.md) |
-
-The next `paper create` uses the selected file as its new project's `AGENTS.md`.
-No build or installation step is needed after editing. Commit template changes
-to keep your defaults on GitHub. See [`templates/README.md`](templates/README.md)
-for the editing and upgrade contract.
-
-Existing repositories change only when you run `paper init`. It preserves
-repository-specific instructions outside the four marker-managed workflow
-blocks. Those blocks are refreshed from the selected template. Keep their
-`paper-scripts:begin` and `paper-scripts:end` comments intact; the initializer
-validates them before writing files. Other sections may differ freely between
-paper, poster, and slides defaults.
-
-Plain `paper init` preserves the saved project type and existing custom text.
-A missing `AGENTS.md` is restored from the current selected default. An explicit
-`paper init --poster` or `paper init --slides` may replace the whole file only
-when it exactly matches a current default or an unchanged, manifest-verified
-previously installed template. Edited files keep their custom text, including
-when switching types. Vendored defaults remain pinned until a reviewed upgrade.
-
-## Blank projects and starter structures
-
-Create a blank project on Overleaf, then run:
-
-```bash
-paper create OVERLEAF_ID OWNER/my-paper
-paper create --slides OVERLEAF_ID OWNER/my-slides
-paper create --poster OVERLEAF_ID OWNER/my-poster
-```
-
-Both creation and initialization explain their source classification:
-
-- An empty source tree or recognized stock Overleaf blank project receives the
-  selected starter. Title, author, and date are preserved when recognizable.
-- An existing or unrecognized manuscript keeps all its source files, macros,
-  bibliography, and layout. The output reminds you how to opt into scaffolding.
-- An already installed starter keeps its user-owned sources; only untouched
-  managed files, including the shared macro package, are upgraded.
-
-To explicitly reinstall a starter:
-
-```bash
-paper init --force
-paper init --slides --force
-paper create --force OVERLEAF_ID OWNER/my-paper
-```
-
-`--force` replaces only named starter paths. Every differing existing file is
-copied under `.paper/scaffold-backups/UNIQUE_ID/` before replacement. Other files,
-custom `AGENTS.md` text, notes, tasks, and custom configuration fields survive.
-It does not bypass symlink protection or edited workflow/runtime conflicts.
-When changing the starter type later, use the matching type flag with `--force`;
-an ordinary type selection continues to preserve manuscript source.
-
-The starter includes `main.tex`, `content/`, `appendix/`, `algs/`, `figures/`,
-`tables/`, `references.bib`, `projectmacros.tex`, and `papermacros.sty`. Source
-templates live in `templates/latex/{paper,poster,slides}/`. The one shared package
-lives in `templates/latex/papermacros.sty`; edit it there for future projects.
-The main file, project macros, bibliography, and content are copied once.
-The shared package is manifest-managed: untouched copies can upgrade; edited
-copies stop an ordinary upgrade rather than being overwritten.
-
-Creation commits the full starter to GitHub. Inspect it, then run `paper publish`
-to send it to Overleaf. Creation never publishes to Overleaf implicitly.
-No default `.codex/config.toml` is installed.
-
-## Shared macros and agent revisions
-
-See [the package guide](templates/latex/README.md) for options and examples.
-The public review interface is agent-neutral: `\AgentsIns`, `\AgentsDel`,
-`\AgentsReplaceMath`, `\Agents`, and `\AgentsOut`. Insertion
-commands are primary definitions; no `AuthorInline` or `Codex...` aliases are
-provided in the new package. Existing projects keep their old macro files and
-markup until explicitly migrated. The former singular `\Agent...` family remains supported for compatibility.
-
-Agent comments accept optional model attribution: `\Agents[GPT-6 Astra]{Check this assumption.}`
-and `\AgentsOut[GPT-6 Astra]{Check this assumption.}`. The model name replaces
-“Agent” in the title, retaining the AG label and review color. Existing
-`\Agents{comment}` calls still work. Defaults require agents to identify their
-actual model in new comments when the loaded package supports it; an unavailable
-identity is explicitly labeled `Model unavailable`, never guessed.
-
-All default `AGENTS.md` files document review modes, strikethrough deletions,
-math operations, structural-change exceptions, and legacy-project fallback. Their new
-`managed-drafting` block updates conservatively and defers to project-specific
-review/rebuttal policy. It never instructs an agent to use undefined commands.
-
-Finalizing reviewed agent edits permanently deletes `Del` contents and unwraps
-`Ins` contents. “Finalize all edits” is scoped to the revisions discussed so far;
-uncertain scope requires clarification, rather than accepting unseen manuscript
-revisions globally. See the managed drafting instructions in each template.
-
-## Everyday local workflow
-
-For a small edit:
+**Small direct edit:**
 
 ```bash
 paper sync
-# edit and build
+paper open
+# edit and review locally
 paper commit "Clarify the stopping-time argument"
 paper publish
 ```
 
-For isolated work:
+**Isolated feature branch:**
 
 ```bash
 paper start new-lower-bound
 # edit and build
 paper commit "Add the first lower-bound construction"
 paper backup
-# review more changes
+# iterate until ready
 paper publish
 ```
 
-`paper start` synchronizes before creating the feature. `paper publish`
-synchronizes again because collaborators may have edited Overleaf while the
-feature was in progress. Successful publication returns to the base branch and
-keeps the feature branch until it is explicitly cleaned up. After verifying
-that all listed non-base branches have been integrated, run
-`paper clear-feature-branches --all-merged` to review and remove integrated branches locally and on GitHub. Exact names select a narrower set; `--yes` confirms that selection. Checked-out or unmerged branches are retained.
+`paper start` syncs the base branch before branching and immediately backs up the new branch to GitHub. `paper publish` fetches fresh state from both remotes, merges your feature into the base branch, pushes to GitHub, publishes the manuscript to Overleaf, and returns you to the base branch while keeping the feature branch intact.
 
-## Codex and cloud workflow
-
-`AGENTS.md` tells Codex to use the same `paper` lifecycle, to keep persistent
-research knowledge separate from task checkpoints, and to notify through
-`paper notify` only. The notification, published-feature cleanup, and tasking
-instructions are marker-managed: upgrades can refresh those blocks while
-preserving repository-specific instructions.
-
-In a cloud checkout, set:
+**Cleaning up merged feature branches:**
 
 ```bash
-git config paper.execution cloud
+paper clear-feature-branches               # list eligibility without deleting
+paper clear-feature-branches --all-merged  # delete branches merged into local & GitHub bases
 ```
 
-Codex Cloud should also provide `GH_TOKEN` as a secret environment variable.
-The generated `AGENTS.md` tells cloud agents to check only whether the variable
-is present, use it through `gh` without exposing it, and ask the user to add it
-when it is missing. The reminder notes that the user's token is available in
-their Google Drive; the token must never be pasted into chat, printed, embedded
-in a remote URL, or committed. These instructions are cloud-only and do not
-replace the normal GitHub authentication of local Codex clients.
+**Standalone research notes:**
 
-Cloud `sync` and `publish` dispatch a workflow from GitHub's default branch and
-wait for the exact run identified by a unique request ID. The workflow checks
-that the reviewed branch still has the requested SHA, executes only trusted
-vendored infrastructure, and rejects feature changes to `.paper/` or
-`.github/`. The agent needs GitHub Contents write and Actions read/write access;
-it never needs Overleaf or notification credentials.
+```bash
+paper note new lower_bound --title "Lower Bound Derivation"
+paper build notes/lower_bound.tex
+paper note list
+```
 
-### Codex model configuration
+**Resolving merge conflicts:**
 
-`paper init` leaves Codex model selection to your user settings. It no longer
-creates `.codex/config.toml`. On upgrade, an untouched, manifest-owned copy of
-the old model default is removed. Customized or unmanaged Codex configuration
-is preserved. `AGENTS.md` remains the repository's workflow instructions.
+If `paper sync` or `paper publish` stops on a conflict:
 
-## Synchronization and branch safety
+```bash
+git status
+# edit conflicted files
+git add <resolved-files>
+git merge --continue
+paper status
+```
 
-`start`, `sync`, and publication share the same reconciliation rules:
+To abandon the merge instead, run `git merge --abort`.
 
-1. Fetch GitHub and Overleaf before changing the base.
-2. Merge fresh GitHub history into the local base without rewriting commits.
-3. If Overleaf has identical file contents, skip replaying its different history.
-   Otherwise merge its changes and stop for manual resolution on conflicts.
+## Command reference
 
-Feature publication merges the remote feature and the fresh base into the local
-feature, backs it up, and fast-forwards the base. All pushes are ordinary
-fast-forward updates: a concurrent writer causes a rejection, never an overwrite.
-When the final GitHub history cannot be pushed linearly to Overleaf, publication
-creates a new commit on Overleaf's fetched tip with exactly the verified base
-file tree. GitHub keeps the full history and metadata; Overleaf contains only the configured manuscript export.
-Their commit IDs may legitimately differ. `paper status` reports committed-file alignment separately from commit-history differences; uncommitted edits are listed by Git status. Repeating publication with equal
-contents creates no extra Overleaf commit. Local `refs/paper-sync/` records the
-last synchronized manuscript trees; verified `Paper-source` trailers recover that
-base in a fresh clone and supersede stale local markers after another checkout
-publishes. Later coauthor changes are merged against this content base, so
-already-published edits are not replayed from an older history ancestor.
+Run `paper help` for the complete reference and `paper examples` for compact recipes.
 
-Safety properties:
+### Lifecycle & remotes
 
-- Neither GitHub nor Overleaf is force-pushed.
-- Overleaf receives a linear history, including when GitHub has merge commits.
-- Dirty worktrees, detached heads, and active Git operations stop lifecycle
-  commands.
-- A changed review SHA, build failure, conflict, timeout, or rejected push is
-  never reported as successful publication.
-- GitHub and Overleaf writes are not atomic. If a later write fails, inspect the
-  error and rerun the normal command; never force-push.
-- Generated PDFs, tokens, webhook URLs, and other credentials are never
-  committed.
+| Command | Description |
+| --- | --- |
+| `paper create [--poster \| --slides] [--force] OVERLEAF_ID OWNER/REPO [DIR]` | Clone an Overleaf project, initialize infrastructure, and create its private GitHub mirror. |
+| `paper init [--poster \| --slides] [--force \| --workflow-only]` | Initialize or conservatively upgrade infrastructure inside an existing Git repository. |
+| `paper gitignore` | Create the standard paper `.gitignore` if none exists (never overwrites an existing one). |
+| `paper sync` | Reconcile GitHub and Overleaf into the local base branch. |
+| `paper start NAME` | Sync the base branch, create feature branch `NAME`, and back it up to GitHub. |
+| `paper commit "MESSAGE"` | Stage all changes and create a local commit (pushes nowhere). |
+| `paper backup` | Push the current committed branch to GitHub without touching Overleaf. |
+| `paper publish` | Reconcile remotes, integrate committed work, back up to GitHub, and publish to Overleaf. |
+| `paper abort` | Confirm and delete the current feature branch locally and on GitHub. |
+| `paper clear-feature-branches [NAME ... \| --all-merged] [--yes] [--dry-run]` | Inspect or safely delete feature branches merged into both local and GitHub bases. |
+| `paper status [--verbose]` / `paper doctor` | Inspect manuscript sync state, GitHub backup state, configuration, and required tools. |
+
+### Building, viewing, notes & workspaces
+
+| Command | Description |
+| --- | --- |
+| `paper build [--watch] [ROOT.tex]` | Compile with `latexmk` into `output/` (default: `main.tex`). Without a root, `--watch` watches all standalone `.tex` documents. |
+| `paper view [ROOT.tex]` | Build and open the PDF in `workspace-read`, Evince, or the system viewer. |
+| `paper clean [ROOT.tex]` | Remove generated build files for the selected document. |
+| `paper note new NAME [--title TITLE] [--open] [--force]` | Create a standalone LaTeX note in `notes/<name>.tex` using the project's macros. |
+| `paper note list` | List research notes with their titles and build status. |
+| `paper tex sync \| capture \| install \| status \| check \| compare-pdf` | Capture, restore, and verify a pinned Overleaf TeX Live environment (see [`docs/tex_environment.md`](docs/tex_environment.md)). |
+| `paper open [DIR \| ALIAS] [--terminal \| --vscode]` | Open a paper workspace (see [Local workspaces](#local-workspaces) for `project-open`, `project-terminal`, and `workspace-edit`). |
+
+### Tasks, CI & notifications
+
+| Command | Description |
+| --- | --- |
+| `paper task status [--all]` / `paper task delete ID ...` | List open/completed task records or move selected tasks (by number or folder name) to `tasks/.trash/`. |
+| `paper configure-ci [--environments-only]` | Create protected GitHub Actions environments and store the Overleaf token. |
+| `paper configure-notifications [--provider PROVIDER] [--device NAME] [OWNER/REPO ...]` | Configure notification credentials (`discord`, `pushover`, or `webhook`) for one or more repositories. |
+| `paper notify --title TITLE --message MESSAGE [--url HTTPS_URL]` | Dispatch a notification through the trusted GitHub Actions workflow. |
+| `paper notify-test` | Send a test notification using the configured provider. |
+
+## Project layout, scaffolding, and upgrades
+
+### Repository layout
+
+Every initialized repository gets a self-contained, versioned layout:
+
+```text
+AGENTS.md                              project-specific instructions and managed workflow blocks
+.paper/config.json                     non-secret project settings
+.paper/manifest.json                   managed-file versions and hashes
+.paper/WORKFLOW.md                     concise lifecycle contract
+.paper/runtime/                        pinned paper-scripts runtime used by CI and local tools
+.github/workflows/paper-preview.yml    unprivileged PDF preview build
+.github/workflows/paper-notify.yml     trusted notification workflow
+.github/workflows/paper-publish.yml    trusted sync and publication workflow
+notes/                                 standalone research notes
+tasks/                                 resumable task records (index.md, template.md, NNN_slug/task.md)
+```
+
+Because `.paper/runtime/` is vendored per repository, updating your local `paper-scripts` checkout never silently changes existing papers. Upgrade a paper explicitly by running `paper init`, reviewing the diff, and committing.
+
+**Task records (`tasks/`):** To track a multi-step research or writing task, copy `tasks/template.md` to `tasks/NNN_short_name/task.md` and register it in `tasks/index.md`. Inspect progress with `paper task status` (or `--all`) and recoverably delete tasks by number (e.g., `002`) or folder name with `paper task delete`.
+
+### Scaffolding and upgrades
+
+`paper init` inspects the repository and behaves conservatively:
+
+- **Blank projects** receive a compilable starter (`main.tex`, `content/`, `appendix/`, `algs/`, `figures/`, `tables/`, `references.bib`, `projectmacros.tex`, and `papermacros.sty`) for the chosen document type (`paper`, `poster`, or `slides`). Recognized title, author, and date fields from Overleaf's stock blank `main.tex` are preserved.
+- **Existing manuscripts** keep all source files, macros, and bibliography untouched.
+- **Upgrades** refresh untouched managed files using manifest hashes, preserve custom files and custom `AGENTS.md` content outside the four marker-managed blocks (see [`templates/README.md`](templates/README.md)), and stop before overwriting edited managed files.
+- **`paper init --force`** reinstalls starter paths, saving backups of differing files under `.paper/scaffold-backups/`.
+- **`paper init --workflow-only`** upgrades `.paper/runtime/` and `.paper/WORKFLOW.md` without touching manuscript sources, `papermacros.sty`, an existing `AGENTS.md`, or `.github/workflows/`.
+
+### Project settings (`.paper/config.json`)
+
+`.paper/config.json` stores non-secret settings such as `document_type`, `base_branch`, `overleaf_project_id`, `root_tex`, `notify_provider`, `overleaf_exclude`, and a user-editable `project_name` (used for window titles and shell prompts independently of the LaTeX title). Custom fields are preserved across upgrades.
+
+### Editing default templates
+
+Default agent instructions live in [`templates/AGENTS.paper.md`](templates/AGENTS.paper.md), [`templates/AGENTS.poster.md`](templates/AGENTS.poster.md), and [`templates/AGENTS.slides.md`](templates/AGENTS.slides.md). Edit them directly in your `paper-scripts` checkout; new projects use them immediately and existing projects adopt managed-block updates on `paper init`. See [`templates/README.md`](templates/README.md) for the marker-block contract.
+
+### Recovering an interrupted `paper create`
+
+If creation stops midway, inspect `git status`, `git remote -v`, and `gh repo view OWNER/REPO` rather than deleting the directory:
+
+- **Remotes already match:** re-running `paper create` runs conservative `paper init` without overwriting work. Review, commit, and run `paper backup`.
+- **Clone finished before remote rename:** verify `origin` points to the intended Overleaf project, then run `git remote rename origin overleaf` and `paper init`.
+- **GitHub creation failed:** if `OWNER/REPO` does not exist yet, commit local initialization and run `gh repo create OWNER/REPO --private --source=. --remote=github --push`. If it already exists, verify its history before adding it as the `github` remote.
+- **Push failed:** verify the repository state and run `paper backup`, then check with `paper doctor`.
+
+## Building, viewing, and Overleaf parity
+
+`paper build [ROOT.tex]` compiles with `latexmk` and writes the PDF to `output/main.pdf` (or `output/<subdir>/<name>.pdf` for nested roots such as `notes/lower_bound.tex`). Auxiliary files, logs, SyncTeX data, and build status (`output/.latex/<stem>.build.json`) stay hidden inside `output/.latex/`. Keep `/output/` in `.gitignore` rather than ignoring `*.pdf`, so tracked source figures remain versioned.
+
+- **Watch mode (`paper build --watch [ROOT.tex]`):** rebuilds automatically on source or dependency changes. Without a root argument, it discovers and watches all standalone `.tex` documents in the repository (such as `main.tex` and `notes/*.tex`), mirroring their paths under `output/`, and rebuilds whenever any TeX/BibTeX input recorded in `.fls`/`.fdb_latexmk` (including generated figures and symlinks) changes. Builds are serialized by a lock, and failed builds preserve the last valid PDF and SyncTeX map.
+- **Viewing (`paper view [ROOT.tex]`):** builds and opens the PDF in `workspace-read` when installed, falling back to Evince or `xdg-open` (override with `PAPER_PDF_VIEWER`).
+- **Overleaf compilation parity (`paper tex`):** when the optional `workspace-overleaf` HTTP connector is installed, `paper create`, `paper sync`, `paper publish`, and watch builds automatically capture Overleaf's compiler, TeX Live image, and build outputs, restore a matching frozen native TeX Live environment, and verify rendered page parity without blocking editing. Standalone users can also import an Overleaf compile log manually via `paper tex capture` and `paper tex install`. See [`docs/tex_environment.md`](docs/tex_environment.md) for supported environments, caching, and diagnostics.
+
+## Shared macros and revision tracking
+
+Starter projects share a single agent-neutral package, `templates/latex/papermacros.sty`, while keeping paper-specific notation in `projectmacros.tex`. See [`templates/latex/README.md`](templates/latex/README.md) for package options, rendering modes (`visible`, `applied`, `reverted`), and usage rules.
+
+Core revision commands:
+
+| Operation | Command |
+| --- | --- |
+| Addition / deletion | `\AgentsIns{new}` · `\AgentsDel{old}` |
+| Math replacement | `\AgentsReplaceMath{old}{new}` |
+| Review comments | `\Agents[Model Name]{note}` · `\AgentsOut[Model Name]{note}` |
+
+The `visible`, `applied`, and `reverted` package modes control PDF rendering only. Finalizing reviewed edits means updating the `.tex` source to permanently remove `\AgentsDel{...}` content and unwrap `\AgentsIns{...}` content for the agreed scope.
+
+## Synchronization, clean Overleaf exports, and safety
+
+A paper repository connects two remotes alongside optional feature branches:
+
+```text
+overleaf/<base>    collaborative manuscript on Overleaf
+github/<base>      private mirror and trusted workflow source
+github/<feature>   isolated work and backup
+```
+
+### Reconciliation rules
+
+`paper start`, `paper sync`, and `paper publish` fetch both remotes before updating the base branch:
+
+1. Fresh GitHub commits are merged into the local base without rewriting history.
+2. Fresh Overleaf manuscript changes are merged into the base; identical file trees skip redundant history replays, and conflicts stop for manual resolution.
+3. All pushes are standard fast-forward updates—neither GitHub nor Overleaf is ever force-pushed. Overleaf always receives a linear history whose tree matches the verified manuscript export.
+
+`paper clear-feature-branches` lists eligible branches by default. When deleting (`--all-merged` or explicit names), it fetches GitHub first, verifies that both local and remote branch tips are merged into both local and GitHub bases, skips checked-out or unmerged branches, deletes locally with `git branch -d`, and atomically verifies each remote branch has not moved before deleting it on GitHub. It never touches Overleaf.
 
 ### Clean Overleaf exports
 
-New projects and `paper init` upgrades use filtered Overleaf exports by default.
-Settings in `.paper/config.json` contain:
+By default, `.paper/config.json` excludes tooling and private directories from Overleaf while keeping everything on GitHub:
 
 ```json
 "overleaf_exclude": [".paper/", ".github/", ".codex/", ".agents/", ".vscode/", ".gitignore", "AGENTS.md", "tasks/", "notes/", "tools/", "references/", "README.md"],
 "overleaf_exclude_basenames": [".gitkeep"]
 ```
 
-These are repository-relative file or directory paths, without glob patterns.
-Everything else is included, including custom styles, bibliography files and
-figures. Keep manuscript dependencies outside excluded paths or adjust the list.
-The basename list matches exact file names at every depth, without globs.
-`references/` is reading/archive material; bibliography files such as
-`references.bib` remain included. Set both lists to empty for full-tree exports.
-Upgrades preserve existing path lists and explicit full-tree settings, so review
-and adopt additional default paths deliberately. Older pinned runtimes must be
-upgraded before using these settings.
+Paths are repository-relative without globs (`references/` is reading material; `references.bib` stays exported). Set both lists to `[]` for full-tree exports. Commits touching only excluded paths do not create Overleaf commits, and coauthor edits on Overleaf are imported only for manuscript paths.
 
-Before publishing changed exclusions, build a clean copy of the projected tree
-(not the full checkout) to verify that all manuscript dependencies are exported.
-Do not infer that an alternate root or macro package is unused from its name:
-inspect the active root and its dependencies before excluding it per project.
-Use `paper init --workflow-only` for tooling-only upgrades, especially when a
-project has customized its starter macro package. This preserves the previous
-macro ownership record and does not install another macro package into legacy papers.
-It also preserves project instructions and Actions workflow definitions, including
-project-specific TeX installation steps; runtime code, templates and workflow
-documentation are updated.
+`paper status` reports manuscript sync against Overleaf separately from GitHub backup status (`--verbose` adds raw commit counts).
 
-The first publication removes excluded files from Overleaf's current tree while
-preserving them on GitHub and in existing history. Overleaf's Git bridge can
-retain empty folders after file deletion; remove those once through its file-tree
-UI during migration. Future filtered publications never create these folders.
-Later metadata-only commits
-do not create Overleaf commits. Coauthor additions, edits, renames and deletions
-are imported only for manuscript paths; excluded files remain GitHub-owned.
-Fresh clones recover the manuscript merge base from export commit trailers.
-Local and trusted CI publication use the same pinned projection code.
+## Local workspaces
 
-GitHub and Overleaf intentionally keep different trees and histories. Normal
-`paper status` shows manuscript synchronization for Overleaf and backup/history
-status for GitHub. `paper status --verbose` adds raw history counts for diagnostics.
-Micro's Git pane uses the same pinned manuscript comparison and ignores excluded
-files when marking pending publication; its Overleaf row never shows history counts.
+### Opening projects (`paper open` and `project-open`)
 
-The historical `paper align-history` command is retired. Calls using its old
-options stop without fetching or changing anything and direct the caller to
-`paper sync` / `paper publish`. Existing history archives remain untouched.
+`paper open` opens a paper repository in either VS Code or a terminal workspace (Kitty + Micro + bottom shell + background build watcher + PDF viewer). `project-open` provides the same launcher for any directory, including non-Git projects.
 
-## PDF previews and notifications
+```bash
+paper open                            # open current paper using configured editor
+paper open --terminal                 # Kitty + Micro + Build tab + PDF viewer
+paper open --vscode                   # VS Code window
+paper open "journal extension"        # resolve a registered project alias (requires workspace-project)
+paper open --hot                      # list recently used projects (requires workspace-project)
+project-open --read index.md DIR      # open Markdown in workspace-read with a minimized editor
+```
 
-Notifications are optional and deliberately small. Local and cloud callers use
-the same provider-neutral command:
+`paper open` defaults to `vscode` (override via `git config [--global] paper.editor terminal`, `PAPER_EDITOR`, or `--terminal`/`--vscode`); `project-open` defaults to `terminal`.
+
+In terminal workspaces:
+- **Ctrl+\`** toggles the bottom shell split (preserving running processes and split height).
+- **Ctrl+Alt+Arrows** moves between panes; **Ctrl+Shift+Z** zooms/restores the active pane; **Ctrl+Shift+R** resizes (Kitty's built-in resize shortcut); **Ctrl+Shift+Enter** adds a shell split.
+- Pass `--focus` to activate the workspace window immediately (standalone installations without `workspace-desktop` need `--focus` to show the terminal window unminimized).
+- Optional user-level placement hooks can be configured in `~/.config/project-open/config.json` via `{"post_open": ["/path/to/hook"]}` (bypass with `--no-post-open`).
+
+### Adding task terminals (`project-terminal`)
+
+Add tabs, splits, or shared bottom docks to an already open project Kitty window without injecting keystrokes into active panes:
+
+```bash
+project-terminal list
+project-terminal toggle [--show | --hide]
+project-terminal run --project /path/to/paper --title Experiments --cwd /path/to/exp -- ./run.sh
+project-terminal run --project /path/to/paper --dock --title Shell
+```
+
+Pass `--split` to split the editor tab, `--tab ID` to target a specific tab, `--dock` (requires Kitty 0.51+) for a resizable bottom dock shared across tabs, or `--focus` to switch focus. Commands run with literal arguments and drop to an interactive Bash shell on exit (wrap shell pipelines in `-- bash -lc '...'`).
+
+### Guarded live editor control (`workspace-edit`)
+
+When Micro runs with the companion mailbox plugin, `workspace-edit` communicates with live editor buffers over a private local mailbox without simulating keyboard input:
+
+```bash
+workspace-edit list --json
+workspace-edit DIRECTORY [FILE ...] --line 42 --column 1
+workspace-edit view FILE --line 42 --end-line 48 --highlight
+workspace-edit status FILE --json
+workspace-edit read FILE --line 1 --end-line 80 --json
+workspace-edit apply FILE --expected-version SHA256 --edits-file edits.json
+workspace-edit save FILE --expected-version SHA256
+workspace-edit reload FILE [--discard --expected-version SHA256]
+```
+
+`status` and `read` return live buffer metadata and a SHA256 `version` over the complete buffer. `apply` performs one atomic, undoable edit without saving (JSON array of one-based `{"start":{"line":1,"column":1},"end":{"line":1,"column":4},"text":"..."}` objects), and `save` writes through the editor while preserving undo history and cursor state. Both reject stale versions, disk conflicts, or read-only buffers.
+
+### Optional companion integrations
+
+All core lifecycle, build, note, task, cloud, and terminal-launching commands work standalone. When present on `PATH`, optional external companion tools activate extra capabilities:
+
+| Companion | Activated capabilities |
+| --- | --- |
+| `workspace-read` | Native live-reloading PDF and Markdown viewer (`paper view`, `paper open`, `project-open --read`). Falls back to Evince or `xdg-open` for PDFs. |
+| `workspace-project` | Project alias resolution (`paper open "alias"`), `--hot`, and `--list`. |
+| `workspace-overleaf` | Automatic Overleaf HTTP capture and background parity checks (`paper tex sync`). |
+| `workspace-desktop` | Passive window reveal without stealing keyboard focus when opening or reusing terminal workspaces. |
+| Micro mailbox plugin | Workspace reuse, live buffer inspection, and guarded edits (`workspace-edit list/status/read/apply/save/reload/view`). |
+
+## Cloud workflow and notifications
+
+### Cloud execution
+
+By default (`paper.execution=auto`), `paper` automatically switches to cloud mode when no `overleaf` remote is configured. To force cloud mode explicitly in a sandbox that only has GitHub access:
+
+```bash
+git config paper.execution cloud
+```
+
+(Or set `PAPER_EXECUTION=cloud` in the environment.) Provide `GH_TOKEN` as a secret environment variable with GitHub Contents write and Actions read/write permissions (never paste it into chat, commits, or remote URLs). Cloud `paper sync` and `paper publish` dispatch trusted workflows from GitHub's default branch, verify that the reviewed branch SHA has not changed, and refuse feature-branch edits to `.paper/` or `.github/`. Cloud agents never receive Overleaf or notification credentials.
+
+### Secrets and protected environments
+
+Generated GitHub Actions workflows enforce a strict trust boundary on the default branch:
+
+| Environment | Secrets | Purpose |
+| --- | --- | --- |
+| `paper-publish` | `OVERLEAF_TOKEN` | Fresh synchronization and explicit Overleaf publication. |
+| `paper-notify` | `DISCORD_WEBHOOK_URL` (or selected provider secret) | Manual, preview, and publication notifications. |
+
+Run `paper configure-ci` once per repository to create both protected environments and store `OVERLEAF_TOKEN` via hidden prompt. Protected environments on private GitHub repositories require repository admin access and a GitHub plan supporting private environments (Pro, Team, Education, or Enterprise).
+
+### PDF previews and notifications
+
+The `paper-preview` workflow compiles `root_tex` without secrets and uploads `paper.pdf` as a private GitHub Actions artifact (14-day retention). The trusted `paper-notify` workflow sends notifications linking directly to that artifact, and can also be invoked manually:
 
 ```bash
 paper notify --title "Proof audit complete" \
@@ -713,245 +352,22 @@ paper notify --title "Proof audit complete" \
   --url "https://github.com/OWNER/REPOSITORY/actions/runs/RUN_ID/artifacts/ARTIFACT_ID"
 ```
 
-The command dispatches the default-branch `paper-notify` workflow. Discord is
-the default backend. Its rich message contains the title, body, repository name,
-and an optional clickable HTTPS link. Agents never receive the webhook URL.
-
-The preview workflow compiles the configured root document without publication
-or notification secrets and uploads `paper.pdf` as a private GitHub artifact.
-The trusted follow-up workflow reads only GitHub run/artifact metadata and sends
-a notification linking directly to that artifact. Artifacts expire after 14
-days and require GitHub sign-in. A local `output/pdf/NAME.pdf` remains a local
-file; place requested PDFs there when that is the repository convention, but do
-not put a local path in `--url`. Use the generated preview artifact or another
-already available HTTPS artifact URL.
-
-### Configure Discord
-
-1. Create or select a Discord server and the text channel that should receive
-   paper messages.
-2. Open **Channel Settings / Edit Channel → Integrations → Webhooks → New
-   Webhook**. In Discord layouts that expose webhooks at server level, use
-   **Server Settings → Integrations → Webhooks → New Webhook**, then select the
-   channel.
-3. Give it a recognizable name such as `Paper workflow`, choose the channel,
-   and select **Copy Webhook URL**.
-4. Never paste the URL into a paper, chat, log, or commit. From a private terminal,
-   run the following and paste it only at the hidden prompt:
-
+**Setting up Discord (default):**
+1. In your Discord channel, open **Edit Channel → Integrations → Webhooks → New Webhook** and copy the webhook URL.
+2. From a private terminal inside the paper repository, run:
    ```bash
    paper configure-notifications --provider discord
    ```
+   Paste the webhook URL at the hidden prompt (pass multiple `OWNER/REPO` arguments to configure several repositories at once).
+3. Test delivery with `paper notify-test`.
 
-   The helper reads this paper's credential-free `github` remote and stores
-   `DISCORD_WEBHOOK_URL` in the protected
-   `paper-notify` GitHub Actions environment and sets
-   `PAPER_NOTIFY_PROVIDER=discord`. The publication workflow's notification job
-   uses that same environment. A repository or organization Actions secret with
-   the exact same name also resolves, but the environment secret is recommended
-   because its default-branch restriction is narrower. Webhook URLs copied with
-   Discord's legacy `discordapp.com` hostname are accepted and stored using the
-   current `discord.com` hostname, avoiding a credential-bearing redirect. To
-   configure several papers with one prompt, append their `OWNER/REPOSITORY`
-   names explicitly.
-5. Commit the generated workflows to each repository's GitHub default branch,
-   run `paper configure-ci` once per paper if its environments are not already
-   configured, and test with `paper notify-test`.
-
-Discord incoming webhooks accept message content or rich embeds. This adapter
-uses a single rich embed, disables mentions, rejects redirects, supplies
-Discord's required API client identification, and validates HTTPS links. See
-Discord's official [webhook API](https://docs.discord.com/developers/resources/webhook#execute-webhook)
-and [webhook setup guide](https://support.discord.com/hc/en-us/articles/228383668-Intro-to-Webhooks).
-
-### Other providers and mobile use
-
-The provider abstraction also supports `webhook` for the existing generic JSON
-payload `{title,message,url}`, `pushover` for backward compatibility, and `none`
-to disable delivery. Pushover is no longer the default; it remains supported so
-existing installations do not lose a working route. Provider secrets retain
-their legacy names (`PAPER_NOTIFY_WEBHOOK_URL`, `PAPER_PUSHOVER_USER_KEY`, and
-`PAPER_PUSHOVER_APP_TOKEN`).
-
-For phone use, install Discord, enable notifications for the selected server and
-channel, and open the private artifact link while signed in to GitHub. Nothing
-else in the workflow depends on a phone.
-
-## Initialization and upgrades
-
-Inside an existing Git repository:
-
-```bash
-paper init
-```
-
-Infrastructure schema version 4 adds conservative LaTeX scaffolding, shared macros,
-and capability-aware drafting instructions. Older initializers refuse this version
-rather than downgrading the new ownership contracts. The initializer is idempotent:
-
-- missing generated files are restored;
-- known, unedited generated files are upgraded using manifest hashes;
-- unknown or edited generated-path collisions stop before any write;
-- custom JSON fields, research notes, task records, and repository-specific
-  `AGENTS.md` content are preserved;
-- only marker-managed notification, feature-cleanup, tasking, and capability-aware drafting blocks are
-  updated in a custom `AGENTS.md`;
-- version 2 `none`/`pushover` configurations migrate to the requested Discord
-  default while retaining legacy Pushover device metadata;
-- newer unsupported schema versions and symlinked generated paths are refused.
-
-Review the result before committing. A typical non-secret configuration is:
-
-```json
-{
-  "version": 4,
-  "base_branch": "main",
-  "overleaf_project_id": "YOUR_PROJECT_ID",
-  "root_tex": "main.tex",
-  "notify_provider": "discord",
-  "pushover_device": ""
-}
-```
-
-`root_tex` controls CI preview compilation. The project ID and base branch are
-discovered from the Overleaf remote when possible. Custom fields are preserved.
-
-For a new repository:
-
-```bash
-paper create OVERLEAF_PROJECT_ID OWNER/REPOSITORY paper
-```
-
-This creates a private GitHub repository, verifies remote identities, installs
-the infrastructure through the canonical `paper init` implementation, commits
-that bootstrap, and pushes the complete initial history. It never repoints an
-existing directory's remotes silently. Running `paper init` directly retains
-the conservative upgrade path for papers that already exist.
-
-## Secrets and trust boundary
-
-The generated environments are restricted to GitHub's default branch:
-
-| Environment | Secrets | Purpose |
-| --- | --- | --- |
-| `paper-publish` | `OVERLEAF_TOKEN` | Fresh synchronization and explicit publication. |
-| `paper-notify` | `DISCORD_WEBHOOK_URL` by default; legacy provider secret if selected | Manual, preview, and publication-result notifications. |
-
-`paper configure-ci` creates/verifies both environments before prompting for the
-Overleaf token. `paper configure-notifications` configures the selected provider
-for one or many repositories. Secret input is hidden and passed directly to
-GitHub; values are not printed. Private repository environments require a GitHub
-plan that supports them. The tooling refuses to fall back to a broader secret
-scope when that protection is unavailable.
-
-Protect the default branch and generated infrastructure. Anyone who can modify
-trusted workflow source or environment rules administers this boundary.
-
-## Optional personal post-open hook
-
-A user-level `~/.config/project-open/config.json` (respecting `XDG_CONFIG_HOME`)
-may contain `{"post_open": ["/absolute/executable", "fixed-argument"]}`.
-No commands are read from project configuration. After a successful terminal
-open or reuse, the launcher runs the hook once, without a shell, appending
-`--project ROOT --session ID --editor-title TITLE` and `--no-reader` for an
-Editor-only opening. The hook must preserve focus, target only the requested
-session and report partial placement. `--no-post-open` skips it for one opening.
-VS Code opening does not run this paired-workspace hook. A hook failure or timeout
-is reported without closing a successfully opened Editor. Portable installs have
-no hook and no machine-specific layout policy.
-
-A hook supporting independent placement may opt in with `"phased_open": true`
-in the same configuration. It receives `--phase editor` and, when Reader opens,
-`--phase reader` in separate concurrent invocations. Each invocation must affect
-only that app. Editor placement receives `--editor-window ID` when available;
-Reader placement receives its acknowledged `--reader-title TITLE` and
-`--reader-window ID` when available. Hooks without this opt-in retain one call
-after both apps start. `--no-post-open` launches/reveals both apps independently.
-
-Set `WORKSPACE_STARTUP_TRACE` to a writable JSONL file to record project
-resolution, Kitty readiness, Editor mapping/reveal, Reader acknowledgement and
-completion times. Each record contains a stage, elapsed milliseconds in that
-process, and its PID. Tracing is optional and failure to write never blocks opening.
-
-## Feature cleanup safety
-
-With no selection, `paper clear-feature-branches` only lists eligibility.
-Exact branch names or `--all-merged` select deletion; `--dry-run` does not fetch
-or delete. Real deletion fetches GitHub first and checks **every local and remote
-tip** against both local and GitHub base branches. Missing objects, unmerged
-work, the base itself and branches checked out in any worktree are retained.
-The selection is checked again after confirmation. Remote deletions use an
-atomic push with exact deletion leases, so a concurrent update is preserved;
-no branch history is rewritten. Local removal uses `git branch -d`, never `-D`.
-Overleaf is neither fetched nor changed by this command.
-
-## Installation
-
-Keep the source checkout in a project directory and install command links:
-
-```bash
-git clone https://github.com/m1gwings/paper-scripts.git ~/Projects/paper-scripts
-bash ~/Projects/paper-scripts/install.sh
-```
-
-Keep `paper`, `lib/`, `templates/`, and `tests/` together. Copying
-only the `paper` executable is not a complete installation. `install.sh` installs
-`paper`, `project-open`, `project-terminal`, and `workspace-edit` links in
-`~/.local/bin` (or `--bin-dir DIRECTORY`), preserving unrelated commands. Linked
-launchers resolve their source checkout. Add the bin directory to PATH yourself
-if needed; system packages and shell settings are not changed.
-
-Requirements:
-
-- Bash, Git and GNU `readlink` for the local lifecycle;
-- Python 3.9+ for initialization, editor launchers, tasks, notifications, and cloud support;
-- GitHub CLI (`gh`) for cloud dispatch and protected setup;
-- `latexmk` plus TeX for local builds;
-- VS Code for `paper open --vscode` (the default), or Kitty and Micro for
-  `paper open --terminal` / `project-open`.
-
-When updating an existing checkout, inspect its status, preserve local work, and
-fast-forward normally. Do not replace the directory or use destructive reset
-commands to force an upgrade.
-
-Automatic preview notifications skip delivery with a clear Actions notice when the
-selected provider has no credentials configured in the protected `paper-notify`
-environment. The build result and artifact stay available in Actions. Invalid
-configuration and delivery failures still fail; explicitly requested
-`paper notify` calls continue to require working delivery configuration.
+`paper configure-notifications` also supports `--provider webhook` (generic JSON `{title, message, url}` via `PAPER_NOTIFY_WEBHOOK_URL`) and `--provider pushover` (`PAPER_PUSHOVER_USER_KEY`, `PAPER_PUSHOVER_APP_TOKEN`, and optional `--device NAME`). To disable notifications, set `"notify_provider": "none"` in `.paper/config.json` (or `PAPER_NOTIFY_PROVIDER=none` in GitHub). Automatic preview notifications skip without failing (emitting an Actions notice) when no provider credentials are configured; explicit `paper notify` calls require valid credentials.
 
 ## Validation
 
-The lightweight validation suite is:
+Run the test suite from the `paper-scripts` root:
 
 ```bash
-bash -n paper project-open lib/create.sh install.sh
+bash -n paper project-open project-terminal workspace-edit lib/create.sh install.sh
 python3 -m unittest discover -s tests -v
 ```
-
-It covers command behavior, synchronization rules, generated-file ownership,
-cloud request matching, notification payloads, protected setup, and preview
-artifact generation. Hosted delivery, GitHub plan permissions, and real Overleaf
-writes remain integration checks and should use disposable or explicitly chosen
-projects.
-
-### Build status for Editor and Reader
-
-Local builds publish atomic `output/.latex/ROOT.build.json` records with building,
-success, failed or idle state, the last successful PDF time, and the first
-compiler error location. Failed builds restore the previous valid PDF. Editor
-and Reader consume this local, ignored status; ordinary projects have no build UI.
-
-Editor source/log handoffs serialize startup per project/session. `workspace-edit
---reveal` selects the document tab and restores its unique desktop window without
-activation. Closed session records can be reused; competing live sessions are
-preserved and reported instead of silently opening another window.
-
-### Automatic Overleaf compilation parity
-
-`paper create` captures Overleaf settings and build outputs over HTTP, restores
-its native environment and verifies the rendered result automatically. Sync,
-publication and active build watchers keep verification fresh without agents or
-manual log downloads. Reader, Editor and CLI show nonblocking warnings when
-cookies, HTTP contracts or verification are unavailable. See
-[automatic Overleaf builds](docs/tex_environment.md) for behavior and diagnostics.
