@@ -40,15 +40,41 @@ class PaperTasksTest(unittest.TestCase):
         self.assertIn('paper notify --title', (self.root / '.paper/WORKFLOW.md').read_text())
         self.assertIn('ignored `output/`', (self.root / '.paper/WORKFLOW.md').read_text())
         self.assertIn('paper-scripts:begin managed-tasking', agents.read_text())
-        self.assertIn('tasks/NNN_short_name/task.md', agents.read_text())
+        self.assertIn('tasks/NNN_slug/task.md', agents.read_text())
+        self.assertFalse((self.root / 'tasks').exists())
         agents.write_text('Personal instructions\n')
-        (self.root / 'tasks' / 'template.md').unlink()
         self.run_paper('init')
         self.assertTrue(agents.read_text().startswith('Personal instructions\n'))
         self.assertIn('paper-scripts:begin managed-notifications', agents.read_text())
         self.assertIn('Discord is the default delivery provider', (self.root / '.paper/WORKFLOW.md').read_text())
         self.assertIn('paper-scripts:begin managed-tasking', agents.read_text())
-        self.assertTrue((self.root / 'tasks' / 'template.md').exists())
+
+    def test_init_retires_only_unmodified_committed_task_queue(self):
+        tasks = self.root / 'tasks'
+        tasks.mkdir()
+        (tasks / 'index.md').write_text('| Task | Status | Record |\n')
+        (tasks / 'template.md').write_text('# NNN: Task title\n')
+        git = ['git', '-C', str(self.root), '-c', 'user.name=T', '-c', 'user.email=t@example.com']
+        subprocess.run([*git, 'add', 'tasks'], check=True)
+        subprocess.run([*git, 'commit', '-qm', 'queue'], check=True)
+        (tasks / 'template.md').write_text('# Edited\n')
+        output = self.run_paper('init')
+        self.assertFalse((tasks / 'index.md').exists())
+        self.assertIn('Retired tasks/index.md', output)
+        self.assertTrue((tasks / 'template.md').exists())
+        self.assertIn('Kept tasks/template.md', output)
+
+    def test_status_reads_generated_records(self):
+        folder = self.root / 'tasks' / '001_regret_bound'
+        folder.mkdir(parents=True)
+        (folder / 'task.md').write_text(
+            '<!-- agents-workspace:begin task-record -->\n<!-- Generated. -->\n# Regret bound\n\n'
+            'Status: paused\nTask: ' + 'a' * 32 + '\nUpdated: 2026-11-23\n\n## Objective\n\nTighten it.\n\n'
+            '## Current checkpoint\n\nLemma 2 verified.\n\nNext: Rewrite Lemma 3.\n'
+            '<!-- agents-workspace:end task-record -->\n')
+        output = self.run_paper('task', 'status')
+        self.assertIn('paused   -      001_regret_bound: Regret bound', output)
+        self.assertIn('Next: Rewrite Lemma 3.', output)
 
     def test_status_filters_counts_and_nested_directory(self):
         active = self.task()
@@ -75,8 +101,8 @@ class PaperTasksTest(unittest.TestCase):
         self.run_paper('init')
         selected = self.task()
         other = self.task('002_keep', 'blocked')
-        index = self.root / 'tasks' / 'index.md'
-        original = index.read_text() + (
+        index = self.root / 'tasks' / 'index.md'  # a legacy queue awaiting retirement
+        original = '| Task | Status | Record |\n| --- | --- | --- |' + (
             '\n| Selected | active | [Record](001_example/task.md) |\n'
             '| Keep | blocked | [Record](002_keep/task.md) |\n')
         index.write_text(original)
@@ -128,7 +154,7 @@ class PaperTasksTest(unittest.TestCase):
         self.assertIn('001_example', self.run_paper('task', 'status'))
 
     def test_usage_and_no_repository(self):
-        self.assertIn('No tasks directory', self.run_paper('task', 'status'))
+        self.assertIn('No task records yet', self.run_paper('task', 'status'))
         self.run_paper('task', 'delete', ok=False)
         self.run_paper('task', 'status', '--invalid', ok=False)
         with tempfile.TemporaryDirectory() as outside:

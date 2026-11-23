@@ -165,12 +165,12 @@ AGENTS.md                              project-specific instructions and managed
 .github/workflows/paper-notify.yml     trusted notification workflow
 .github/workflows/paper-publish.yml    trusted sync and publication workflow
 notes/                                 standalone research notes
-tasks/                                 resumable task records (index.md, template.md, NNN_slug/task.md)
+tasks/                                 task records (NNN_slug/task.md) and task artifacts, created on demand
 ```
 
 Because `.paper/runtime/` is vendored per repository, updating your local `paper-scripts` checkout never silently changes existing papers. Upgrade a paper explicitly by running `paper init`, reviewing the diff, and committing.
 
-**Task records (`tasks/`):** To track a multi-step research or writing task, copy `tasks/template.md` to `tasks/NNN_short_name/task.md` and register it in `tasks/index.md`. Inspect progress with `paper task status` (or `--all`) and recoverably delete tasks by number (e.g., `002`) or folder name with `paper task delete`.
+**Task records (`tasks/`):** Multi-step research or writing tasks are tracked by `agents-workspace` checkpoints: the first checkpoint of a task creates `tasks/NNN_slug/task.md` with a generated block (title, status, task ID, objective, current checkpoint, next step), and the folder keeps the task's artifacts. Notes below the block are preserved, and the Git-tracked record lets `agents-workspace resume` import the task on another machine. Without `agents-workspace`, write the same record by hand. Inspect progress with `paper task status` (or `--all`) and recoverably delete tasks by number (e.g., `002`) or folder name with `paper task delete`. `paper init` retires the `tasks/index.md` queue and `tasks/template.md` of older layouts when Git holds them unmodified.
 
 ### Scaffolding and upgrades
 
@@ -316,6 +316,7 @@ All core lifecycle, build, note, task, cloud, and terminal-launching commands wo
 | `workspace-read` | Native live-reloading PDF and Markdown viewer (`paper view`, `paper open`, `project-open --read`). Falls back to Evince or `xdg-open` for PDFs. |
 | `workspace-project` | Project alias resolution (`paper open "alias"`), `--hot`, and `--list`. |
 | `workspace-overleaf` | Automatic Overleaf HTTP capture and background parity checks (`paper tex sync`). |
+| `agents-workspace` | Task records written from durable checkpoints (`tasks/NNN_slug/task.md`) and cross-machine task import. |
 | `workspace-desktop` | Passive window reveal without stealing keyboard focus when opening or reusing terminal workspaces. |
 | Micro mailbox plugin | Workspace reuse, live buffer inspection, and guarded edits (`workspace-edit list/status/read/apply/save/reload/view`). |
 

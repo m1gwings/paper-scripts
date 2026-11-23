@@ -394,7 +394,7 @@ class InfrastructureTest(test_workflow.WorkflowTest):
         self.assertIn('paper clear-feature-branches', workflow)
         self.assertIn('paper-scripts:begin managed-tasking', text)
         self.assertIn('## Tasks and resumption', text)
-        self.assertIn('tasks/NNN_short_name/task.md', text)
+        self.assertIn('tasks/NNN_slug/task.md', text)
         self.assertIn('## Token use and delegation', text)
         before = text
         self.paper('init')

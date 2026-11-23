@@ -29,8 +29,8 @@ class ExistingCreateTest(test_workflow.WorkflowTest):
         self.assertTrue((self.repo / '.paper/manifest.json').exists())
         agents = (self.repo / 'AGENTS.md').read_text()
         self.assertIn('paper-scripts:begin managed-tasking', agents)
-        self.assertIn('tasks/NNN_short_name/task.md', agents)
-        self.assertTrue((self.repo / 'tasks/index.md').exists())
+        self.assertIn('tasks/NNN_slug/task.md', agents)
+        self.assertTrue((self.repo / 'notes/README.md').exists())
 
     def test_mismatched_existing_project_refused(self):
         result = subprocess.run(['bash', str(PAPER), 'create', 'wrongproject', 'owner/paper', str(self.repo)],
@@ -117,7 +117,7 @@ class ExistingCreateTest(test_workflow.WorkflowTest):
         self.assertEqual(self.git('rev-parse', '--abbrev-ref', '@{upstream}', cwd=fresh),
                          'github/master')
         self.assertIn('paper-scripts:begin managed-tasking', agents)
-        self.assertIn('tasks/NNN_short_name/task.md', agents)
+        self.assertIn('tasks/NNN_slug/task.md', agents)
         self.assertEqual(
             self.git('--git-dir', str(github), 'show', 'master:AGENTS.md', cwd=self.root),
             agents.rstrip())

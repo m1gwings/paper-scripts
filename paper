@@ -330,12 +330,12 @@ init_paper() {
         [[ ! -L "$path" && ( ! -e "$path" || -d "$path" ) ]] \
             || die "Cannot initialize: '$path' must be a directory, not a file or symlink."
     done
-    for path in AGENTS.md notes/README.md tasks/index.md tasks/template.md; do
+    for path in AGENTS.md notes/README.md; do
         [[ ! -d "$path" ]] \
             || die "Cannot initialize: '$path' is a directory."
     done
 
-    mkdir -p notes tasks
+    mkdir -p notes
 
     create_init_file notes/README.md <<'NOTES'
 # Research notes
@@ -345,49 +345,30 @@ Keep mathematical derivations, examples, conjectures, and reusable proof argumen
 Create new notes with:
     paper note new <name>
 
-Keep assignments, progress tracking, handoffs, and revision-specific verification in `../tasks/`. Link to the relevant task when useful; avoid duplicating mathematical content.
+Task records, progress, handoffs, and task-specific verification live in `../tasks/NNN_slug/`. Link to the relevant task when useful; avoid duplicating mathematical content.
 NOTES
 
-    create_init_file tasks/index.md <<'INDEX'
-# Task queue
+    retire_task_queue
 
-List tasks in intended execution order. Each linked task record is authoritative for its scope and checkpoint; keep this status summary consistent. Preserve completed entries for reference.
-
-| Task | Status | Record |
-| --- | --- | --- |
-
-For substantial work, copy `template.md` to `NNN_short_name/task.md` using the next unused number, and add a row above. Statuses: queued, active, paused, blocked, done. Keep folder names stable when status changes. Read only the relevant task and its linked material when resuming.
-
-Use `paper task status` to list open tasks, `paper task status --all` to include completed tasks, and `paper task delete ID` to remove selected records with confirmation and a recovery copy in `.trash/`.
-INDEX
-
-    create_init_file tasks/template.md <<'TASK'
-# NNN: Task title
-
-Status: queued
-Updated: YYYY-MM-DD
-
-## Objective and scope
-
-User request, constraints, authorization, and completion criteria.
-
-## Steps
-
-- [ ] Next meaningful step (add dependencies only if needed).
-
-## Current checkpoint
-
-- Established results and decisions:
-- Unresolved obligations or blockers:
-- Affected files and pre-existing edits to preserve:
-- Verification: command/check, result, and what remains unverified.
-- Next concrete action:
-
-Link to supporting mathematics or audits instead of copying them. If delegating, record each assignment's scope, file ownership, dependencies, and result here. Keep only information needed to resume and verify the work.
-TASK
-
-    printf '\nResearch notes and task records are ready; existing entries were preserved.\n'
+    printf '\nResearch notes are ready; existing entries were preserved.\n'
     printf 'Starter installation and managed infrastructure upgrades follow below.\n'
+}
+
+# Task records are generated from agents-workspace checkpoints, so the hand-kept
+# queue and template of older layouts are redundant. Remove them only when Git
+# holds them unmodified, so `git show` recovers them.
+retire_task_queue() {
+    local path
+    for path in tasks/index.md tasks/template.md; do
+        [[ -f "$path" && ! -L "$path" ]] || continue
+        if git ls-files --error-unmatch -- "$path" >/dev/null 2>&1 \
+                && git diff --quiet HEAD -- "$path" 2>/dev/null; then
+            rm -- "$path"
+            printf 'Retired %s (task records are generated from workspace checkpoints).\n' "$path"
+        else
+            printf 'Kept %s: commit or remove it; task records no longer use it.\n' "$path"
+        fi
+    done
 }
 
 task_command() {
@@ -421,7 +402,8 @@ def task_record(path):
     title = re.search(r'^#\s+(.+)', header, re.M)
     steps = re.search(r'^## Steps\s*\n(.*?)(?=^## |\Z)', text, re.M | re.S)
     checks = re.findall(r'^\s*- \[([ xX])\]', steps[1], re.M) if steps else []
-    next_action = re.search(r'^- Next concrete action:[ \t]*([^\n]*)', text, re.M)
+    next_action = (re.search(r'^Next:[ \t]*([^\n]*)', text, re.M)
+                   or re.search(r'^- Next concrete action:[ \t]*([^\n]*)', text, re.M))
     return {'path': path, 'status': status,
             'title': title[1].strip() if title else path.name,
             'progress': f'{sum(c.lower() == "x" for c in checks)}/{len(checks)}' if checks else '-',
@@ -443,8 +425,8 @@ def main():
         fail('Refusing a symlinked tasks directory.')
     if not tasks.exists():
         if action == 'delete':
-            fail('No tasks directory. Run paper init first.')
-        print('No tasks directory. Run paper init to create a task queue.')
+            fail('No task records.')
+        print('No task records yet. The first workspace checkpoint of a task creates tasks/NNN_slug/task.md.')
         return
     if not tasks.is_dir():
         fail('tasks is not a directory.')
@@ -534,7 +516,7 @@ def main():
         if pending is not None and pending.exists():
             pending.unlink()
     print(f'Deleted {len(selected)} task(s) from the queue. Recovery copy: {batch}')
-    print('To restore, move the task folder back into tasks/ and re-add its index row.')
+    print('To restore, move the task folder back into tasks/' + (' and re-add its index row.' if original is not None else '.'))
     print('Review links from other notes/tasks to the deleted records before committing.')
 
 

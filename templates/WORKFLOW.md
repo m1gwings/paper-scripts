@@ -74,19 +74,26 @@ Never provide an Overleaf or notification token to the cloud client. See the set
 
 ## Tasks and resumption
 
-- Before substantial edits, sustained proof work, or meaningful verification,
-  create/resume `tasks/NNN_short_name/task.md` from `tasks/template.md` and link it
-  in `tasks/index.md`. Reuse it for related follow-ups. Tiny corrections, questions,
-  and discussion need no record; a no-changes instruction also prohibits bookkeeping.
-- Keep folders stable and exactly one `Status: ...` line before the first subsection:
-  queued, active, paused, blocked, or done. Keep the index consistent. Queued ideas
-  and saved checkpoints do not authorize or automatically resume execution.
-- Resume from the index and relevant current checkpoint, then inspect the tree;
-  consult older material only as needed. Reconcile discrepancies rather than restart.
-- Save substantive milestones and a final checkpoint with established results,
-  decisions, unresolved obligations, affected files, verification, and next action.
-  Replace stale text; link proofs/logs instead of duplicating them. Separate proved
-  results from manuscript integration; mark done only when scope/checks are complete.
+- Claim substantial edits, sustained proof work, or meaningful verification as an
+  agents-workspace task and save compact checkpoints (`workspace_checkpoint` or
+  `agents-workspace checkpoint`). The first checkpoint creates
+  `tasks/NNN_slug/task.md`; later checkpoints, release, and completion keep its
+  generated block current. Do not edit that block by hand or keep a separate index.
+  Reuse the task for related follow-ups. Without agents-workspace, write the same
+  record by hand.
+- A checkpoint states the current state, not history: established results and
+  decisions, unresolved obligations, affected files and preserved edits,
+  verification, and the next action. Separate proved results from manuscript
+  integration; complete with `workspace_done` only when scope and checks are done.
+- Keep task artifacts (audits, verification scripts, reports, provenance) in the
+  task folder and link them below the record's end marker; keep reusable
+  mathematics in `notes/`. Commit records with the work they describe.
+- Resume with `workspace_resume`; a folder name, number, or title also imports a
+  record synced from another machine. Then inspect the tree and the task's
+  artifacts, and reconcile discrepancies rather than restart. Saved checkpoints
+  do not authorize or automatically resume execution.
+- `paper task status [--all]` lists records; `paper task delete ID` moves them to
+  `tasks/.trash/` after confirmation.
 
 ## Token use and delegation
 

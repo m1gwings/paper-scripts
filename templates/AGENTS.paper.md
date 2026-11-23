@@ -12,7 +12,7 @@
   This exception applies only to document editing, not tool or infrastructure changes.
 <!-- paper-scripts:end managed-feature-cleanup -->
 - Inspect the existing layout, notation, macros, and build instructions before editing.
-- Keep research knowledge (derivations, conjectures, examples, reusable proof audits) in `notes/`. Keep task management, checkpoints, and revision-specific verification in `tasks/`; link between them instead of duplicating content.
+- Keep research knowledge (derivations, conjectures, examples, reusable proof audits) in `notes/`. Keep task records and task-specific artifacts (revision-specific verification, audits, reports) in `tasks/`; link between them instead of duplicating content.
 - Preserve pre-existing user edits. Make the smallest change sufficient for correctness; avoid unrelated stylistic changes.
 - Track all manuscript modifications across all files (main text, appendices, algorithms, tables, checklists) using `\AgentsIns{new}`, `\AgentsDel{old}`, and `\AgentsReplaceMath{old}{new}` by default (see *Draft revisions and review* below).
 
@@ -89,9 +89,10 @@
 <!-- paper-scripts:begin managed-tasking -->
 ## Tasks and resumption
 
-- Substantial work requires a task checkpoint in `tasks/NNN_short_name/task.md`
-  and `tasks/index.md`; follow `.paper/WORKFLOW.md#tasks-and-resumption`.
-  Tiny corrections and discussion need no checkpoint; no-changes excludes bookkeeping.
+- Track substantial work with workspace checkpoints, which write
+  `tasks/NNN_slug/task.md`; keep the task's artifacts in that folder. Follow
+  `.paper/WORKFLOW.md#tasks-and-resumption`. Tiny corrections and discussion
+  need no task; no-changes excludes bookkeeping.
 
 ## Token use and delegation
 
