@@ -23,14 +23,14 @@ flowchart LR
 
 ## Installation
 
-Clone the repository and install command symlinks into `~/.local/bin` (or pass `--bin-dir DIRECTORY`):
+Clone the repository and publish it with `workspace-release` (part of the agents configuration):
 
 ```bash
 git clone https://github.com/m1gwings/paper-scripts.git ~/Projects/paper-scripts
-bash ~/Projects/paper-scripts/install.sh
+workspace-release publish ~/Projects/paper-scripts
 ```
 
-This links four commands (`paper`, `project-open`, `project-terminal`, and `workspace-edit`) while keeping the source checkout in place. Ensure `~/.local/bin` is on your `PATH`.
+Publishing tests the committed tree, stores it as an immutable release, and links four commands (`paper`, `project-open`, `project-terminal`, and `workspace-edit`) in `~/.local/bin` to that release, as declared in `release.toml`. Uncommitted edits in the checkout never reach the installed commands; publish again after committing a change. Ensure `~/.local/bin` is on your `PATH`.
 
 **Core requirements:**
 - Bash, Git, GNU `readlink`, and Python 3.9+ (required for installation and all `paper` commands).
@@ -368,6 +368,6 @@ paper notify --title "Proof audit complete" \
 Run the test suite from the `paper-scripts` root:
 
 ```bash
-bash -n paper project-open project-terminal workspace-edit lib/create.sh install.sh
+bash -n paper project-open project-terminal workspace-edit lib/create.sh
 python3 -m unittest discover -s tests -v
 ```

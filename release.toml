@@ -1,0 +1,14 @@
+# Published with `workspace-release publish ~/Projects/paper-scripts`.
+# The four commands run from an immutable, tested release; this checkout is for
+# development only. Paper projects vendor their runtime from the live release.
+name = "paper-scripts"
+
+[check]
+unittest = "tests"
+commands = [["bash", "-n", "paper", "project-open", "project-terminal", "workspace-edit", "lib/create.sh"]]
+
+[links]
+"~/.local/bin/paper" = "paper"
+"~/.local/bin/project-open" = "project-open"
+"~/.local/bin/project-terminal" = "project-terminal"
+"~/.local/bin/workspace-edit" = "workspace-edit"

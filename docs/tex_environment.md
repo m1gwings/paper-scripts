@@ -93,8 +93,8 @@ verified profiles; unknown images produce a warning instead of silently choosing
 a different annual release.
 
 Native restoration needs Linux x86_64, Python 3.12+, Perl, curl, tar and xz.
-Poppler's `pdftoppm` is required for output verification. `./install.sh` installs
-Paper Scripts command links. `paper init --workflow-only` deploys the shared runtime
+Poppler's `pdftoppm` is required for output verification. `workspace-release publish`
+installs the Paper Scripts commands. `paper init --workflow-only` deploys the shared runtime
 conservatively to existing projects; custom Actions workflows are preserved and
 must use the same installer/build declaration. The managed preview worker uses
 the selected compiler, root and Overleaf job name (`output`), then checks versions.
