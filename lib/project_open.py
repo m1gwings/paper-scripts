@@ -1,20 +1,15 @@
 """Open a local project in a graphical editor or a Kitty/Micro workspace."""
 import argparse
+import json
 import os
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 import sys
-import tempfile
-import shlex
-import fcntl
-import json
 import time
-from concurrent.futures import ThreadPoolExecutor
 from project_metadata import metadata
 from project_workspace import prepare, register
-from viewer import open_pdf
-from desktop_launch import snapshot as desktop_snapshot, wait_new as desktop_wait, present as desktop_present, existing_window
 
 
 SESSION = """layout fat:bias=74
@@ -43,6 +38,9 @@ KITTY_OVERRIDES = [
 ]
 
 
+SESSION_POLL_INTERVAL = 0.015
+
+
 def start_session(process, session, address):
     """Deliver the session and stop waiting as soon as Kitty accepts control.
 
@@ -51,14 +49,14 @@ def start_session(process, session, address):
     """
     deadline = time.monotonic() + 1
     try:
-        process.communicate(session, timeout=.05)
+        process.communicate(session, timeout=SESSION_POLL_INTERVAL)
     except subprocess.TimeoutExpired:
         while not Path(address).is_socket():
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 return
             try:
-                process.communicate(timeout=min(.05, remaining))
+                process.communicate(timeout=min(SESSION_POLL_INTERVAL, remaining))
                 return
             except subprocess.TimeoutExpired:
                 pass
@@ -109,6 +107,7 @@ def post_open(directory, identifier, label, no_reader=False, *, phase=None, wind
 
 def ensure_watcher(directory, source, identifier):
     """Restore Build when paper open reuses an editor opened standalone."""
+    import fcntl
     # A pinned runtime may still be watching with the previous visible layout.
     for output in ('output/.latex', 'output'):
         for lock_name in ('.project.watch.lock', source.parent / f'.{source.stem}.watch.lock'):
@@ -178,7 +177,12 @@ def resolve_target(target, paper, parser):
     if not touched:
         wp = shutil.which('workspace-project')
         if wp:
-            subprocess.run([wp, 'touch', str(directory)], capture_output=True)
+            try:
+                subprocess.Popen([wp, 'touch', str(directory)],
+                                 stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL, start_new_session=True)
+            except OSError:
+                pass
 
     return directory
 
@@ -290,9 +294,11 @@ def run(argv=None):
     pdf = directory / 'output' / source.with_suffix('.pdf')
     def reader_for(identifier):
         if reading:
+            from viewer import open_pdf
             return open_pdf(reading, directory, identifier, focus=args.focus)
         if paper and not args.no_reader and ((directory / source).is_file() or pdf.is_file()):
             try:
+                from viewer import open_pdf
                 # Opening a paper selects/reveals its manuscript. Reader's
                 # explicit focus flag is separate from background tab updates.
                 state = open_pdf(pdf, directory, identifier)
@@ -314,11 +320,11 @@ def run(argv=None):
             parser.error('Multiple editors match; select --session or use --new.')
         if matches:
             if reading:
+                from desktop_launch import existing_window, desktop
                 # Do not switch/reload existing buffers merely to enter the library.
                 window = existing_window('workspace-editor', f'Editor — {label}')
                 if not args.no_post_open:
                     post_open(directory, matches[0]['session'], label, phase='editor', window=window)
-                from desktop_launch import desktop
                 reader_and_place(matches[0]['session'])
                 if not desktop('minimize', '--window', window).get('ok'):
                     raise ValueError('Reader opened, but the paired Editor could not be minimized.')
@@ -333,6 +339,8 @@ def run(argv=None):
                     print(f'Editor reused; could not verify/start the build watcher: {error}', file=sys.stderr)
             def reveal_reused(*, phase=None, activate=False, place=True):
                 bridge = shutil.which('workspace-desktop')
+                if bridge:
+                    from desktop_launch import existing_window, present as desktop_present
                 window = existing_window('workspace-editor', f'Editor — {label}') if bridge else None
                 if place and not args.no_post_open:
                     post_open(directory, matches[0]['session'], label, args.no_reader or not paper, phase=phase, window=window)
@@ -360,12 +368,18 @@ def run(argv=None):
                 mark('editor_revealed')
                 return window
             if independent:
-                with ThreadPoolExecutor(max_workers=1) as workers:
-                    pending = workers.submit(reader_and_place, matches[0]['session'])
+                need_reader = bool(paper and not args.no_reader and ((directory / source).is_file() or pdf.is_file()))
+                if need_reader:
+                    from concurrent.futures import ThreadPoolExecutor
+                    with ThreadPoolExecutor(max_workers=1) as workers:
+                        pending = workers.submit(reader_and_place, matches[0]['session'])
+                        window = reveal_reused(phase='editor')
+                        pending.result()
+                else:
                     window = reveal_reused(phase='editor')
-                    pending.result()
                 if args.focus:
                     if window:
+                        from desktop_launch import present as desktop_present
                         desktop_present(window, focus=True)
                     else:
                         reveal_reused(activate=True, place=False)
@@ -396,7 +410,11 @@ def run(argv=None):
     # On COSMIC, stage the window without activation so the placement hook can
     # move it to its intended monitor. Explicit activation happens last.
     staged = bool(reading) or not args.focus or cosmic
-    existing_windows = desktop_snapshot() if staged else None
+    if staged:
+        from desktop_launch import snapshot as desktop_snapshot, wait_new as desktop_wait, present as desktop_present
+        existing_windows = desktop_snapshot()
+    else:
+        existing_windows = None
     command = [kitty, '--listen-on', 'unix:' + workspace['socket'], '--directory', str(directory),
                '--class', 'workspace-editor', '--name', 'workspace-editor',
                '--title', f'Editor — {label}', '--session', '-']
@@ -421,6 +439,7 @@ def run(argv=None):
         env.pop(name, None)
     # Kitty's --detach can return success before parsing a broken session.
     # Detach the process ourselves and report failures during initial startup.
+    import tempfile
     state = Path(env.get('XDG_STATE_HOME') or Path.home() / '.local/state') / 'project-open'
     state.mkdir(parents=True, exist_ok=True)
     with tempfile.NamedTemporaryFile(mode='w+', prefix='kitty-', suffix='.log',
@@ -465,12 +484,17 @@ def run(argv=None):
                 mark('complete')
                 return
             if independent:
-                # Each app can become usable while the other initializes. Only
-                # hooks declaring phase support receive separate placement calls.
-                with ThreadPoolExecutor(max_workers=1) as workers:
-                    pending = workers.submit(reader_and_place, workspace['id'])
+                need_reader = bool(paper and not args.no_reader and ((directory / source).is_file() or pdf.is_file()))
+                if need_reader:
+                    from concurrent.futures import ThreadPoolExecutor
+                    # Each app can become usable while the other initializes. Only
+                    # hooks declaring phase support receive separate placement calls.
+                    with ThreadPoolExecutor(max_workers=1) as workers:
+                        pending = workers.submit(reader_and_place, workspace['id'])
+                        window = reveal_editor(phase='editor', focus=False)
+                        pending.result()
+                else:
                     window = reveal_editor(phase='editor', focus=False)
-                    pending.result()
                 if args.focus and window:
                     desktop_present(window, focus=True)
             else:

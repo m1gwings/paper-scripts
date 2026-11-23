@@ -194,6 +194,7 @@ def run(argv=None):
     parser = argparse.ArgumentParser(description='Add interactive terminals to an existing project Kitty window.')
     commands = parser.add_subparsers(dest='action', required=True)
     listing = commands.add_parser('list', help='list live project workspaces and their tabs/panes')
+    listing.add_argument('--session', help='inspect only this workspace session ID')
     listing.add_argument('--json', action='store_true')
     toggle = commands.add_parser('toggle', help='show/hide the editor terminal, preserving its process and height')
     toggle.add_argument('--project')
@@ -218,7 +219,8 @@ def run(argv=None):
     add.add_argument('--json', action='store_true')
     add.add_argument('command', nargs=argparse.REMAINDER, help='-- PROGRAM ARG ...; shell remains after exit')
     args = parser.parse_args(argv)
-    records = live_workspaces()
+    target_session = getattr(args, 'session', None) or getattr(args, 'workspace', None)
+    records = live_workspaces(session=target_session)
     if args.action == 'list':
         if args.json:
             print(json.dumps(records, indent=2))
