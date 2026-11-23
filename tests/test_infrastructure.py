@@ -1,6 +1,7 @@
 import hashlib
 import json
 import re
+import os
 import shutil
 from pathlib import Path
 import subprocess
@@ -159,7 +160,7 @@ class InfrastructureTest(test_workflow.WorkflowTest):
     def editable_tooling(self):
         source = TEMPLATES.parent
         target = self.root / 'tooling'
-        shutil.copytree(source, target, ignore=shutil.ignore_patterns('.git', '__pycache__'))
+        shutil.copytree(source, target, ignore=shutil.ignore_patterns('.git', '__pycache__'), copy_function=lambda a, b: shutil.copy2(a, b) and os.chmod(b, os.stat(b).st_mode | 0o200))
         for kind in ('paper', 'poster', 'slides'):
             path = target / 'templates' / f'AGENTS.{kind}.md'
             content = path.read_text()

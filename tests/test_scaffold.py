@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+import os
 import shutil
 import subprocess
 import test_workflow
@@ -86,7 +87,7 @@ class ScaffoldTest(test_workflow.WorkflowTest):
         self.paper('init', '--force')
         (self.repo / 'main.tex').write_text('my manuscript')
         tooling = self.root / 'tooling'
-        shutil.copytree(SOURCE, tooling, ignore=shutil.ignore_patterns('.git', '__pycache__'))
+        shutil.copytree(SOURCE, tooling, ignore=shutil.ignore_patterns('.git', '__pycache__'), copy_function=lambda a, b: shutil.copy2(a, b) and os.chmod(b, os.stat(b).st_mode | 0o200))
         package = tooling / 'templates/latex/papermacros.sty'
         package.write_text(package.read_text() + '\n% newer package\n')
         result = subprocess.run(['bash', str(tooling / 'paper'), 'init'], cwd=self.repo,

@@ -95,7 +95,7 @@ class OverleafBuildTest(unittest.TestCase):
         import time
         source=self.root/'main.tex';source.write_text(r'\documentclass{article}\begin{document}Before reload.\end{document}')
         runtime=self.root/'.paper/runtime'
-        shutil.copytree(SCRIPT.parent/'lib',runtime/'lib',ignore=shutil.ignore_patterns('__pycache__'))
+        shutil.copytree(SCRIPT.parent/'lib',runtime/'lib',ignore=shutil.ignore_patterns('__pycache__'), copy_function=lambda a, b: shutil.copy2(a, b) and os.chmod(b, os.stat(b).st_mode | 0o200))
         output=self.root/'watch.log'
         with output.open('w') as log:
             process=subprocess.Popen([sys.executable,str(runtime/'lib/build.py'),'build','--watch'],env=dict(os.environ,PAPER_OVERLEAF_AUTO='0'),stdout=log,stderr=log)
