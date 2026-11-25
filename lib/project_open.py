@@ -145,6 +145,8 @@ def resolve_target(target, paper, parser):
                 if res.returncode == 0:
                     try:
                         info = json.loads(res.stdout)
+                        if not info.get('resolved_path'):  # a path outside every project
+                            parser.error(f"Not a directory and no matching project found for '{target}'.")
                         directory = Path(info['resolved_path'])
                         if not directory.is_dir():
                             parser.error(f"Matched project path does not exist: {directory}")

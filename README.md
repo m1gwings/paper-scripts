@@ -265,6 +265,7 @@ paper open                            # open current paper using configured edit
 paper open --terminal                 # Kitty + Micro + Build tab + PDF viewer
 paper open --vscode                   # VS Code window
 paper open "journal extension"        # resolve a registered project alias (requires workspace-project)
+project-open ~/repo/src/main.py       # open the project that owns a file (requires workspace-project)
 paper open --hot                      # list recently used projects (requires workspace-project)
 project-open --read index.md DIR      # open Markdown in workspace-read with a minimized editor
 ```
@@ -314,7 +315,7 @@ All core lifecycle, build, note, task, cloud, and terminal-launching commands wo
 | Companion | Activated capabilities |
 | --- | --- |
 | `workspace-read` | Native live-reloading PDF and Markdown viewer (`paper view`, `paper open`, `project-open --read`). Falls back to Evince or `xdg-open` for PDFs. |
-| `workspace-project` | Project alias resolution (`paper open "alias"`), `--hot`, and `--list`. |
+| `workspace-project` | Project alias resolution (`paper open "alias"`), the project owning a file path, `--hot`, and `--list`. |
 | `workspace-overleaf` | Automatic Overleaf HTTP capture and background parity checks (`paper tex sync`). |
 | `agents-workspace` | Task records written from durable checkpoints (`tasks/NNN_slug/task.md`) and cross-machine task import. |
 | `workspace-desktop` | Passive window reveal without stealing keyboard focus when opening or reusing terminal workspaces. |

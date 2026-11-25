@@ -424,6 +424,17 @@ sys.exit(1)
         self.assertIn('Matched Test Paper', output)
         self.assertEqual(self.record()['args'], ['--new-window', str(self.project)])
 
+    def test_path_outside_every_project_is_rejected(self):
+        wp = self.bin / 'workspace-project'
+        # `resolve PATH --json` reports a Loose path with an empty root and no resolved_path.
+        wp.write_text(f'#!{sys.executable}\n' + '''import json
+print(json.dumps({'root': '', 'id': '', 'label': '', 'registered': False}))
+''')
+        wp.chmod(0o755)
+        output = self.launch('/nonexistent/notes.txt', cwd=self.root, ok=False)
+        self.assertIn('no matching project found', output)
+        self.assertFalse(self.log.exists())
+
     def test_paper_open_hot_delegates_to_workspace_project(self):
         wp = self.bin / 'workspace-project'
         wp.write_text(f'#!{sys.executable}\n' + '''import sys
