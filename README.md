@@ -132,6 +132,7 @@ Run `paper help` for the complete reference and `paper examples` for compact rec
 | Command | Description |
 | --- | --- |
 | `paper build [--watch] [ROOT.tex]` | Compile with `latexmk` into `output/` (default: `main.tex`). Without a root, `--watch` watches all standalone `.tex` documents. |
+| `paper watch register \| unregister ROOT [--client NAME] [--pid PID]` | Add or remove a project of the shared build watcher; `paper watch status [--json]` lists them and `paper watch stop` stops it. |
 | `paper view [ROOT.tex]` | Build and open the PDF in `workspace-read`, Evince, or the system viewer. |
 | `paper clean [ROOT.tex]` | Remove generated build files for the selected document. |
 | `paper note new NAME [--title TITLE] [--open] [--force]` | Create a standalone LaTeX note in `notes/<name>.tex` using the project's macros. |
@@ -204,6 +205,16 @@ If creation stops midway, inspect `git status`, `git remote -v`, and `gh repo vi
 `paper build [ROOT.tex]` compiles with `latexmk` and writes the PDF to `output/main.pdf` (or `output/<subdir>/<name>.pdf` for nested roots such as `notes/lower_bound.tex`). Auxiliary files, logs, SyncTeX data, and build status (`output/.latex/<stem>.build.json`) stay hidden inside `output/.latex/`. Keep `/output/` in `.gitignore` rather than ignoring `*.pdf`, so tracked source figures remain versioned.
 
 - **Watch mode (`paper build --watch [ROOT.tex]`):** rebuilds automatically on source or dependency changes. Without a root argument, it discovers and watches all standalone `.tex` documents in the repository (such as `main.tex` and `notes/*.tex`), mirroring their paths under `output/`, and rebuilds whenever any TeX/BibTeX input recorded in `.fls`/`.fdb_latexmk` (including generated figures and symlinks) changes. Builds are serialized by a lock, and failed builds preserve the last valid PDF and SyncTeX map.
+- **Shared build watcher (`paper watch`):** one background process per user watches every project open in Editor or Reader exactly as `paper build --watch` does, running each build as a `paper build ROOT.tex` child in its project. Builds of different projects run concurrently, builds within a project stay serialized, and a failing project never affects the others. The daemon starts on the first registration, listens on `$XDG_RUNTIME_DIR/paper/watch.sock`, logs to `~/.local/state/paper/watch.log` (each project's compiler output goes to `output/.latex/.watch.log`), and exits when the last project unregisters. A project stays watched while any client holds it:
+
+  ```bash
+  paper watch register ROOT --client editor --pid EDITOR_PID   # idempotent; any path inside the repository
+  paper watch register ROOT --client reader --pid READER_PID
+  paper watch unregister ROOT --client editor                  # --all drops every client
+  paper watch status --json                                    # {"running", "pid", "projects": [{"root", "clients", "state", "building", "sources", "error"}]}
+  ```
+
+  With `--pid`, the client is dropped automatically when that process exits. Registration resolves the Git top level, ignores repositories without `.paper/config.json` or standalone `.tex` documents, and records the caller's runtime, whose `build.py` runs the project's builds. A project that a `paper build --watch` process already watches (`output/.latex/.project.watch.lock`) is left to it and taken over once that process stops. A rewritten runtime (for instance after `paper init` upgrades `.paper/runtime`) reloads the daemon in place, keeping its registrations.
 - **Viewing (`paper view [ROOT.tex]`):** builds and opens the PDF in `workspace-read` when installed, falling back to Evince or `xdg-open` (override with `PAPER_PDF_VIEWER`).
 - **Overleaf compilation parity (`paper tex`):** when the optional `workspace-overleaf` HTTP connector is installed, `paper create`, `paper sync`, `paper publish`, and watch builds automatically capture Overleaf's compiler, TeX Live image, and build outputs, restore a matching frozen native TeX Live environment, and verify rendered page parity without blocking editing. Standalone users can also import an Overleaf compile log manually via `paper tex capture` and `paper tex install`. See [`docs/tex_environment.md`](docs/tex_environment.md) for supported environments, caching, and diagnostics.
 
@@ -258,11 +269,11 @@ Paths are repository-relative without globs (`references/` is reading material; 
 
 ### Opening projects (`paper open` and `project-open`)
 
-`paper open` opens a paper repository in either VS Code or a terminal workspace (Kitty + Micro + bottom shell + background build watcher + PDF viewer). `project-open` provides the same launcher for any directory, including non-Git projects.
+`paper open` opens a paper repository in either VS Code or a terminal workspace (Kitty + Micro + bottom shell + PDF viewer, with the project registered in the shared build watcher). `project-open` provides the same launcher for any directory, including non-Git projects.
 
 ```bash
 paper open                            # open current paper using configured editor
-paper open --terminal                 # Kitty + Micro + Build tab + PDF viewer
+paper open --terminal                 # Kitty + Micro + PDF viewer; builds via paper watch
 paper open --vscode                   # VS Code window
 paper open "journal extension"        # resolve a registered project alias (requires workspace-project)
 paper open --hot                      # list recently used projects (requires workspace-project)

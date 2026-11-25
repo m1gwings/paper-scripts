@@ -664,6 +664,11 @@ COMMANDS
       --watch with an explicit ROOT.tex watches that single document.
       Stop with Ctrl+C.
 
+  paper watch register|unregister ROOT [--client NAME] [--pid PID]
+  paper watch status [--json] | paper watch stop
+      One background watcher builds every registered project like
+      paper build --watch; it exits when the last project unregisters.
+
   paper view [ROOT.tex]
       Build and open output/ROOT.pdf in Evince (or the system PDF viewer).
 
@@ -867,6 +872,11 @@ Use 'paper sync' to reconcile manuscript changes and 'paper publish' to publish 
         ;;
     build|clean|view)
         helper build "$CMD" "$@"
+        exit 0
+        ;;
+
+    watch)
+        helper build_watcher "$@"
         exit 0
         ;;
 
