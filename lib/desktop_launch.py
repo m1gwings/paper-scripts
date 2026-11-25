@@ -77,3 +77,18 @@ def reveal_existing(app_id, title, *, focus=False):
     window = existing_window(app_id, title)
     present(window, focus=focus)
     return window
+
+
+def single_window(title, remembered=None):
+    """The single Editor's desktop window: its remembered ID, else the one exact title.
+
+    Per-project Editors of older releases share the app ID and may share a title
+    prefix until they close, so titles alone never select among several windows.
+    """
+    windows = [w for w in desktop('info', '--no-focus')['windows'] if w.get('id') and w['app_id'] == 'workspace-editor']
+    if remembered and any(w['id'] == remembered for w in windows):
+        return remembered
+    exact = [w['id'] for w in windows if w['title'] == title]
+    if len(exact) != 1:
+        raise ValueError('Cannot identify the Editor window to reveal; close older per-project Editors and retry.')
+    return exact[0]

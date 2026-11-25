@@ -258,7 +258,7 @@ Paths are repository-relative without globs (`references/` is reading material; 
 
 ### Opening projects (`paper open` and `project-open`)
 
-`paper open` opens a paper repository in either VS Code or a terminal workspace (Kitty + Micro + bottom shell + background build watcher + PDF viewer). `project-open` provides the same launcher for any directory, including non-Git projects.
+`paper open` opens a paper repository in either VS Code or the terminal Editor (Kitty + Micro + project shell + Build tab + PDF viewer). `project-open` provides the same launcher for any directory, including non-Git projects.
 
 ```bash
 paper open                            # open current paper using configured editor
@@ -271,7 +271,15 @@ project-open --read index.md DIR      # open Markdown in workspace-read with a m
 
 `paper open` defaults to `vscode` (override via `git config [--global] paper.editor terminal`, `PAPER_EDITOR`, or `--terminal`/`--vscode`); `project-open` defaults to `terminal`.
 
-In terminal workspaces:
+**One Editor for all projects.** Terminal opens, `workspace-edit` and `project-terminal` route into a single Editor window (one Kitty process with a private socket, `$XDG_RUNTIME_DIR/project-workspaces/editor.sock`, app ID `workspace-editor`), starting it when absent. One Micro process holds every project's files. Its window title is `Editor — <active project name>`.
+
+- **Project shells.** Each project has its own shell, started on the project's first activation. The active project's shell sits below Micro; the others wait, alive, in a hidden tab (Kitty's `tab_bar_filter` hides it and tab navigation skips it). Switching projects moves panes in one in-process Kitty call, drawn once: about 3–5 ms inside Kitty, about 30 ms end to end from the hook. The split height and a hidden terminal (Ctrl+\`) carry over. Scrollback is capped at 2000 lines per pane.
+- **Task tabs** (`project-terminal run`, Build, Experiments, SSH) belong to their project: each Kitty pane carries the user variable `workspace_project=<root>`, and a new tab joins the end of its project's group. LaTeX projects get a `Build` tab that follows the shared build watcher's output (`output/.latex/.watch.log`).
+- **Micro's project hook.** Micro calls `$WORKSPACE_EDITOR_PROJECT_HOOK` (`lib/editor_hook.py`) in the background: `HOOK ROOT` when the active tab's project changes (empty for a Loose file), `--opened ROOT` and `--closed ROOT` when a project gains its first or loses its last tab (registering it with, or unregistering it from, `paper watch`), and `--busy ROOT`, which prints what runs in the project's shell or task tabs before Micro asks to close it.
+- **Coming forward.** `workspace-edit show-project ROOT` focuses the project in Micro and swaps in its shell without activating the window; `project-terminal activate ROOT` and `project-terminal close-project ROOT [--force]` act on the shells alone.
+- `--new` opens a separate per-project Editor window. Per-project Editors opened by earlier releases keep working until closed and still serve their explicit `--session`.
+
+In the Editor:
 - **Ctrl+\`** toggles the bottom shell split (preserving running processes and split height).
 - **Ctrl+Alt+Arrows** moves between panes; **Ctrl+Shift+Z** zooms/restores the active pane; **Ctrl+Shift+R** resizes (Kitty's built-in resize shortcut); **Ctrl+Shift+Enter** adds a shell split.
 - Pass `--focus` to activate the workspace window immediately (standalone installations without `workspace-desktop` need `--focus` to show the terminal window unminimized).
@@ -279,7 +287,7 @@ In terminal workspaces:
 
 ### Adding task terminals (`project-terminal`)
 
-Add tabs, splits, or shared bottom docks to an already open project Kitty window without injecting keystrokes into active panes:
+Add tabs, splits, or shared bottom docks to the Editor (or a per-project window) without injecting keystrokes into active panes:
 
 ```bash
 project-terminal list
@@ -288,7 +296,7 @@ project-terminal run --project /path/to/paper --title Experiments --cwd /path/to
 project-terminal run --project /path/to/paper --dock --title Shell
 ```
 
-Pass `--split` to split the editor tab, `--tab ID` to target a specific tab, `--dock` (requires Kitty 0.51+) for a resizable bottom dock shared across tabs, or `--focus` to switch focus. Commands run with literal arguments and drop to an interactive Bash shell on exit (wrap shell pipelines in `-- bash -lc '...'`).
+Pass `--split` to split the editor tab (an inactive project's split waits with its shell), `--tab ID` to target a tab of a per-project window, `--dock` (requires Kitty 0.51+) for a resizable bottom dock shared across tabs, or `--focus` to switch focus. Commands run with literal arguments and drop to an interactive Bash shell on exit (wrap shell pipelines in `-- bash -lc '...'`).
 
 ### Guarded live editor control (`workspace-edit`)
 
@@ -297,6 +305,7 @@ When Micro runs with the companion mailbox plugin, `workspace-edit` communicates
 ```bash
 workspace-edit list --json
 workspace-edit DIRECTORY [FILE ...] --line 42 --column 1
+workspace-edit show-project ROOT
 workspace-edit view FILE --line 42 --end-line 48 --highlight
 workspace-edit status FILE --json
 workspace-edit read FILE --line 1 --end-line 80 --json

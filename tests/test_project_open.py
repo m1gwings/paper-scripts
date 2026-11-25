@@ -7,6 +7,7 @@ import sys
 import tempfile
 import unittest
 import fcntl
+import shlex
 from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'lib'))
@@ -189,16 +190,19 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
         self.assertEqual(data['cwd'], str(self.project))
         self.assertEqual(data['args'][data['args'].index('--directory') + 1], str(self.project))
         self.assertEqual(data['args'][data['args'].index('--session') + 1], '-')
-        self.assertIn('launch --title Editor micro', data['session'])
+        self.assertIn('launch --title Editor --var workspace_role=editor', data['session'])
         self.assertIn('layout fat:bias=74', data['session'])
         self.assertIn('launch --title Shell', data['session'])
+        self.assertIn(shlex.quote(f'workspace_project={self.project}'), data['session'])
+        self.assertIn('tab_bar_filter=not var:workspace_parked', data['args'])
+        self.assertTrue(data['args'][data['args'].index('--listen-on') + 1].endswith('/editor.sock'))
         self.assertIn('allow_remote_control=socket-only', data['args'])
         for event in ('press', 'click', 'doublepress', 'triplepress'):
             self.assertIn(f'mouse_map shift+left {event} grabbed', data['args'])
         self.assertIn('--listen-on', data['args'])
         records = list((self.root / 'runtime/project-workspaces').glob('*.json'))
-        self.assertEqual(len(records), 1)
-        self.assertEqual(json.loads(records[0].read_text())['root'], str(self.project.resolve()))
+        self.assertEqual([r.name for r in records], ['editor.json'])
+        self.assertTrue(json.loads(records[0].read_text())['single'])
         self.assertIsNone(data['NO_COLOR'])
         self.assertIsNone(data['CODEX_CI'])
         self.launch('--vscode', str(self.root), generic=True)
@@ -231,7 +235,7 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
         self.launch('--terminal', script=runtime / 'paper')
         self.assertEqual(self.record()['program'], 'kitty')
         self.assertIn('new_tab Build', self.record()['session'])
-        self.assertIn(str(runtime / 'lib/build.py'), self.record()['session'])
+        self.assertIn('output/.latex/.watch.log', self.record()['session'])
 
     def test_terminal_startup_failure_is_reported(self):
         (self.bin / 'kitty').write_text('#!/bin/sh\necho "Unsupported layout" >&2\nexit 3\n')
@@ -247,12 +251,15 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
         (self.project / 'poster.tex').write_text('Poster source.\n')
         self.launch('--terminal')
         record = self.record()
-        self.assertEqual(record['project_name'], 'CMABs with Ranking Feedback · Poster')
+        self.assertEqual(record['project_name'], 'CMABs with Ranking Feedback')
+        self.assertIn('Editor — CMABs with Ranking Feedback', record['args'])
+        self.assertIn('new_tab Editor', record['session'])
+        self.assertIn('micro +1:1 ' + shlex.quote(str(self.project / 'poster.tex')), record['session'])
+        self.assertIn('new_tab Build', record['session'])
+        self.launch('--terminal', '--new')  # A separate per-project window keeps its component label.
+        record = self.record()
         self.assertIn('Editor — CMABs with Ranking Feedback · Poster', record['args'])
         self.assertIn('new_tab Poster', record['session'])
-        import shlex
-        self.assertIn('micro +1:1 ' + shlex.quote(str(self.project / 'poster.tex')), record['session'])
-        self.assertIn('build --watch', record['session'])
         self.assertFalse((self.project / 'INJECTED').exists())
 
     def test_project_name_survives_reinitialization(self):
@@ -301,12 +308,14 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
         (self.project / 'output/.latex').mkdir(parents=True)
         with (self.project / 'output/.main.watch.lock').open('a') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
-            self.assertIn('Reused editor', self.launch('--terminal'))
+            self.assertIn('Reused editor', self.launch('--terminal', '--session', session))
         self.assertFalse(self.log.exists())
         self.assertEqual(json.loads(viewer_log.read_text()), viewer)
         self.assertFalse(layout_log.exists())
 
     def desktop_fixture(self, reused=False):
+        # Reused fixtures are per-project Editors of earlier releases.
+        title = 'Editor — Launch Fixture' + (' · Paper' if reused else '')
         (self.project / '.paper').mkdir(exist_ok=True)
         (self.project / '.paper/config.json').write_text(json.dumps({
             'project_name': 'Launch Fixture', 'document_type': 'paper'}))
@@ -317,7 +326,7 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
             stub.write_text(f'#!{sys.executable}\nimport json,sys\nfrom pathlib import Path\n'
                             f'events=Path({str(events)!r})\n'
                             'with events.open("a") as f: f.write(json.dumps(sys.argv[1:])+"\\n")\n'
-                            f'windows=([{{"id":"editor","app_id":"workspace-editor","title":"Editor — Launch Fixture · Paper"}}] '
+                            f'windows=([{{"id":"editor","app_id":"workspace-editor","title":{title!r}}}] '
                             f'if {reused!r} or Path({str(self.log)!r}).exists() else [])\n'
                             'print(json.dumps({"ok":True,"capabilities":[4],"windows":windows}))\n')
             stub.chmod(0o755)
@@ -336,7 +345,6 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
         self.assertEqual(reader[-1], str(note))
         self.assertIn('--session', reader)
         self.assertIn(str(note), self.record()['session'])
-        self.assertNotIn('new_tab Build', self.record()['session'])
 
     def test_reading_reuses_editor_without_touching_unsaved_buffers(self):
         events = self.desktop_fixture(reused=True)
@@ -346,7 +354,7 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
         endpoint.mkdir(parents=True)
         (endpoint / 'record.json').write_text(json.dumps({'pid': os.getpid(),
             'project': str(self.project), 'session': 'paired', 'endpoint': str(endpoint), 'protocol': 1}))
-        self.assertIn('Reused editor', self.launch('--read', note.name, str(self.project), generic=True))
+        self.assertIn('Reused editor', self.launch('--read', note.name, '--session', 'paired', str(self.project), generic=True))
         calls = [json.loads(line) for line in events.read_text().splitlines()]
         self.assertIn(['minimize', '--window', 'editor'], calls)
         self.assertFalse(any(c[0] in ('reveal', 'focus') for c in calls))
@@ -377,7 +385,7 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
         (self.project / 'output/.latex').mkdir(parents=True)
         with (self.project / 'output/.latex/.main.watch.lock').open('a') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
-            self.launch('--terminal', '--focus', '--no-post-open')
+            self.launch('--terminal', '--focus', '--no-post-open', '--session', 'existing')
         self.assertFalse(self.log.exists())
         calls = [json.loads(line) for line in events.read_text().splitlines()]
         self.assertEqual(calls[-2:], [['reveal', '--window', 'editor'], ['focus', '--window', 'editor']])
@@ -393,7 +401,7 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
                         f'Path({str(log)!r}).write_text(json.dumps(sys.argv[1:]))\n')
         stub.chmod(0o755)
         (self.project / 'main.tex').write_text('Source fixture.\n')
-        self.assertIn('Reused editor', self.launch('--terminal', '--no-reader'))
+        self.assertIn('Reused editor', self.launch('--terminal', '--no-reader', '--session', 'paired'))
         command = json.loads(log.read_text())
         self.assertEqual(command[command.index('--workspace') + 1], 'paired')
         self.assertEqual(command[-2:], ['build', '--watch'])
@@ -402,7 +410,7 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
         (self.project / 'output/.latex').mkdir(parents=True)
         with (self.project / 'output/.latex/.main.watch.lock').open('a') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
-            self.launch('--terminal', '--no-reader')
+            self.launch('--terminal', '--no-reader', '--session', 'paired')
             self.assertFalse(log.exists())  # Existing watcher remains the only one.
 
     def test_paper_open_with_directory_argument_from_outside_repo(self):

@@ -12,6 +12,29 @@ import uuid
 import re
 
 
+EDITOR_ID = 'editor'  # the single Editor's workspace ID and Micro session
+KITTEN = Path(__file__).with_name('editor_shells.py')
+PROJECT_VAR, PARKED_VAR = 'workspace_project', 'workspace_parked'
+
+
+def project_root(path):
+    """Project of a path (design §1): deepest registered root, then .paper/.git, else None."""
+    path = Path(path).expanduser().resolve()
+    cache = Path(os.environ.get('XDG_CACHE_HOME') or Path.home() / '.cache')
+    try:
+        roots = json.loads((cache / 'workspace/project-roots.json').read_text()).get('roots', [])
+        matches = [Path(r['root']) for r in roots if isinstance(r, dict) and r.get('root')
+                   and (path == Path(r['root']) or path.is_relative_to(r['root']))]
+        if matches:
+            return str(max(matches, key=lambda root: len(root.parts)))
+    except (OSError, ValueError, AttributeError):
+        pass
+    for candidate in [path, *path.parents] if path.is_dir() else path.parents:
+        if (candidate / '.paper/config.json').is_file() or (candidate / '.git').exists():
+            return str(candidate)
+    return None
+
+
 def runtime_directory():
     base = os.environ.get('XDG_RUNTIME_DIR')
     root = Path(base) / 'project-workspaces' if base else Path(tempfile.gettempdir()) / f'project-workspaces-{os.getuid()}'
@@ -86,13 +109,20 @@ def live_workspaces(session=None, *, inspect_tabs=True):
                 continue
             windows = json.loads(remote(record, 'ls'))
             tabs = []
+            projects = set()
             for window in windows:
                 for tab in window.get('tabs', []):
+                    variables = [pane.get('user_vars') or {} for pane in tab.get('windows', [])]
+                    projects.update(v[PROJECT_VAR] for v in variables if v.get(PROJECT_VAR))
+                    if any(v.get(PARKED_VAR) for v in variables):
+                        continue  # the single Editor's hidden tab of inactive project panes
                     docks = {pane_id: group['dock']['scope'] for group in tab.get('groups', [])
                              if group.get('dock') for pane_id in group['windows']}
                     panes = []
                     for pane in tab.get('windows', []):
                         entry = {'id': pane['id'], 'title': pane['title']}
+                        if (pane.get('user_vars') or {}).get(PROJECT_VAR):
+                            entry['project'] = pane['user_vars'][PROJECT_VAR]
                         if pane['id'] in docks:
                             entry['dock'] = docks[pane['id']]
                         panes.append(entry)
@@ -102,15 +132,31 @@ def live_workspaces(session=None, *, inspect_tabs=True):
                                  'active_window': next((p['id'] for p in tab.get('windows', []) if p.get('is_active')), None),
                                  'panes': panes})
             if tabs:
-                result.append(dict(record, tabs=tabs))
+                result.append(dict(record, tabs=tabs, **({'projects': sorted(projects)} if record.get('single') else {})))
         except (OSError, ValueError, KeyError, TypeError, subprocess.SubprocessError):
             continue
     return result
 
 
 def choose(records, project=None, identifier=None):
+    """Select a window. The single Editor serves every project; a legacy
+    per-project window still serves its own project unless the single Editor
+    already holds that project's panes."""
+    single = [record for record in records if record.get('single')]
     if identifier:
         records = [record for record in records if record['id'] == identifier]
+    if single and (not identifier or identifier == EDITOR_ID):
+        if project:
+            root = str(Path(project).expanduser().resolve())
+        else:
+            root = os.environ.get('PROJECT_WORKSPACE_ROOT') if os.environ.get('PROJECT_WORKSPACE_ID') == EDITOR_ID else None
+            root = root or project_root(Path.cwd())
+        legacy = [r for r in records if not r.get('single') and r['root'] == root]
+        if identifier == EDITOR_ID or (root and (not legacy or root in single[0].get('projects', ()))):
+            if not root:
+                raise ValueError('Select --project: the current directory belongs to no project.')
+            return dict(single[0], root=root, name=Path(root).name)
+        records = [r for r in records if not r.get('single')]
     if project:
         root = str(Path(project).expanduser().resolve())
         records = [record for record in records if record['root'] == root]
@@ -128,12 +174,70 @@ def choose(records, project=None, identifier=None):
     return records[0]
 
 
+def editor_call(record, *args):
+    """Run one action of the single Editor's in-process kitten."""
+    return json.loads(remote(record, 'kitten', str(KITTEN), *args))
+
+
+def editor_record():
+    return next((r for r in live_workspaces(session=EDITOR_ID, inspect_tabs=False) if r.get('single')), None)
+
+
+def watch(action, root, pid=None):
+    """Register/unregister the project with the shared build watcher (`paper watch`)."""
+    paper = Path(__file__).resolve().parents[1] / 'paper'
+    try:
+        subprocess.Popen([str(paper), 'watch', action, str(root), '--client', 'editor',
+                          *(['--pid', str(pid)] if pid and action == 'register' else [])],
+                         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                         stderr=subprocess.DEVNULL, start_new_session=True)
+    except OSError:
+        pass
+
+
+def activate(record, root, name=''):
+    """Show root's shell below Micro; the first activation also starts its Build tab."""
+    result = editor_call(record, 'activate', str(Path(root).resolve()), *([name] if name else []))
+    if result.get('started_shell'):
+        watch('register', result['project'], record.get('pid'))
+    return result
+
+
+def close_project(record, root, force=False):
+    """Close root's shell, splits and task tabs; refuse while a program runs unless forced."""
+    root = str(Path(root).resolve())
+    result = editor_call(record, 'close', root, *(['--force'] if force else []))
+    if result.get('ok'):
+        watch('unregister', root)
+    return result
+
+
+def wrapped(command):
+    # Pass user command arguments literally, never type them into a busy shell.
+    # An interactive shell remains available when the requested process exits.
+    if not command:
+        return ['bash', '-i']
+    script = '"$@"; result=$?; printf "\\nProcess exited (%s). Shell ready.\\n" "$result"; exec bash -i'
+    return ['bash', '-ic', script, 'project-terminal', *command]
+
+
 def launch(record, *, title, cwd=None, command=(), split=False, dock=False, tab=None, keep_focus=True):
     if not title.strip() or any(ord(c) < 32 or ord(c) == 127 for c in title):
         raise ValueError('The terminal title must be a nonempty, single-line name.')
     directory = Path(cwd or record['root']).expanduser().resolve()
     if not directory.is_dir():
         raise ValueError(f'Not a directory: {directory}')
+    if record.get('single'):
+        if tab is not None:
+            raise ValueError('The single Editor places task tabs in their project group; omit --tab.')
+        result = editor_call(record, 'task', json.dumps({
+            'root': record['root'], 'title': title, 'cwd': str(directory), 'command': wrapped(command),
+            'kind': 'dock' if dock else 'window' if split else 'tab', 'focus': not keep_focus}))
+        result = {'workspace': record['id'], 'project': record['root'], 'title': title,
+                  'window_id': result['window_id'], 'split': split}
+        if dock:
+            result['dock'] = True
+        return result
     selected = next((item for item in record['tabs'] if item['id'] == tab), None) if tab is not None else record['tabs'][0]
     if selected is None:
         raise ValueError('That tab does not belong to the selected workspace.')
@@ -149,13 +253,7 @@ def launch(record, *, title, cwd=None, command=(), split=False, dock=False, tab=
     for key, value in [('PROJECT_WORKSPACE_ID', record['id']), ('PROJECT_WORKSPACE_ROOT', record['root']),
                        ('PROJECT_WORKSPACE_NAME', record['name'])]:
         args.extend(['--env', key + '=' + value])
-    if command:
-        # Pass user command arguments literally, never type them into a busy shell.
-        # An interactive shell remains available when the requested process exits.
-        script = '"$@"; result=$?; printf "\\nProcess exited (%s). Shell ready.\\n" "$result"; exec bash -i'
-        args.extend(['bash', '-ic', script, 'project-terminal', *command])
-    else:
-        args.extend(['bash', '-i'])
+    args.extend(wrapped(command))
     pane = remote(record, *args).strip()
     result = {'workspace': record['id'], 'project': record['root'], 'title': title,
               'window_id': int(pane), 'split': split}
@@ -179,7 +277,12 @@ def toggle_terminal(record, mode='toggle', tab_id=None):
         layout = next((value for value in tab.get('enabled_layouts', ['fat:bias=74']) if value.split(':')[0] != 'stack'), None)
         if layout is None:
             raise ValueError('This tab has no split layout enabled.')
-        if not terminals:
+        if not terminals and record.get('single'):
+            state = editor_call(record, 'status')
+            created = editor_call(record, 'activate', state['active'] or record['root'])
+            terminals = [p for p in live_workspaces(session=EDITOR_ID)[0]['tabs'][0]['panes']
+                         if p['id'] != editor['id'] and not p.get('dock')][:1]
+        elif not terminals:
             created = launch(record, title='Shell', split=True, tab=tab['id'])
             terminals = [{'id': created['window_id'], 'title': 'Shell'}]
         remote(record, 'goto-layout', '--match', f'id:{tab["id"]}', layout)
@@ -204,6 +307,13 @@ def run(argv=None):
     modes.add_argument('--show', action='store_const', const='show', dest='mode')
     modes.add_argument('--hide', action='store_const', const='hide', dest='mode')
     toggle.add_argument('--json', action='store_true')
+    show = commands.add_parser('activate', help="single Editor: show ROOT's shell below Micro")
+    show.add_argument('root')
+    show.add_argument('--json', action='store_true')
+    close = commands.add_parser('close-project', help="single Editor: close ROOT's shell and task tabs")
+    close.add_argument('root')
+    close.add_argument('--force', action='store_true', help='close even while a program runs')
+    close.add_argument('--json', action='store_true')
     add = commands.add_parser('run', help='open a task tab, split or dock, optionally running a command')
     add.add_argument('--project', help='project root of the target editor window')
     add.add_argument('--workspace', help='explicit workspace ID when several windows match')
@@ -219,6 +329,17 @@ def run(argv=None):
     add.add_argument('--json', action='store_true')
     add.add_argument('command', nargs=argparse.REMAINDER, help='-- PROGRAM ARG ...; shell remains after exit')
     args = parser.parse_args(argv)
+    if args.action in ('activate', 'close-project'):
+        record = editor_record()
+        if record is None:
+            raise ValueError('The single Editor is not running.')
+        if args.action == 'activate':
+            result = activate(record, args.root)
+        else:
+            result = close_project(record, args.root, args.force)
+        if args.json or not result.get('ok'):
+            print(json.dumps(result))
+        return 0 if result.get('ok') else 3
     target_session = getattr(args, 'session', None) or getattr(args, 'workspace', None)
     records = live_workspaces(session=target_session)
     if args.action == 'list':
@@ -228,7 +349,7 @@ def run(argv=None):
             print('No live managed workspaces. Open a project with paper open or project-open.')
         else:
             for record in records:
-                print(f'{record["id"]}  {record["name"]}\n  {record["root"]}')
+                print(f'{record["id"]}  {record["name"]}\n  ' + (record['root'] or ', '.join(record.get('projects', []))))
                 for tab in record['tabs']:
                     print(f'  Tab {tab["id"]}: {tab["title"]}  (' + ', '.join(
                         f'{pane["title"]} #{pane["id"]}' for pane in tab['panes']) + ')')
