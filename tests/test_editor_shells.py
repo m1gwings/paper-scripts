@@ -157,7 +157,8 @@ class HookTest(unittest.TestCase):
 
 class RoutingTest(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
+        # Keep loose-file fixtures outside any repository surrounding TMPDIR.
+        self.tmp = tempfile.TemporaryDirectory(dir=Path.home(), prefix='.editor-routing-')
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name).resolve()
         self.env = mock.patch.dict(os.environ, XDG_RUNTIME_DIR=str(self.root), XDG_CACHE_HOME=str(self.root / 'cache'))
@@ -178,6 +179,16 @@ class RoutingTest(unittest.TestCase):
         (self.root / 'cache/workspace/project-roots.json').unlink()
         self.assertEqual(project_workspace.project_root(nested / 'file.tex'), str(self.paper))
         self.assertIsNone(project_workspace.project_root(self.root / 'loose.txt'))
+
+    def test_home_and_filesystem_root_never_claim_loose_files(self):
+        (self.root / '.git').mkdir()
+        cache = self.root / 'cache/workspace'
+        cache.mkdir(parents=True)
+        (cache / 'project-roots.json').write_text(json.dumps({
+            'roots': [{'root': str(self.root)}, {'root': '/'}]}))
+        with mock.patch.object(Path, 'home', return_value=self.root):
+            self.assertIsNone(project_workspace.project_root(self.root / 'loose.txt'))
+            self.assertEqual(project_workspace.project_root(self.paper / 'main.tex'), str(self.paper))
 
     def test_task_terminals_target_the_single_editor_unless_only_a_legacy_window_has_the_project(self):
         legacy = {'id': 'old', 'root': str(self.paper), 'name': 'Paper'}
@@ -237,6 +248,35 @@ class RoutingTest(unittest.TestCase):
             self.assertEqual(workspace_edit.run(['show-project', str(self.paper)]), 0)
         send.assert_called_once_with(micro, str(self.paper), action='show-project')
         activate.assert_called_once_with(self.single, self.paper)
+
+    def test_show_project_leaves_the_shell_when_micro_rejects_the_switch(self):
+        micro = {'session': 'editor', 'project': str(self.paper)}
+        with mock.patch.object(project_workspace, 'editor_record', return_value=self.single), \
+                mock.patch.object(project_workspace, 'activate') as activate, \
+                mock.patch.object(workspace_edit, 'live', return_value=[micro]), \
+                mock.patch.object(workspace_edit, 'send', side_effect=ValueError('Editor did not acknowledge')):
+            with self.assertRaisesRegex(ValueError, 'did not acknowledge'):
+                workspace_edit.run(['show-project', str(self.paper)])
+            activate.assert_not_called()
+
+    def test_opening_a_folder_switches_the_existing_editor(self):
+        micro = {'session': 'editor', 'project': str(self.paper)}
+        with mock.patch.object(project_workspace, 'editor_record', return_value=self.single), \
+                mock.patch.object(project_workspace, 'activate') as activate, \
+                mock.patch.object(workspace_edit, 'live', return_value=[micro]), \
+                mock.patch.object(workspace_edit, 'send', return_value={'ok': True}) as send:
+            self.assertEqual(workspace_edit.run([str(self.paper)]), 0)
+            send.assert_called_once_with(micro, str(self.paper), action='show-project')
+            activate.assert_called_once_with(self.single, str(self.paper))
+
+    def test_single_editor_presents_without_falling_through_to_legacy_controls(self):
+        micro = {'session': 'editor', 'project': str(self.paper), 'protocol': 4}
+        for flag in ('--focus', '--reveal'):
+            with self.subTest(flag=flag), mock.patch.object(workspace_edit, 'live', return_value=[micro]), \
+                    mock.patch.object(workspace_edit, 'send', return_value={'ok': True}), \
+                    mock.patch.object(workspace_edit, 'reveal_single') as reveal:
+                self.assertEqual(workspace_edit.run(['view', str(self.paper / 'main.tex'), flag]), 0)
+                reveal.assert_called_once_with(micro, focus=flag == '--focus')
 
     def test_startup_session_marks_every_pane_and_quotes_paths(self):
         project = self.root / 'a b $(x)'

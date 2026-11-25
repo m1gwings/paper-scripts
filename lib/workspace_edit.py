@@ -181,14 +181,10 @@ def show_project(root, start=False):
         from project_open import run as launch
         return launch(['--terminal', str(root), '--no-post-open'])
     micro = next((r for r in live() if r['session'] == EDITOR_ID), None)
-    result = {'ok': True, 'project': str(root)}
-    if micro is not None:
-        try:
-            send(micro, str(root), action='show-project')
-        except ValueError as error:
-            result['editor'] = str(error)  # Micro without project groups keeps its tab.
-    result['shell'] = activate(record, root)
-    print(json.dumps(result))
+    if micro is None:
+        raise ValueError('The Editor control interface is not ready.')
+    send(micro, str(root), action='show-project')
+    print(json.dumps({'ok': True, 'project': str(root), 'shell': activate(record, root)}))
     return 0
 
 
@@ -313,14 +309,19 @@ def run(argv=None, _locked=False):
                               discard=args.discard, expected_version=args.expected_version,
                               select_end_line=args.select_end_line, select_end_column=args.select_end_column,
                               navigation=args.navigation, **extra)
-            if matches[0]['session'] == EDITOR_ID and action == 'open' and not args.navigation and files:
-                from project_workspace import activate, editor_record
-                record = editor_record()
-                if record is not None:
-                    activate(record, project)
-            if (args.focus or args.reveal) and matches[0]['session'] == EDITOR_ID and not result.get('skipped'):
-                reveal_single(matches[0], focus=args.focus)
-            elif (args.focus or args.reveal) and not result.get('skipped'):
+            present = (args.focus or args.reveal) and not result.get('skipped')
+            if matches[0]['session'] == EDITOR_ID:
+                if action == 'open' and not args.navigation and not result.get('skipped'):
+                    from project_workspace import activate, editor_record, project_root
+                    root = project_root(files[-1]) if files else project
+                    if not files:
+                        result = send(matches[0], root, action='show-project')
+                    record = editor_record()
+                    if record is not None and root:
+                        activate(record, root)
+                if present:
+                    reveal_single(matches[0], focus=args.focus)
+            elif present:
                 from project_workspace import live_workspaces as workspaces, remote
                 selected = [r for r in workspaces(session=matches[0]['session'], inspect_tabs=False) if r['id'] == matches[0]['session']]
                 pane = matches[0].get('kitty_window', '')
@@ -332,17 +333,17 @@ def run(argv=None, _locked=False):
                                str(Path(__file__).with_name('kitty_reveal.py')))
                 else:
                     result['focus_unavailable'] = True
-            if args.focus and not result.get('skipped'):
-                from desktop_launch import desktop
-                if result.get('focus_unavailable'):
-                    raise ValueError('Cannot identify the Editor window to focus.')
-                desktop('focus', '--app-id', 'workspace-editor',
-                        '--title-prefix', 'Editor — ' + selected[0]['name'])
-            if args.reveal and not result.get('skipped'):
-                from desktop_launch import reveal_existing
-                if result.get('focus_unavailable'):
-                    raise ValueError('Editor opened the location, but its desktop window could not be identified.')
-                reveal_existing('workspace-editor', 'Editor — ' + selected[0]['name'])
+                if args.focus:
+                    from desktop_launch import desktop
+                    if result.get('focus_unavailable'):
+                        raise ValueError('Cannot identify the Editor window to focus.')
+                    desktop('focus', '--app-id', 'workspace-editor',
+                            '--title-prefix', 'Editor — ' + selected[0]['name'])
+                if args.reveal:
+                    from desktop_launch import reveal_existing
+                    if result.get('focus_unavailable'):
+                        raise ValueError('Editor opened the location, but its desktop window could not be identified.')
+                    reveal_existing('workspace-editor', 'Editor — ' + selected[0]['name'])
             if args.json or action in ('status', 'reload', 'reload-ui', 'read', 'apply', 'save'):
                 print(json.dumps(dict(matches[0], **result)))
             return 0
@@ -352,7 +353,7 @@ def run(argv=None, _locked=False):
         if action in ('status', 'reload', 'reload-ui', 'view', 'read', 'apply', 'save'):
             raise ValueError('No live editor matches. Use workspace-edit list and select --project/--session.')
         from project_open import run as launch
-        session = session if args.new else EDITOR_ID
+        session = (session or secrets.token_hex(8)) if args.new else EDITOR_ID
         command = ['--terminal', project]
         if args.new:
             command.append('--new')

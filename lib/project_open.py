@@ -124,11 +124,9 @@ def open_single(args, *, directory, paper, name, source, pdf, reading, kitty, ma
         if default.is_file() and not any(Path(f).is_relative_to(directory) for f in micro.get('files', [])):
             send(micro, str(default), 1, 1)
         else:
-            try:
-                send(micro, root, action='show-project')
-            except ValueError:
-                pass  # A Micro without project groups keeps its current tab.
-    activate(record, root, name)
+            send(micro, root, action='show-project')
+    if not reading:
+        activate(record, root, name)
     if paper:
         watch('register', root, record.get('pid'))
     mark('editor_activated')

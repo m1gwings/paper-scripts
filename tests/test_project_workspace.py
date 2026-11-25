@@ -143,6 +143,7 @@ class WorkspaceTest(unittest.TestCase):
 
     def test_save_requires_fresh_version_and_advertised_support(self):
         editor = dict(project=str(self.project), session=self.record['id'], protocol=3)
+        (self.project / '.git').mkdir()
         file = str(self.project / 'proof.tex')
         with patch.object(EDITOR, 'live', return_value=[editor]), patch.object(EDITOR, 'send') as send:
             with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):

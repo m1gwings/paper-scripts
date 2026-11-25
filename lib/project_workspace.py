@@ -20,17 +20,18 @@ PROJECT_VAR, PARKED_VAR = 'workspace_project', 'workspace_parked'
 def project_root(path):
     """Project of a path (design §1): deepest registered root, then .paper/.git, else None."""
     path = Path(path).expanduser().resolve()
+    excluded = {Path(path.anchor), Path.home().resolve()}
     cache = Path(os.environ.get('XDG_CACHE_HOME') or Path.home() / '.cache')
     try:
         roots = json.loads((cache / 'workspace/project-roots.json').read_text()).get('roots', [])
-        matches = [Path(r['root']) for r in roots if isinstance(r, dict) and r.get('root')
-                   and (path == Path(r['root']) or path.is_relative_to(r['root']))]
+        registered = (Path(r['root']) for r in roots if isinstance(r, dict) and isinstance(r.get('root'), str))
+        matches = [root for root in registered if root not in excluded and path.is_relative_to(root)]
         if matches:
             return str(max(matches, key=lambda root: len(root.parts)))
     except (OSError, ValueError, AttributeError):
         pass
     for candidate in [path, *path.parents] if path.is_dir() else path.parents:
-        if (candidate / '.paper/config.json').is_file() or (candidate / '.git').exists():
+        if candidate not in excluded and ((candidate / '.paper/config.json').is_file() or (candidate / '.git').exists()):
             return str(candidate)
     return None
 
