@@ -78,7 +78,7 @@ def send(record, path, line=0, column=1, *, action="open", end_line=0, top_line=
     endpoint = Path(record['endpoint'])
     name = secrets.token_hex(12)
     pending = endpoint / (name + '.pending')
-    if action not in ('open', 'view', 'status', 'reload', 'reload-ui', 'read', 'apply', 'save'):
+    if action not in ('open', 'view', 'status', 'reload', 'reload-ui', 'read', 'apply', 'save', 'show-project'):
         raise ValueError('Unsupported editor action.')
     fields = [action, path, line, column, end_line, top_line, int(highlight), int(if_open),
               int(if_clean), int(discard), expected_version]
@@ -142,9 +142,80 @@ def load_edits(path):
     return edits
 
 
+EDITOR_ID = 'editor'  # the single Editor's Micro session (project_workspace.EDITOR_ID)
+FOLLOWUP = ('view', 'status', 'reload', 'read', 'apply', 'save')
+
+
+def select(records, project, session, action, files, args):
+    """Choose the Micro for a request.
+
+    Opens go to the single Editor. A live per-project Editor still serves an
+    explicit --session, Reader navigation into a project it holds, and buffer
+    actions on a file that only it has open.
+    """
+    single = [r for r in records if r['session'] == EDITOR_ID]
+    legacy = [r for r in records if r['session'] != EDITOR_ID and r['project'] == project]
+    if args.new:
+        return [r for r in legacy if not session or r['session'] == session]
+    if session and session != EDITOR_ID:
+        named = [r for r in legacy if r['session'] == session]
+        if named:
+            return named
+    if action in FOLLOWUP + ('reload-ui',) or args.navigation or args.if_open:
+        if files and single and legacy:
+            holders = [r for r in single + legacy if str(files[0]) in r.get('files', ())]
+            if len(holders) == 1:
+                return holders
+        return single or legacy
+    return single
+
+
+def show_project(root, start=False):
+    """Bring a project forward in the Editor without activating its window (design §3)."""
+    from project_workspace import activate, editor_record
+    record = editor_record()
+    if record is None:
+        if not start:
+            print(json.dumps({'ok': True, 'skipped': 'not_running'}))
+            return 0
+        from project_open import run as launch
+        return launch(['--terminal', str(root), '--no-post-open'])
+    micro = next((r for r in live() if r['session'] == EDITOR_ID), None)
+    result = {'ok': True, 'project': str(root)}
+    if micro is not None:
+        try:
+            send(micro, str(root), action='show-project')
+        except ValueError as error:
+            result['editor'] = str(error)  # Micro without project groups keeps its tab.
+    result['shell'] = activate(record, root)
+    print(json.dumps(result))
+    return 0
+
+
+def reveal_single(micro, *, focus):
+    from project_workspace import editor_record, remote
+    record = editor_record()
+    pane = micro.get('kitty_window', '')
+    if record is None or not pane.isdecimal():
+        raise ValueError('Cannot identify the Editor window.')
+    if focus:
+        remote(record, 'focus-window', '--match', 'id:' + pane)
+    else:
+        remote(record, 'kitten', '--match', 'id:' + pane, str(Path(__file__).with_name('kitty_reveal.py')))
+    from desktop_launch import desktop, single_window
+    from project_open import remembered_window
+    title = 'Editor — ' + json.loads(remote(record, 'kitten', str(Path(__file__).with_name('editor_shells.py')),
+                                            'status')).get('name', '')
+    window = remembered_window(single_window(title, remembered_window()))
+    if not desktop('reveal', '--window', window).get('ok'):
+        raise ValueError('The desktop could not reveal the Editor window.')
+    if focus and not desktop('focus', '--window', window).get('ok'):
+        raise ValueError('The desktop could not activate the Editor window.')
+
+
 def run(argv=None, _locked=False):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('paths', nargs='*', help='folder or files; use list to inspect live editors')
+    parser.add_argument('paths', nargs='*', help='folder or files; list inspects live editors; show-project ROOT brings a project forward in the Editor without activating its window')
     parser.add_argument('--project', help='project root')
     parser.add_argument('--session', help='paired workspace ID')
     parser.add_argument('--line', type=int, default=0, help='one-based cursor line; omit to preserve it')
@@ -162,7 +233,8 @@ def run(argv=None, _locked=False):
     parser.add_argument('--discard', action='store_true', help='reload: explicitly discard the inspected buffer edits')
     parser.add_argument('--expected-version', default='', help='reload/apply/save: complete buffer SHA256 returned by status/read')
     parser.add_argument('--edits-file', help='apply: JSON array of start/end/text edits; - reads stdin')
-    parser.add_argument('--new', action='store_true', help='open an independent editor window')
+    parser.add_argument('--new', action='store_true', help='open a separate per-project editor window')
+    parser.add_argument('--start', action='store_true', help='show-project: start the Editor when it is not running')
     parser.add_argument('--json', action='store_true')
     parser.add_argument('--register', type=int, metavar='PID', help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
@@ -176,8 +248,12 @@ def run(argv=None, _locked=False):
     if args.expected_version and (len(args.expected_version) != 64 or any(c not in 'abcdef0123456789' for c in args.expected_version)):
         parser.error('--expected-version must be the SHA256 returned by status.')
     action = 'open'
-    if args.paths and args.paths[0] in ('view', 'status', 'reload', 'reload-ui', 'read', 'apply', 'save'):
+    if args.paths and args.paths[0] in ('view', 'status', 'reload', 'reload-ui', 'read', 'apply', 'save', 'show-project'):
         action = args.paths.pop(0)
+    if action == 'show-project':
+        if len(args.paths) != 1 or not Path(args.paths[0]).expanduser().is_dir():
+            parser.error('show-project requires one project directory.')
+        return show_project(Path(args.paths[0]).expanduser().resolve(), start=args.start)
     if args.discard and action != 'reload':
         parser.error('--discard applies only to reload.')
     if args.expected_version and action not in ('reload', 'apply', 'save'):
@@ -202,9 +278,8 @@ def run(argv=None, _locked=False):
         parser.error('Pass at most one folder, followed by file paths.')
     project = args.project or (str(folder) if folder else os.environ.get('PROJECT_WORKSPACE_ROOT'))
     if not project and files:
-        result = subprocess.run(['git', '-C', str(files[0].parent), 'rev-parse', '--show-toplevel'],
-                                capture_output=True, text=True)
-        project = result.stdout.strip() if result.returncode == 0 else str(files[0].parent)
+        from project_workspace import project_root
+        project = project_root(files[0]) or str(files[0].parent)
     project = str(Path(project or '.').expanduser().resolve())
     session = args.session or os.environ.get('PROJECT_WORKSPACE_ID')
     identity = hashlib.sha256((project + '\0' + str(session or '')).encode()).hexdigest()
@@ -213,7 +288,7 @@ def run(argv=None, _locked=False):
         if not _locked:
             fcntl.flock(lock, fcntl.LOCK_EX)
         records = live()
-        matches = [r for r in records if r['project'] == project and (not session or r['session'] == session)]
+        matches = select(records, project, session, action, files, args)
         if len(matches) > 1 and not args.new:
             raise ValueError('Multiple editors match; select --session from workspace-edit list.')
         if matches and not args.new:
@@ -238,7 +313,14 @@ def run(argv=None, _locked=False):
                               discard=args.discard, expected_version=args.expected_version,
                               select_end_line=args.select_end_line, select_end_column=args.select_end_column,
                               navigation=args.navigation, **extra)
-            if (args.focus or args.reveal) and not result.get('skipped'):
+            if matches[0]['session'] == EDITOR_ID and action == 'open' and not args.navigation and files:
+                from project_workspace import activate, editor_record
+                record = editor_record()
+                if record is not None:
+                    activate(record, project)
+            if (args.focus or args.reveal) and matches[0]['session'] == EDITOR_ID and not result.get('skipped'):
+                reveal_single(matches[0], focus=args.focus)
+            elif (args.focus or args.reveal) and not result.get('skipped'):
                 from project_workspace import live_workspaces as workspaces, remote
                 selected = [r for r in workspaces(session=matches[0]['session'], inspect_tabs=False) if r['id'] == matches[0]['session']]
                 pane = matches[0].get('kitty_window', '')
@@ -270,13 +352,13 @@ def run(argv=None, _locked=False):
         if action in ('status', 'reload', 'reload-ui', 'view', 'read', 'apply', 'save'):
             raise ValueError('No live editor matches. Use workspace-edit list and select --project/--session.')
         from project_open import run as launch
-        session = session or secrets.token_hex(8)
+        session = session if args.new else EDITOR_ID
         command = ['--terminal', project]
         if args.new:
             command.append('--new')
         if args.focus:
             command.append('--focus')
-        if session:
+        if args.new:
             command += ['--session', session]
         command += ['--line', str(max(1, args.line)), '--column', str(max(1, args.column))]
         for path in files:
@@ -286,7 +368,7 @@ def run(argv=None, _locked=False):
             return result
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:
-            if any(r['session'] == session and r['project'] == project for r in live()):
+            if any(r['session'] == session and (session == EDITOR_ID or r['project'] == project) for r in live()):
                 followup = ['--project', project, '--session', session, '--line', str(args.line),
                             '--column', str(args.column), '--end-line', str(args.end_line), '--top-line', str(args.top_line)]
                 for flag, enabled in [('--highlight', args.highlight), ('--focus', args.focus), ('--reveal', args.reveal), ('--json', args.json)]:

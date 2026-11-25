@@ -40,6 +40,238 @@ KITTY_OVERRIDES = [
 
 SESSION_POLL_INTERVAL = 0.015
 
+# The single Editor hides the tab of parked project panes and bounds every
+# pane's scrollback (Kitty cannot resize one window's history at runtime).
+SINGLE_KITTY_OVERRIDES = ['tab_bar_filter=not var:workspace_parked', 'scrollback_lines=2000',
+                          'scrollback_pager_history_size=0']
+
+
+def single_session(root, name, files=(), line=1, column=1):
+    """Startup session of the single Editor: Micro, the project's shell and, for LaTeX, Build."""
+    micro = ['micro', f'+{max(1, line)}:{max(1, column)}', *files] if files else ['micro']
+    lines = ['new_tab Editor', 'layout fat:bias=74',
+             'launch ' + shlex.join(['--title', 'Editor', '--var', 'workspace_role=editor',
+                                     '--var', f'workspace_project_active={root}',
+                                     '--var', f'workspace_project_name={name}', *micro]),
+             'focus',
+             'launch ' + shlex.join(['--title', 'Shell', '--cwd', root, '--var', 'workspace_role=shell',
+                                     '--var', f'workspace_project={root}'])]
+    if (Path(root) / '.paper/config.json').is_file() or (Path(root) / 'main.tex').is_file():
+        lines += build_tab(root)
+    return '\n'.join(lines) + '\n'
+
+
+def build_tab(root):
+    """Session lines of the Build tab, which follows the shared watcher's log (editor_shells.start_build_view)."""
+    log = str(Path(root) / 'output/.latex/.watch.log')
+    return ['new_tab Build', 'launch ' + shlex.join([
+        '--title', 'Build', '--var', 'workspace_role=build', '--var', f'workspace_project={root}',
+        'bash', '-c', 'exec tail -n 200 -F -- "$1" 2>/dev/null', 'build', log])]
+
+
+def single_editor_micro(timeout=5):
+    """The single Editor's Micro mailbox, waiting briefly while it starts."""
+    from project_workspace import EDITOR_ID
+    from workspace_edit import live
+    deadline = time.monotonic() + timeout
+    while True:
+        found = [r for r in live() if r.get('session') == EDITOR_ID]
+        if found or time.monotonic() >= deadline:
+            return found[0] if found else None
+        time.sleep(.05)
+
+
+def remembered_window(value=None):
+    from project_workspace import runtime_directory
+    path = runtime_directory() / 'editor.window'
+    if value is not None:
+        path.write_text(value)
+        return value
+    try:
+        return path.read_text().strip() or None
+    except OSError:
+        return None
+
+
+def open_single(args, *, directory, paper, name, source, pdf, reading, kitty, mark, reader_for, reader_and_place):
+    """Route the project into the one Editor window, starting it if absent."""
+    import fcntl
+    from project_workspace import EDITOR_ID, activate, editor_record, register, runtime_directory, watch
+    root = str(directory)
+    title = f'Editor — {name}'
+    files = [str(Path(f).expanduser().resolve()) for f in args.file]
+    if reading and not files:
+        files = [str(reading)]
+    default = (directory / source).resolve()
+    no_reader = args.no_reader or not paper
+    need_reader = bool(paper and not args.no_reader and (default.is_file() or pdf.is_file()))
+    phased = args.no_post_open or phased_open()
+    with (runtime_directory() / 'editor.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        record = editor_record()
+        if record is None:
+            return start_single(args, directory=directory, paper=paper, name=name, files=files or (
+                [str(default)] if default.is_file() else []), kitty=kitty, mark=mark, reader_for=reader_for,
+                reader_and_place=reader_and_place, need_reader=need_reader, reading=reading, phased=phased)
+    micro = single_editor_micro()
+    if micro is None:
+        raise ValueError('The Editor is running without its Micro pane; close it and reopen the project.')
+    from workspace_edit import send
+    if files and not reading:
+        for file in files:
+            send(micro, file, max(1, args.line), max(1, args.column))
+    elif not reading:
+        if default.is_file() and not any(Path(f).is_relative_to(directory) for f in micro.get('files', [])):
+            send(micro, str(default), 1, 1)
+        else:
+            try:
+                send(micro, root, action='show-project')
+            except ValueError:
+                pass  # A Micro without project groups keeps its current tab.
+    activate(record, root, name)
+    if paper:
+        watch('register', root, record.get('pid'))
+    mark('editor_activated')
+
+    def reveal(*, phase=None, focus=False, place=True):
+        bridge = shutil.which('workspace-desktop')
+        window = None
+        if bridge:
+            from desktop_launch import single_window
+            window = remembered_window(single_window(title, remembered_window()))
+        if place and not args.no_post_open:
+            post_open(directory, EDITOR_ID, name, no_reader, phase=phase if phased else None, window=window)
+        pane = micro.get('kitty_window', '')
+        if pane.isdecimal():
+            from project_workspace import remote
+            if focus and not bridge:
+                remote(record, 'focus-window', '--match', 'id:' + pane)
+            else:
+                remote(record, 'kitten', '--match', 'id:' + pane, str(Path(__file__).with_name('kitty_reveal.py')))
+        elif focus and not bridge:
+            raise ValueError('Cannot identify the Editor pane for activation.')
+        if bridge:
+            from desktop_launch import present
+            present(window, focus=focus)
+        mark('editor_revealed')
+
+    if reading:
+        reader_and_place(EDITOR_ID)
+    elif not phased:
+        reader_for(EDITOR_ID)  # A hook without phase support places once, after Reader.
+        reveal(focus=args.focus)
+    elif need_reader:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=1) as workers:
+            pending = workers.submit(reader_and_place, EDITOR_ID)
+            reveal(phase='editor', focus=args.focus)
+            pending.result()
+    else:
+        reveal(phase='editor', focus=args.focus)
+    print(f'Opened {name} in Editor.')
+    mark('complete')
+    return 0
+
+
+def start_single(args, *, directory, paper, name, files, kitty, mark, reader_for, reader_and_place, need_reader, reading,
+                 phased):
+    import tempfile
+    from project_workspace import EDITOR_ID, register, runtime_directory, watch
+    root = str(directory)
+    title = f'Editor — {name}'
+    record = {'id': EDITOR_ID, 'root': '', 'name': 'Editor', 'single': True,
+              'socket': str(runtime_directory() / (EDITOR_ID + '.sock')), 'created': time.time()}
+    cosmic = 'COSMIC' in os.environ.get('XDG_CURRENT_DESKTOP', '').upper().split(':')
+    staged = bool(reading) or not args.focus or cosmic
+    existing_windows = None
+    if staged:
+        from desktop_launch import snapshot
+        existing_windows = snapshot()
+    command = [kitty, '--listen-on', 'unix:' + record['socket'], '--directory', root,
+               '--class', 'workspace-editor', '--name', 'workspace-editor', '--title', title, '--session', '-']
+    if staged:
+        command += ['--start-as', 'minimized']
+        if cosmic:
+            helper = Path(__file__).with_name('kitty_passive.py')
+            command[1:1] = ['+runpy', f'import runpy; runpy.run_path({str(helper)!r}, run_name="__main__")']
+    for override in KITTY_OVERRIDES + SINGLE_KITTY_OVERRIDES:
+        command.extend(['--override', override])
+    toggle = shlex.join([sys.executable, str(Path(__file__).with_name('project_workspace.py')), 'toggle',
+                         '--workspace', EDITOR_ID])
+    command.extend(['--override', 'map ctrl+grave launch --type=background ' + toggle])
+    env = os.environ.copy()
+    if staged:
+        env.pop('XDG_ACTIVATION_TOKEN', None)
+        env.pop('DESKTOP_STARTUP_ID', None)
+    env.update(PROJECT_WORKSPACE_NAME=name, PROJECT_WORKSPACE_ROOT=root, PROJECT_WORKSPACE_ID=EDITOR_ID,
+               WORKSPACE_EDITOR_PROJECT_HOOK=str(Path(__file__).with_name('editor_hook.py')))
+    for variable in ('NO_COLOR', 'CODEX_CI'):
+        env.pop(variable, None)
+    state = Path(env.get('XDG_STATE_HOME') or Path.home() / '.local/state') / 'project-open'
+    state.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(mode='w+', prefix='kitty-', suffix='.log', dir=state, delete=False) as log:
+        process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=log, stderr=log, text=True,
+                                   cwd=directory, env=env, start_new_session=True)
+        try:
+            register(record, process.pid)
+        except Exception:
+            process.terminate()
+            raise
+        start_session(process, single_session(root, name, files, args.line, args.column), record['socket'])
+        mark('kitty_socket_ready')
+        if process.poll() is not None and process.returncode:
+            log.seek(0)
+            print(log.read(), file=sys.stderr, end='')
+            print(f'Kitty startup log: {log.name}', file=sys.stderr)
+            return process.returncode
+    if paper:
+        watch('register', root, process.pid)
+
+    def reveal(phase=None):
+        phase = phase if phased else None
+        if not staged:
+            if not args.no_post_open:
+                post_open(directory, EDITOR_ID, name, args.no_reader or not paper, phase=phase)
+            return None
+        from desktop_launch import present, wait_new
+        window = wait_new(existing_windows, 'workspace-editor', title)
+        mark('editor_mapped')
+        if window:
+            remembered_window(window)
+        if not args.no_post_open:
+            post_open(directory, EDITOR_ID, name, args.no_reader or not paper, phase=phase, window=window)
+        if window is None:
+            if args.focus:
+                raise ValueError('Editor did not become available for activation; project remains open.')
+            print('Editor started minimized; workspace-desktop reveal is required to show it '
+                  'without changing keyboard focus.', file=sys.stderr)
+            return None
+        if not reading:
+            present(window, focus=False)
+            mark('editor_revealed')
+        return window
+
+    window = None
+    if reading:
+        reveal(phase='editor')
+        reader_and_place(EDITOR_ID)
+    elif not phased:
+        reader_for(EDITOR_ID)
+        window = reveal()
+    elif need_reader:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=1) as workers:
+            pending = workers.submit(reader_and_place, EDITOR_ID)
+            window = reveal(phase='editor')
+            pending.result()
+    else:
+        window = reveal(phase='editor')
+    if args.focus and not reading and window:
+        from desktop_launch import present
+        present(window, focus=True)
+    mark('complete')
+    return 0
+
 
 def start_session(process, session, address):
     """Deliver the session and stop waiting as soon as Kitty accepts control.
@@ -103,14 +335,6 @@ def post_open(directory, identifier, label, no_reader=False, *, phase=None, wind
             print(result.stderr, end='', file=sys.stderr)
     except (OSError, ValueError, subprocess.SubprocessError) as error:
         print(f'Project opened; post-open hook unavailable: {error}', file=sys.stderr)
-
-
-def ensure_watcher(directory, client, pid):
-    """Register the project with the shared build watcher (`paper watch`)."""
-    import build_watcher
-    reply = build_watcher.register(directory, client, pid)
-    if not reply.get('ok'):
-        raise OSError(reply.get('error', 'build watcher registration failed'))
 
 
 def resolve_target(target, paper, parser):
@@ -202,7 +426,7 @@ def run(argv=None):
     parser.add_argument('--line', type=int, default=1)
     parser.add_argument('--column', type=int, default=1)
     parser.add_argument('--session', help='explicit paired editor/reader workspace ID')
-    parser.add_argument('--new', action='store_true', help='open an additional independent workspace')
+    parser.add_argument('--new', action='store_true', help='open a separate per-project Editor window')
     parser.add_argument('--no-reader', action='store_true', help='open only the editor/build workspace')
     parser.add_argument('--no-post-open', action='store_true', help='skip the optional personal placement hook')
     parser.add_argument('--focus', action='store_true', help='reveal and activate the new or existing Editor after project setup')
@@ -297,6 +521,13 @@ def run(argv=None):
         if state and not args.no_post_open:
             post_open(directory, identifier, label, phase='reader', reader=state)
 
+    from workspace_edit import live
+    legacy_session = args.session and any(r['session'] == args.session and r['project'] == str(directory)
+                                          for r in live())
+    if not args.new and not legacy_session:
+        return open_single(args, directory=directory, paper=paper, name=info['project_name'], source=source,
+                           pdf=pdf, reading=reading, kitty=kitty, mark=mark, reader_for=reader_for,
+                           reader_and_place=reader_and_place)
     if not args.new:
         from workspace_edit import live, send
         matches = [r for r in live() if r['project'] == str(directory) and
@@ -318,10 +549,8 @@ def run(argv=None):
             for file in args.file:
                 send(matches[0], file, max(1, args.line), max(1, args.column))
             if paper and (directory / source).is_file():
-                try:
-                    ensure_watcher(directory, 'editor:' + matches[0]['session'], matches[0].get('pid'))
-                except (OSError, ValueError) as error:
-                    print(f'Editor reused; could not register with the build watcher: {error}', file=sys.stderr)
+                from project_workspace import watch
+                watch('register', directory, matches[0].get('pid'), workspace=matches[0]['session'])
             def reveal_reused(*, phase=None, activate=False, place=True):
                 bridge = shutil.which('workspace-desktop')
                 if bridge:
@@ -385,6 +614,8 @@ def run(argv=None):
         location = f'+{max(1, args.line)}:{max(1, args.column)}'
         session = session.replace('launch --title Editor micro',
                                   'launch --title Editor ' + shlex.join(['micro', location, *files]))
+    if paper:
+        session += '\n'.join(build_tab(str(directory))) + '\n'
     workspace = prepare(directory, label, args.session)
     cosmic = 'COSMIC' in os.environ.get('XDG_CURRENT_DESKTOP', '').upper().split(':')
     # On COSMIC, stage the window without activation so the placement hook can
@@ -486,10 +717,8 @@ def run(argv=None):
         mark('kitty_socket_ready')
         def watch_builds():
             if paper:
-                try:
-                    ensure_watcher(directory, 'editor:' + workspace['id'], process.pid)
-                except (OSError, ValueError) as error:
-                    print(f'Editor opened; could not register with the build watcher: {error}', file=sys.stderr)
+                from project_workspace import watch
+                watch('register', directory, process.pid, workspace=workspace['id'])
         if process.poll() is None:
             finish_open()
             watch_builds()
