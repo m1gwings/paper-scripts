@@ -105,29 +105,12 @@ def post_open(directory, identifier, label, no_reader=False, *, phase=None, wind
         print(f'Project opened; post-open hook unavailable: {error}', file=sys.stderr)
 
 
-def ensure_watcher(directory, source, identifier):
-    """Restore Build when paper open reuses an editor opened standalone."""
-    import fcntl
-    # A pinned runtime may still be watching with the previous visible layout.
-    for output in ('output/.latex', 'output'):
-        for lock_name in ('.project.watch.lock', source.parent / f'.{source.stem}.watch.lock'):
-            lock_path = directory / output / lock_name
-            if lock_path.exists():
-                try:
-                    with lock_path.open('a') as lock:
-                        try:
-                            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                        except BlockingIOError:
-                            return
-                        fcntl.flock(lock, fcntl.LOCK_UN)
-                    if output == 'output':
-                        lock_path.unlink(missing_ok=True)
-                except OSError:
-                    pass
-    subprocess.run(['project-terminal', 'run', '--workspace', identifier, '--title', 'Build',
-                    '--cwd', str(directory), '--keep-focus', '--', sys.executable,
-                    str(Path(__file__).with_name('build.py')), 'build', '--watch'],
-                   check=True, capture_output=True, text=True, timeout=10)
+def ensure_watcher(directory, client, pid):
+    """Register the project with the shared build watcher (`paper watch`)."""
+    import build_watcher
+    reply = build_watcher.register(directory, client, pid)
+    if not reply.get('ok'):
+        raise OSError(reply.get('error', 'build watcher registration failed'))
 
 
 def resolve_target(target, paper, parser):
@@ -336,9 +319,9 @@ def run(argv=None):
                 send(matches[0], file, max(1, args.line), max(1, args.column))
             if paper and (directory / source).is_file():
                 try:
-                    ensure_watcher(directory, source, matches[0]['session'])
-                except (OSError, subprocess.SubprocessError) as error:
-                    print(f'Editor reused; could not verify/start the build watcher: {error}', file=sys.stderr)
+                    ensure_watcher(directory, 'editor:' + matches[0]['session'], matches[0].get('pid'))
+                except (OSError, ValueError) as error:
+                    print(f'Editor reused; could not register with the build watcher: {error}', file=sys.stderr)
             def reveal_reused(*, phase=None, activate=False, place=True):
                 bridge = shutil.which('workspace-desktop')
                 if bridge:
@@ -402,11 +385,6 @@ def run(argv=None):
         location = f'+{max(1, args.line)}:{max(1, args.column)}'
         session = session.replace('launch --title Editor micro',
                                   'launch --title Editor ' + shlex.join(['micro', location, *files]))
-    if paper:
-        # Keep the source watcher in its own tab, leaving the project shell free.
-        build_command = shlex.join(['python3', str(Path(__file__).with_name('build.py')),
-                                    'build', '--watch'])
-        session += f'new_tab Build\nlaunch --title "PDF build" {build_command}\n'
     workspace = prepare(directory, label, args.session)
     cosmic = 'COSMIC' in os.environ.get('XDG_CURRENT_DESKTOP', '').upper().split(':')
     # On COSMIC, stage the window without activation so the placement hook can
@@ -506,8 +484,15 @@ def run(argv=None):
             mark('complete')
         start_session(process, session, workspace['socket'])
         mark('kitty_socket_ready')
+        def watch_builds():
+            if paper:
+                try:
+                    ensure_watcher(directory, 'editor:' + workspace['id'], process.pid)
+                except (OSError, ValueError) as error:
+                    print(f'Editor opened; could not register with the build watcher: {error}', file=sys.stderr)
         if process.poll() is None:
             finish_open()
+            watch_builds()
             return 0
         if process.returncode:
             log.seek(0)
@@ -515,6 +500,7 @@ def run(argv=None):
             print(f'Kitty startup log: {log.name}', file=sys.stderr)
         else:
             finish_open()
+            watch_builds()
         return process.returncode
 
 

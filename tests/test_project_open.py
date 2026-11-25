@@ -112,6 +112,7 @@ class ProjectOpenTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(prefix='paper editor ')
         self.addCleanup(self.tmp.cleanup)
+        self.addCleanup(self.stop_watcher)
         self.root = Path(self.tmp.name)
         self.project = self.root / 'project $(touch INJECTED)'
         self.project.mkdir()
@@ -139,6 +140,24 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
 ''')
             stub.chmod(0o755)
         self.git('init', '-q', str(self.project))
+
+    def watcher(self, *args):
+        return subprocess.run([sys.executable, str(SOURCE / 'lib/build_watcher.py'), *args], env=self.env,
+                              text=True, capture_output=True, check=True, timeout=30).stdout
+
+    def watcher_log(self):
+        log = self.root / 'state/paper/watch.log'
+        return log.read_text() if log.exists() else ''
+
+    def stop_watcher(self):
+        socket = self.root / 'runtime/paper/watch.sock'
+        if not socket.exists():
+            return
+        self.watcher('stop')
+        import time
+        deadline = time.monotonic() + 5
+        while socket.exists() and time.monotonic() < deadline:
+            time.sleep(.05)
 
     def git(self, *args):
         return subprocess.run(['git', *args], cwd=self.project, env=self.env,
@@ -230,8 +249,11 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
         self.assertTrue((runtime / 'lib/project_workspace.py').is_file())
         self.launch('--terminal', script=runtime / 'paper')
         self.assertEqual(self.record()['program'], 'kitty')
-        self.assertIn('new_tab Build', self.record()['session'])
-        self.assertIn(str(runtime / 'lib/build.py'), self.record()['session'])
+        self.assertNotIn('new_tab Build', self.record()['session'])
+        # The shared watcher runs the vendored runtime and registers the new Editor.
+        log = self.watcher_log()
+        self.assertIn(f'serving from {runtime / "lib"}', log)
+        self.assertIn(f'Registered {self.project} client editor:', log)
 
     def test_terminal_startup_failure_is_reported(self):
         (self.bin / 'kitty').write_text('#!/bin/sh\necho "Unsupported layout" >&2\nexit 3\n')
@@ -252,7 +274,8 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
         self.assertIn('new_tab Poster', record['session'])
         import shlex
         self.assertIn('micro +1:1 ' + shlex.quote(str(self.project / 'poster.tex')), record['session'])
-        self.assertIn('build --watch', record['session'])
+        self.assertNotIn('build --watch', record['session'])
+        self.assertIn(f'Registered {self.project} client editor:', self.watcher_log())
         self.assertFalse((self.project / 'INJECTED').exists())
 
     def test_project_name_survives_reinitialization(self):
@@ -382,28 +405,23 @@ Path(os.environ['LAUNCH_LOG']).write_text(json.dumps({
         calls = [json.loads(line) for line in events.read_text().splitlines()]
         self.assertEqual(calls[-2:], [['reveal', '--window', 'editor'], ['focus', '--window', 'editor']])
 
-    def test_reused_standalone_editor_restores_only_a_missing_build_watcher(self):
+    def test_reused_editor_registers_with_the_shared_build_watcher(self):
         endpoint = self.root / f'runtime/workspace-editors/{os.getpid()}-fixture'
         endpoint.mkdir(parents=True)
         (endpoint / 'record.json').write_text(json.dumps({'pid': os.getpid(), 'project': str(self.project),
             'session': 'paired', 'endpoint': str(endpoint), 'protocol': 1}))
-        log = self.root / 'build.json'
-        stub = self.bin / 'project-terminal'
-        stub.write_text(f'#!{sys.executable}\nimport json,sys\nfrom pathlib import Path\n'
-                        f'Path({str(log)!r}).write_text(json.dumps(sys.argv[1:]))\n')
-        stub.chmod(0o755)
-        (self.project / 'main.tex').write_text('Source fixture.\n')
-        self.assertIn('Reused editor', self.launch('--terminal', '--no-reader'))
-        command = json.loads(log.read_text())
-        self.assertEqual(command[command.index('--workspace') + 1], 'paired')
-        self.assertEqual(command[-2:], ['build', '--watch'])
-        self.assertFalse(self.log.exists())  # No duplicate desktop editor.
-        log.unlink()
+        (self.project / 'main.tex').write_text('\\documentclass{article}\n')
         (self.project / 'output/.latex').mkdir(parents=True)
-        with (self.project / 'output/.latex/.main.watch.lock').open('a') as lock:
+        # A per-project watcher from an older Editor keeps building the project.
+        with (self.project / 'output/.latex/.project.watch.lock').open('a') as lock:
             fcntl.flock(lock, fcntl.LOCK_EX)
+            self.assertIn('Reused editor', self.launch('--terminal', '--no-reader'))
+            self.assertFalse(self.log.exists())  # No duplicate desktop editor.
             self.launch('--terminal', '--no-reader')
-            self.assertFalse(log.exists())  # Existing watcher remains the only one.
+            status = json.loads(self.watcher('status', '--json'))
+            self.assertEqual([(p['root'], p['clients']) for p in status['projects']],
+                             [(str(self.project), ['editor:paired'])])
+            self.assertEqual(self.watcher_log().count('serving from'), 1)
 
     def test_paper_open_with_directory_argument_from_outside_repo(self):
         output = self.launch(str(self.project), cwd=self.root)
