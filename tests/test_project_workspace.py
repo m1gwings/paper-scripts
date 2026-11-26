@@ -16,6 +16,8 @@ SOURCE = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('project_workspace', SOURCE / 'lib/project_workspace.py')
 WORKSPACE = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(WORKSPACE)
+# The CLI imports its sibling lazily; resolve it to the module the tests patch.
+sys.modules['project_workspace'] = WORKSPACE
 spec = importlib.util.spec_from_file_location('workspace_editor_cli', SOURCE / 'lib/workspace_edit.py')
 EDITOR = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(EDITOR)
@@ -52,6 +54,9 @@ class WorkspaceTest(unittest.TestCase):
         self.env = patch.dict(os.environ, XDG_RUNTIME_DIR=str(self.root))
         self.env.start()
         self.addCleanup(self.env.stop)
+        # Managed agent tabs export these; tests must not inherit them.
+        for name in ('PROJECT_WORKSPACE_ROOT', 'PROJECT_WORKSPACE_ID'):
+            os.environ.pop(name, None)
         self.project = self.root / 'paper'
         self.project.mkdir()
         self.record = WORKSPACE.prepare(self.project, 'Friendly project name')
