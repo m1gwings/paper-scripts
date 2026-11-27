@@ -120,6 +120,12 @@ class OverleafBuildTest(unittest.TestCase):
         self.assertEqual(tex.MANIFEST.read_bytes(),original)
         self.assertEqual(state['last_success'],123)
         self.assertIn('route changed',state['warning'])
+    def test_only_the_overleaf_root_carries_verification_warnings(self):
+        (self.root/'.paper').mkdir();(self.root/'.paper/config.json').write_text(json.dumps({'root_tex':'paper.tex'}))
+        self.assertIn('verification pending',overleaf.warning(Path('paper.tex')))
+        self.assertIn('verification pending',overleaf.warning())
+        self.assertEqual(overleaf.warning(Path('notes/proof.tex')),'')
+        self.assertEqual(overleaf.warning(Path('coverletter.tex')),'')
     def test_source_digest_ignores_zip_metadata(self):
         import zipfile
         for name,date in [('one.zip',(2025,1,1,0,0,0)),('two.zip',(2026,1,1,0,0,0))]:

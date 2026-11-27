@@ -35,7 +35,7 @@ def write(path, value):
     temporary = path.with_name(path.name+f'.{os.getpid()}.tmp')
     temporary.write_text(json.dumps(value, indent=2)+'\n'); temporary.replace(path)
     if path == STATUS:
-        main = Path(read('.paper/config.json').get('root_tex', 'main.tex'))
+        main = main_source()
         for folder in (Path('output/.latex')/main.parent, Path('output')/main.parent):
             build_state = folder/(main.stem+'.build.json')
             state = read(build_state)
@@ -54,8 +54,13 @@ def project_id():
     return _PROJECTS[cwd]
 
 
-def warning():
-    if not project_id():
+def main_source():
+    return Path(read('.paper/config.json').get('root_tex', 'main.tex'))
+
+
+def warning(source=None):
+    """Overleaf verifies only the root document; other sources never carry its warning."""
+    if not project_id() or (source is not None and Path(source) != main_source()):
         return ''
     state = read(STATUS)
     if state.get('warning'):

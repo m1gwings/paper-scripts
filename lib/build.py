@@ -278,7 +278,7 @@ def compile_locked(command, out):
         def report(state, **extra):
             value = dict(state=state, source=str(source), pdf=str(pdf), updated=time.time(),
                          last_success=last_success, build_signature=build_signature,
-                         warning=overleaf_build.warning(), **extra)
+                         warning=overleaf_build.warning(source), **extra)
             pending = state_file.with_suffix('.json.tmp')
             pending.write_text(json.dumps(value))
             pending.replace(state_file)
@@ -675,7 +675,7 @@ def run(argv=None):
         return status
     if not pdf.is_file():
         parser.error(f'Build produced no PDF at {pdf}.')
-    notice = overleaf_build.warning()
+    notice = overleaf_build.warning(source)
     if notice:
         print('Warning: '+notice, file=sys.stderr)
     print(f'PDF: {pdf.resolve()}', flush=True)
