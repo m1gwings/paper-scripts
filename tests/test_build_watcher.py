@@ -171,6 +171,7 @@ class BuildWatcherTest(unittest.TestCase):
         self.wait(self.idle, 'builds did not finish')
         pid = self.status()['pid']
         script = runtime / 'build_watcher.py'
+        script.chmod(0o644)  # Release staging shares read-only files.
         script.write_text(script.read_text() + '\n# Upgraded runtime.\n')
         self.wait(lambda: 'reloading watcher' in self.daemon_log(), self.daemon_log, timeout=10)
         self.wait(lambda: self.daemon_log().count('serving from') == 2, self.daemon_log, timeout=10)
